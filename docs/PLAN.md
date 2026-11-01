@@ -283,6 +283,32 @@ Rules, mapped onto the skyline:
 
 Keep assets minimal (procedural shapes) until the rules feel right.
 
+### World model (phase 3, built)
+
+`world.rs` folds the ledger into a `World` (proto type) on every
+`Request::World`; nothing is stored, so it cannot drift from the ledger and
+clients cannot edit it. Inputs: ended sessions (completed / surrendered, with
+focused time) and `tamper`, `escalation_denied`, `clock_jump` events, sorted by
+time. Theme-agnostic terms: plots (index, district of 8, grade 0-4, damage
+0-2, rubble, seed), a construction site for the running session, tier 0-3,
+streak, and a history of the last 30 changes with their cause.
+
+| Ledger | World |
+|---|---|
+| Completed session | Builds on the oldest rubble, else a new plot. Grade from length: 25 / 50 / 90 / 180 min. Time counts toward the tier. Then repairs `1 + mins / 25` damage levels, most damaged first; doubled on a 3+ day streak |
+| Surrendered session (severe) | Its plot becomes rubble, fire does 2 damage to the 3 nearest buildings, its time does not count, the streak resets |
+| `tamper` (major) | Earthquake: 1 damage to every building in the biggest district |
+| `escalation_denied`, `clock_jump` (minor) | 1 damage to the newest building |
+
+- Damage 3 turns a building into rubble; the grade it had is lost for good.
+- Bursts count once: a second quake (or a second minor penalty) within 10 min is ignored.
+- Tiers at 10 / 50 / 200 focused hours. Streak: consecutive local days with a
+  completed session, kept until the end of the next day.
+- Numbers are first guesses, like the escalation stages; tune on real use.
+- Clients: `deepwork world` (text skyline, `--json`), and `deepwork-agent`
+  notifies losses (collapse, earthquake, damage) within ~10s. Builds are left
+  to the "Session complete" note.
+
 ## Decisions taken (revisit if needed)
 
 | Question | Default |
@@ -296,7 +322,8 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 
 ## Next session: start here
 
-Phase 2 code is complete (2026-11-02). Routines, the agent and the bar are
+Phase 3 started (2026-11-02): world model and penalties are in (see "World
+model" above); next is the Tauri app. Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
 the daemon, DoT reuse, container DNS, config delay, escalation) is tested in
 namespaces / dry-run only. Host check after `./dist/install.sh`, keeping a
@@ -315,8 +342,12 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 3. After the session: sudo works again; `systemctl stop` works again.
 4. Later: tune escalation stages and nudges on real use; then add real
    `[[routines]]`.
+5. After reinstalling: `deepwork world` shows the city built from past
+   sessions; `deepwork-agent` (restart the user unit) notifies losses.
 
-Then phase 3 (the world).
+Next in phase 3: the Tauri 2 app (`ui/`), node, bun and webkit2gtk-4.1 are
+installed; `tauri-cli` is not. It reads `Request::World` / `Request::Status`
+over the socket and renders the skyline with PixiJS.
 
 ## Phases
 
@@ -369,10 +400,10 @@ Then phase 3 (the world).
 
 ### Phase 3: The world
 
-- [ ] Ledger → theme-agnostic world model in the daemon
+- [x] Ledger → theme-agnostic world model in the daemon (`world.rs`, `Request::World`, `deepwork world`)
 - [ ] Tauri 2 app with a procedural PixiJS skyline renderer
 - [ ] Timer, routines and stats screens
-- [ ] Penalty tiers wired to quit / surrender / tamper events
+- [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 
 ### Phase 4: Deeper enforcement
 

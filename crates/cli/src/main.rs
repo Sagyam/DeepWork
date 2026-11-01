@@ -1,3 +1,5 @@
+mod skyline;
+
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -41,6 +43,12 @@ enum Command {
     Routines,
     /// Spend a skip token on the next run of a routine (or of any routine).
     Skip { routine: Option<String> },
+    /// Show your city: what focus built and what giving in cost.
+    World {
+        /// Print raw JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Print one line of Waybar-style JSON, for a bar module.
     Bar,
     /// Show the config change waiting behind the 24h loosening delay, or
@@ -160,6 +168,18 @@ fn main() -> Result<()> {
                     println!("  - {reason}");
                 }
             }
+        }
+        Command::World { json } => {
+            let resp = expect_ok(request(&cli.socket, &Request::World)?)?;
+            if json {
+                println!("{}", serde_json::to_string(&resp)?);
+                return Ok(());
+            }
+            let Response::World(world) = resp else {
+                bail!("unexpected reply")
+            };
+            let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
+            print!("{}", skyline::render(&world, unix_now(), color));
         }
         Command::Bar => {
             let line = match request(&cli.socket, &Request::Status) {

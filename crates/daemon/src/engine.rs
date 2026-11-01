@@ -22,6 +22,7 @@ use crate::enforcer::EnforcerHandle;
 use crate::schedule::{self, Occurrence, RunKey};
 use crate::session::Session;
 use crate::store::{EventKind, RunOutcome, Store};
+use crate::world;
 
 const PERSIST_EVERY: Duration = Duration::from_secs(5);
 const REASSERT_EVERY: Duration = Duration::from_secs(15);
@@ -203,6 +204,7 @@ impl Core {
                 })))
             }
             Request::ReloadConfig => Ok(Response::Config(self.reload())),
+            Request::World => Ok(Response::World(Box::new(self.world()?))),
             Request::Stop => {
                 let min = self.stopwatch_min();
                 let session = self.session.as_mut().ok_or("no session is running")?;
@@ -297,6 +299,28 @@ impl Core {
             }),
             nudge,
         }
+    }
+
+    fn world(&self) -> Result<deepwork_proto::World, String> {
+        let facts = self
+            .store
+            .world_facts()
+            .map_err(|e| format!("could not read the ledger: {e:#}"))?;
+        let running = self.session.as_ref().map(|s| world::Running {
+            session_id: s.id,
+            elapsed_secs: s.elapsed.as_secs(),
+            target_secs: match s.kind {
+                SessionKind::Countdown { secs } => Some(secs),
+                SessionKind::Stopwatch => None,
+            },
+            surrendering: s.state == SessionState::Surrendering,
+        });
+        Ok(world::build(
+            &facts,
+            running.as_ref(),
+            Timestamp::now(),
+            &self.tz,
+        ))
     }
 
     fn skip(&mut self, routine: Option<&str>, uid: u32) -> Result<Response, String> {

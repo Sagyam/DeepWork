@@ -9,7 +9,10 @@ use std::time::Duration;
 
 use anyhow::Result;
 use clap::Parser;
-use deepwork_proto::{Request, Response, SessionInfo, SessionKind, SessionState, Status};
+use deepwork_proto::{
+    Request, Response, SessionInfo, SessionKind, SessionState, Status, World, WorldCause,
+    WorldEvent, WorldEventKind,
+};
 
 #[derive(Parser)]
 #[command(version, about = "DeepWork desktop notifications")]
@@ -26,6 +29,8 @@ struct Args {
 
 /// Polls in a row that fail before warning that the daemon is gone.
 const DOWN_AFTER: u32 = 3;
+/// The world is fetched every this many status polls.
+const WORLD_EVERY: u32 = 5;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Urgency {
@@ -89,6 +94,9 @@ struct Watch {
     /// the daemon's level is already high when the agent first sees it.
     nudge_level: u32,
     nudge_step: u32,
+    /// The newest world event seen; outer `None` before the first fetch, so
+    /// old losses are not announced again when the agent starts.
+    world_seen: Option<Option<WorldEvent>>,
 }
 
 impl Watch {
@@ -127,6 +135,26 @@ impl Watch {
             )
             .in_slot(Slot::Daemon),
         ]
+    }
+
+    /// Announces losses in the world since the last fetch. Building and
+    /// repairs are left to the "Session complete" note.
+    fn on_world(&mut self, w: &World) -> Vec<Note> {
+        let seen = self.world_seen.replace(w.history.last().cloned());
+        let Some(seen) = seen else {
+            return Vec::new();
+        };
+        let new = match &seen {
+            None => &w.history[..],
+            Some(last) => match w.history.iter().rposition(|e| e == last) {
+                Some(i) => &w.history[i + 1..],
+                None => {
+                    let i = w.history.partition_point(|e| e.ts <= last.ts);
+                    &w.history[i..]
+                }
+            },
+        };
+        new.iter().filter_map(loss_note).collect()
     }
 
     fn heads_up(&mut self, cur: &Status, notes: &mut Vec<Note>) {
@@ -281,6 +309,58 @@ fn ended_note(s: &SessionInfo) -> Note {
     }
 }
 
+fn loss_note(e: &WorldEvent) -> Option<Note> {
+    let ruined = match e.ruined.len() {
+        0 => String::new(),
+        1 => " One fell into rubble.".into(),
+        n => format!(" {n} fell into rubble."),
+    };
+    let repair = "Completed sessions repair them.";
+    let note = match e.kind {
+        WorldEventKind::Built | WorldEventKind::Repaired => return None,
+        WorldEventKind::Collapsed => {
+            let burned = e.plots.len().saturating_sub(1);
+            Note::new(
+                Urgency::Critical,
+                "Your building collapsed",
+                format!(
+                    "Surrendering left rubble on plot {}. Fire spread to {}.{ruined} {repair}",
+                    e.plots.first().map_or(0, |p| p + 1),
+                    buildings(burned)
+                ),
+            )
+        }
+        WorldEventKind::Quake => Note::new(
+            Urgency::Critical,
+            "Earthquake",
+            format!(
+                "Tampering with DeepWork damaged {}.{ruined} {repair}",
+                buildings(e.plots.len())
+            ),
+        ),
+        WorldEventKind::Damaged if e.plots.is_empty() => return None,
+        WorldEventKind::Damaged => {
+            let why = match e.cause {
+                WorldCause::ClockJump => "Changing the clock",
+                _ => "Asking for root during a session",
+            };
+            Note::new(
+                Urgency::Normal,
+                "A building was damaged",
+                format!("{why} damaged your newest building.{ruined}"),
+            )
+        }
+    };
+    Some(note)
+}
+
+fn buildings(n: usize) -> String {
+    match n {
+        1 => "1 building".into(),
+        _ => format!("{n} buildings"),
+    }
+}
+
 fn tokens(n: u32) -> String {
     match n {
         1 => "1 skip token".into(),
@@ -353,14 +433,22 @@ fn main() -> Result<()> {
         daemon_id: None,
     };
     let interval = Duration::from_secs(args.interval.max(1));
+    let mut poll = 0u32;
     loop {
-        let notes = match deepwork_proto::request(&args.socket, &Request::Status) {
+        let mut notes = match deepwork_proto::request(&args.socket, &Request::Status) {
             Ok(Response::Status(status)) => watch.on_status(*status),
             _ => watch.on_error(),
         };
+        if poll.is_multiple_of(WORLD_EVERY)
+            && let Ok(Response::World(world)) =
+                deepwork_proto::request(&args.socket, &Request::World)
+        {
+            notes.extend(watch.on_world(&world));
+        }
         for note in &notes {
             notifier.send(note);
         }
+        poll = poll.wrapping_add(1);
         std::thread::sleep(interval);
     }
 }
@@ -398,6 +486,80 @@ mod tests {
             distracted_secs: 0,
             escalation_stage: 0,
         }
+    }
+
+    fn world(history: Vec<WorldEvent>) -> World {
+        World {
+            tier: 0,
+            focused_secs: 0,
+            tier_floor_secs: 0,
+            next_tier_secs: None,
+            streak_days: 0,
+            plots: Vec::new(),
+            construction: None,
+            history,
+        }
+    }
+
+    fn world_event(
+        ts: i64,
+        kind: WorldEventKind,
+        cause: WorldCause,
+        plots: Vec<u32>,
+    ) -> WorldEvent {
+        WorldEvent {
+            ts,
+            kind,
+            cause,
+            session_id: None,
+            plots,
+            ruined: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn world_losses() {
+        let mut w = Watch::default();
+        let built = world_event(1, WorldEventKind::Built, WorldCause::Completed, vec![0]);
+        let quake = world_event(2, WorldEventKind::Quake, WorldCause::Tamper, vec![0, 1]);
+        // Losses from before the agent started are not announced.
+        assert!(
+            w.on_world(&world(vec![built.clone(), quake.clone()]))
+                .is_empty()
+        );
+        assert!(
+            w.on_world(&world(vec![built.clone(), quake.clone()]))
+                .is_empty()
+        );
+
+        let mut fire = world_event(
+            3,
+            WorldEventKind::Collapsed,
+            WorldCause::Surrendered,
+            vec![4, 2, 3],
+        );
+        fire.ruined = vec![3];
+        let denied = world_event(
+            4,
+            WorldEventKind::Damaged,
+            WorldCause::EscalationDenied,
+            vec![2],
+        );
+        let notes = w.on_world(&world(vec![built, quake, fire.clone(), denied.clone()]));
+        assert_eq!(
+            summaries(&notes),
+            ["Your building collapsed", "A building was damaged"]
+        );
+        assert_eq!(
+            notes[0].body,
+            "Surrendering left rubble on plot 5. Fire spread to 2 buildings. One fell into rubble. \
+             Completed sessions repair them."
+        );
+        // The seen event rolled out of the history window.
+        let rebuilt = world_event(5, WorldEventKind::Built, WorldCause::Completed, vec![4]);
+        let quake2 = world_event(6, WorldEventKind::Quake, WorldCause::Tamper, vec![1]);
+        let notes = w.on_world(&world(vec![rebuilt, quake2]));
+        assert_eq!(summaries(&notes), ["Earthquake"]);
     }
 
     fn summaries(notes: &[Note]) -> Vec<&str> {

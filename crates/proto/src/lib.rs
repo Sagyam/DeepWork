@@ -46,6 +46,8 @@ pub enum Request {
     ConfigStatus,
     /// Re-read the config file. Loosening changes wait 24 hours.
     ReloadConfig,
+    /// The progression world, derived from the ledger.
+    World,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -152,6 +154,107 @@ pub struct ConfigInfo {
     pub pending: Option<PendingConfig>,
 }
 
+/// The progression world. Theme-agnostic: a renderer turns plots, grades and
+/// damage into pictures (buildings in the skyline theme). Clients can only
+/// read it; it is rebuilt from the ledger on every request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct World {
+    /// Settlement size, 0 to [`World::MAX_TIER`], from `focused_secs`.
+    pub tier: u32,
+    /// Focus time that counts: completed sessions only.
+    pub focused_secs: u64,
+    /// `focused_secs` needed for the current and the next tier.
+    pub tier_floor_secs: u64,
+    pub next_tier_secs: Option<u64>,
+    /// Consecutive local days with a completed session, up to today.
+    pub streak_days: u32,
+    /// In build order. A plot keeps its index for good.
+    pub plots: Vec<Plot>,
+    /// The plot the running session is working on.
+    pub construction: Option<Construction>,
+    /// Recent world changes, oldest first.
+    pub history: Vec<WorldEvent>,
+}
+
+impl World {
+    pub const MAX_TIER: u32 = 3;
+    /// Damage at which a building falls into rubble.
+    pub const MAX_DAMAGE: u32 = 3;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Plot {
+    pub index: u32,
+    /// Plots are grouped into districts of a fixed size, in index order.
+    pub district: u32,
+    /// Size / rarity, 0 to 4, from the length of the session that built it.
+    pub grade: u32,
+    /// 0 is intact; below [`World::MAX_DAMAGE`].
+    pub damage: u32,
+    /// Collapsed. The next completed session builds here.
+    pub rubble: bool,
+    /// Stable per-plot randomness for renderers.
+    pub seed: u64,
+    /// The session that built (or failed to build) it.
+    pub session_id: i64,
+    /// Unix seconds.
+    pub built_at: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Construction {
+    pub session_id: i64,
+    /// Where it will stand: the oldest rubble plot, or a new one.
+    pub index: u32,
+    /// The grade it reaches if the session completes now (stopwatch) or on
+    /// time (countdown).
+    pub grade: u32,
+    /// 0 to 1000; `None` for stopwatches.
+    pub progress_permille: Option<u32>,
+    pub surrendering: bool,
+    pub seed: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldEventKind {
+    /// A completed session put up a building.
+    Built,
+    /// Damage taken away by a completed session.
+    Repaired,
+    /// A surrendered session: its plot collapsed and nearby buildings burned.
+    Collapsed,
+    /// Tampering with enforcement: a whole district was hit.
+    Quake,
+    /// A refused sudo / polkit attempt or a wall-clock jump: one building hit.
+    Damaged,
+}
+
+/// The ledger event behind a world change.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorldCause {
+    Completed,
+    Surrendered,
+    Tamper,
+    EscalationDenied,
+    ClockJump,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorldEvent {
+    /// Unix seconds.
+    pub ts: i64,
+    pub kind: WorldEventKind,
+    pub cause: WorldCause,
+    pub session_id: Option<i64>,
+    /// Plots affected.
+    pub plots: Vec<u32>,
+    /// Plots that fell into rubble because of it.
+    #[serde(default)]
+    pub ruined: Vec<u32>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -166,6 +269,7 @@ pub enum Response {
         message: String,
     },
     Config(ConfigInfo),
+    World(Box<World>),
     Error {
         message: String,
     },

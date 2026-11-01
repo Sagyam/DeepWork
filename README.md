@@ -7,7 +7,8 @@ slows distracting sites down at the network layer (DNS-informed nftables sets +
 tc/netem). Your browser keeps working for real work. Routines start sessions on
 their own, and quitting early costs you progress in a small virtual world.
 
-Status: phase 1 (core daemon + CLI). See [docs/PLAN.md](docs/PLAN.md).
+Status: phases 1 and 2 done (daemon, routines, hardening); phase 3 (the world)
+in progress. See [docs/PLAN.md](docs/PLAN.md).
 
 ## Layout
 
@@ -15,6 +16,7 @@ Status: phase 1 (core daemon + CLI). See [docs/PLAN.md](docs/PLAN.md).
 |---|---|
 | `crates/daemon` | `deepworkd`, the root daemon: sessions, DNS forwarder, nft/tc enforcement, SQLite ledger |
 | `crates/cli` | `deepwork`, the CLI |
+| `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
 | `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
 | `dist/` | systemd unit, example config, install script |
 
@@ -35,6 +37,7 @@ deepwork start 50m           # countdown
 deepwork start --stopwatch   # stopwatch, can be stopped after 10 minutes
 deepwork status
 deepwork surrender           # the only way out of a countdown; it takes 10 minutes
+deepwork world               # the city your sessions built, and what giving in cost
 ./dist/install.sh uninstall
 ```
 

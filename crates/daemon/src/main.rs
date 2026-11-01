@@ -9,6 +9,7 @@ mod schedule;
 mod server;
 mod session;
 mod store;
+mod world;
 
 use std::path::PathBuf;
 use std::sync::Arc;

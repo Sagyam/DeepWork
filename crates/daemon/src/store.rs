@@ -10,6 +10,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::schedule::RunKey;
 use crate::session::Session;
+use crate::world::{Fact, FactKind};
 
 const SCHEMA_VERSION: i64 = 3;
 
@@ -319,6 +320,61 @@ impl Store {
         Ok(())
     }
 
+    /// Everything the world is built from: ended sessions and penalty events.
+    pub fn world_facts(&self) -> Result<Vec<Fact>> {
+        let mut facts = Vec::new();
+        let mut stmt = self.conn.prepare(
+            "SELECT id, state, elapsed_ms, ended_at FROM sessions
+             WHERE ended_at IS NOT NULL AND state IN ('completed', 'surrendered')",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, state, elapsed, ended_at) = row?;
+            let secs = from_millis(elapsed).as_secs();
+            let kind = match state.as_str() {
+                "completed" => FactKind::Completed { secs },
+                _ => FactKind::Surrendered { secs },
+            };
+            facts.push(Fact {
+                ts: ended_at,
+                session_id: Some(id),
+                kind,
+            });
+        }
+        let mut stmt = self.conn.prepare(
+            "SELECT ts, session_id, kind FROM events
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump')",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, Option<i64>>(1)?,
+                r.get::<_, String>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (ts, session_id, kind) = row?;
+            let kind = match kind.as_str() {
+                "tamper" => FactKind::Tamper,
+                "escalation_denied" => FactKind::Denied,
+                _ => FactKind::ClockJump,
+            };
+            facts.push(Fact {
+                ts,
+                session_id,
+                kind,
+            });
+        }
+        Ok(facts)
+    }
+
     #[cfg(test)]
     fn event_kinds(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare("SELECT kind FROM events ORDER BY id")?;
@@ -434,6 +490,49 @@ mod tests {
         assert_eq!(store.get("a").unwrap().as_deref(), Some("2"));
         store.set("a", None).unwrap();
         assert_eq!(store.get("a").unwrap(), None);
+    }
+
+    #[test]
+    fn world_facts_from_sessions_and_events() {
+        let store = Store::in_memory().unwrap();
+        let mut done =
+            Session::new(SessionKind::Countdown { secs: 600 }, "deep".into(), 1).unwrap();
+        store.insert_session(&mut done).unwrap();
+        done.advance(Duration::from_secs(600));
+        store.save_session(&done, Some(700)).unwrap();
+        let mut running = Session::new(SessionKind::Stopwatch, "deep".into(), 800).unwrap();
+        store.insert_session(&mut running).unwrap();
+        store
+            .log_event(900, Some(running.id), EventKind::Tamper, "x")
+            .unwrap();
+        store
+            .log_event(901, Some(running.id), EventKind::Escalate, "")
+            .unwrap();
+        store
+            .log_event(902, None, EventKind::ClockJump, "")
+            .unwrap();
+        let mut facts = store.world_facts().unwrap();
+        facts.sort();
+        assert_eq!(
+            facts,
+            [
+                Fact {
+                    ts: 700,
+                    session_id: Some(done.id),
+                    kind: FactKind::Completed { secs: 600 }
+                },
+                Fact {
+                    ts: 900,
+                    session_id: Some(running.id),
+                    kind: FactKind::Tamper
+                },
+                Fact {
+                    ts: 902,
+                    session_id: None,
+                    kind: FactKind::ClockJump
+                },
+            ]
+        );
     }
 
     #[test]
