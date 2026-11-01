@@ -134,10 +134,14 @@ Verified in a throwaway user + network namespace (`unshare -rn`, veth pair,
 HTTP server): a 400 KB download goes from 2 ms to 14.5 s once the server IP is
 in `slow_v4`, and fails outright in `block_v4`.
 
-Throttle defaults (profile "deep"): +800ms RTT, 200ms jitter, 128 kbit/s, 2%
-loss. The goal is "painfully slow": video buffers even at 144p and a large image
-takes tens of seconds. Untested on real sites so far; tune after the first real
-run.
+Throttle defaults (profile "deep"): +300ms RTT, 50ms jitter, 512 kbit/s, no
+loss, 1 second netem queue. The goal is a **subtle nudge, not a ban**: pages
+still load, just slowly, and video settles around 240p with occasional
+buffering. History: the first real run (+800ms, 128 kbit/s, 2% loss, 2s
+queue) felt like a full block. TCP throughput with loss is roughly
+`MSS / RTT * 1.22 / sqrt(loss)`, about 126 kbit/s there, so loss plus delay
+was the real limit. The new values are an educated guess, not yet tried on
+real sites.
 
 ### Session model
 
@@ -190,6 +194,15 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 | Theme | City skyline prototype; may change. World model stays theme-agnostic |
 | UI order | CLI + Waybar first, Tauri UI in phase 3 |
 
+## Next session: start here
+
+1. Ask the user to re-run `./dist/install.sh` (needs their sudo password). That
+   installs the `Type=notify` fix and the gentler throttle (512 kbit/s, +300ms),
+   then they try `deepwork start 5m --profile trial` and report whether 240p
+   video plays with occasional buffering. Tune `Throttle::default` from that.
+2. Then phase 2, starting with routines + the user agent (notifications,
+   Waybar), then the PAM sudo lock and `RefuseManualStop`.
+
 ## Phases
 
 ### Phase 1: Core daemon (in progress)
@@ -206,7 +219,10 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 - [x] DNS-over-TLS upstreams; session-only resolved drop-in
 - [x] systemd unit, example config, install script (`dist/`)
 - [x] Managed browser policies turning DoH off (`dist/browser-policies.py`). The user's Zen had strict DoH (`network.trr.mode = 3`), which bypassed the resolver entirely
-- [ ] First real run as root on this machine (needs the user's go-ahead)
+- [x] First real run (2026-11-01): 5 min `trial` profile. Zen and Chromium were
+      both throttled, the session completed on its own, teardown restored DoT
+      to NextDNS. Feedback: too harsh, felt like a block, so defaults retuned
+- [x] systemd `Type=notify` readiness (install.sh raced the socket before)
 - [x] Commit the first version, public repo github.com/Sagyam/DeepWork
 
 ### Phase 2: Routines and hardening

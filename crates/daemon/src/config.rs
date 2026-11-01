@@ -151,10 +151,10 @@ impl Default for SessionConfig {
 impl Default for Throttle {
     fn default() -> Self {
         Self {
-            rtt_ms: 800,
-            jitter_ms: 200,
-            rate_kbit: 128,
-            loss_pct: 2.0,
+            rtt_ms: 300,
+            jitter_ms: 50,
+            rate_kbit: 512,
+            loss_pct: 0.0,
         }
     }
 }

@@ -36,9 +36,9 @@ fn netem(t: &Throttle) -> String {
     if t.loss_pct > 0.0 {
         let _ = write!(s, " loss {}%", t.loss_pct);
     }
-    // Queue about two seconds of traffic at the capped rate, so the throttle
-    // feels slow rather than dead.
-    let limit = (u64::from(t.rate_kbit) * 1000 / 8 * 2 / 1500).max(16);
+    // Queue about one second of traffic at the capped rate. Longer queues add
+    // so much delay that the throttle feels like a block.
+    let limit = (u64::from(t.rate_kbit) * 1000 / 8 / 1500).max(16);
     let _ = write!(s, " rate {}kbit limit {limit}", t.rate_kbit);
     s
 }
@@ -108,7 +108,7 @@ mod tests {
         };
         assert_eq!(
             netem(&t),
-            "netem delay 300ms 50ms loss 1% rate 256kbit limit 42"
+            "netem delay 300ms 50ms loss 1% rate 256kbit limit 21"
         );
         let t = Throttle {
             rtt_ms: 0,
