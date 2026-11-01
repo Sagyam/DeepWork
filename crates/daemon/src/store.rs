@@ -11,7 +11,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use crate::schedule::RunKey;
 use crate::session::Session;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 3;
 
 pub struct Store {
     conn: Connection,
@@ -32,6 +32,10 @@ pub enum EventKind {
     ClockJump,
     /// sudo, su, pkexec or a guarded polkit action refused during a session.
     EscalationDenied,
+    /// A config change took effect.
+    ConfigApplied,
+    /// A loosening config change was queued behind the delay.
+    ConfigPending,
 }
 
 /// What happened to a routine run. Each run is recorded once.
@@ -71,6 +75,8 @@ impl EventKind {
             EventKind::Skip => "skip",
             EventKind::ClockJump => "clock_jump",
             EventKind::EscalationDenied => "escalation_denied",
+            EventKind::ConfigApplied => "config_applied",
+            EventKind::ConfigPending => "config_pending",
         }
     }
 }
@@ -122,6 +128,9 @@ impl Store {
                     PRIMARY KEY (routine, date)
                 );",
             )?;
+        }
+        if version < 3 {
+            conn.execute_batch("CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);")?;
         }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(Self { conn })
@@ -273,6 +282,26 @@ impl Store {
         )?)
     }
 
+    pub fn get(&self, key: &str) -> Result<Option<String>> {
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM kv WHERE key = ?1", [key], |r| r.get(0))
+            .optional()?)
+    }
+
+    /// Sets `key`, or deletes it for `None`.
+    pub fn set(&self, key: &str, value: Option<&str>) -> Result<()> {
+        match value {
+            Some(v) => self.conn.execute(
+                "INSERT INTO kv (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                params![key, v],
+            )?,
+            None => self.conn.execute("DELETE FROM kv WHERE key = ?1", [key])?,
+        };
+        Ok(())
+    }
+
     pub fn log_event(
         &self,
         ts: i64,
@@ -391,6 +420,17 @@ mod tests {
         let store = Store::init(conn).unwrap();
         let s = store.running_session().unwrap().unwrap();
         assert_eq!((s.routine, s.elapsed), (None, Duration::from_secs(1)));
+    }
+
+    #[test]
+    fn key_values() {
+        let store = Store::in_memory().unwrap();
+        assert_eq!(store.get("a").unwrap(), None);
+        store.set("a", Some("1")).unwrap();
+        store.set("a", Some("2")).unwrap();
+        assert_eq!(store.get("a").unwrap().as_deref(), Some("2"));
+        store.set("a", None).unwrap();
+        assert_eq!(store.get("a").unwrap(), None);
     }
 
     #[test]

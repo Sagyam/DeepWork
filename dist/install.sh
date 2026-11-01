@@ -66,3 +66,5 @@ systemctl --user daemon-reload
 systemctl --user enable deepwork-agent.service
 systemctl --user restart deepwork-agent.service
 deepwork status
+# Changes that loosen enforcement wait 24 hours.
+deepwork config

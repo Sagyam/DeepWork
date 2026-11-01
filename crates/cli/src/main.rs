@@ -43,6 +43,18 @@ enum Command {
     Skip { routine: Option<String> },
     /// Print one line of Waybar-style JSON, for a bar module.
     Bar,
+    /// Show the config change waiting behind the 24h loosening delay, or
+    /// `reload` after editing /etc/deepwork/config.toml.
+    Config {
+        #[command(subcommand)]
+        action: Option<ConfigAction>,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Re-read the config file. Stricter changes apply now, looser ones in 24h.
+    Reload,
 }
 
 fn main() -> Result<()> {
@@ -129,6 +141,25 @@ fn main() -> Result<()> {
                 "Skipped {}. Skip tokens left this week: {tokens_left}.",
                 describe(&upcoming)
             );
+        }
+        Command::Config { action } => {
+            let req = match action {
+                Some(ConfigAction::Reload) => Request::ReloadConfig,
+                None => Request::ConfigStatus,
+            };
+            let Response::Config(info) = expect_ok(request(&cli.socket, &req)?)? else {
+                bail!("unexpected reply")
+            };
+            println!("{}", info.message);
+            if let Some(p) = info.pending {
+                println!(
+                    "Waiting change applies in {}:",
+                    fmt_secs(p.applies_in_secs.max(0) as u64)
+                );
+                for reason in p.reasons {
+                    println!("  - {reason}");
+                }
+            }
         }
         Command::Bar => {
             let line = match request(&cli.socket, &Request::Status) {

@@ -2,17 +2,20 @@
 //! enforcer and the resolver from requests and a once-a-second tick.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use deepwork_proto::{
-    Finished, Request, Response, SessionInfo, SessionKind, SessionState, Status, Upcoming,
+    ConfigInfo, Finished, PendingConfig, Request, Response, SessionInfo, SessionKind, SessionState,
+    Status, Upcoming,
 };
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
 use tracing::{error, info, warn};
 
+use crate::cfgstate::{self, Outcome, Pending};
 use crate::config::{Config, Profile};
 use crate::dns::Resolver;
 use crate::enforcer::EnforcerHandle;
@@ -32,6 +35,9 @@ const CLOCK_JUMP: SignedDuration = SignedDuration::from_secs(120);
 
 pub struct Core {
     cfg: Config,
+    config_path: PathBuf,
+    /// A loosening change waiting for its delay.
+    pending_cfg: Option<Pending>,
     store: Store,
     enforcer: EnforcerHandle,
     resolver: Arc<Resolver>,
@@ -72,7 +78,8 @@ fn unix_now() -> i64 {
 
 impl Core {
     pub async fn new(
-        cfg: Config,
+        (cfg_state, outcome): (cfgstate::State, Outcome),
+        config_path: PathBuf,
         store: Store,
         enforcer: EnforcerHandle,
         resolver: Arc<Resolver>,
@@ -92,7 +99,9 @@ impl Core {
         let runs = store.runs_since(&since)?.into_iter().collect();
         let last = store.last_finished()?;
         let mut core = Self {
-            cfg,
+            cfg: cfg_state.config,
+            config_path,
+            pending_cfg: cfg_state.pending,
             store,
             enforcer,
             resolver,
@@ -109,6 +118,7 @@ impl Core {
             last_wall: Timestamp::now(),
             last_boot: boottime(),
         };
+        core.log_config_outcome(&outcome);
         match core.store.running_session()? {
             Some(session) => core.resume(session).await?,
             // Clear anything left behind by a crash outside a session.
@@ -174,6 +184,13 @@ impl Core {
             }
             Request::Skip { routine } => self.skip(routine.as_deref(), uid),
             Request::Gate { service, uid } => Ok(self.gate(&service, uid)),
+            Request::ConfigStatus => {
+                Ok(Response::Config(self.config_info(match self.pending_cfg {
+                    Some(_) => "a loosening change is waiting".into(),
+                    None => "no change waiting".into(),
+                })))
+            }
+            Request::ReloadConfig => Ok(Response::Config(self.reload())),
             Request::Stop => {
                 let min = self.stopwatch_min();
                 let session = self.session.as_mut().ok_or("no session is running")?;
@@ -305,6 +322,84 @@ impl Core {
             upcoming,
             tokens_left: left - 1,
         })
+    }
+
+    fn config_info(&self, message: String) -> ConfigInfo {
+        ConfigInfo {
+            message,
+            pending: self.pending_cfg.as_ref().map(|p| PendingConfig {
+                applies_at: p.applies_at,
+                applies_in_secs: p.applies_at - unix_now(),
+                reasons: p.reasons.clone(),
+            }),
+        }
+    }
+
+    /// Re-reads the config file (request or SIGHUP).
+    pub fn reload(&mut self) -> ConfigInfo {
+        let (state, outcome) = match cfgstate::sync(&self.store, &self.config_path, unix_now()) {
+            Ok(r) => r,
+            Err(e) => return self.config_info(format!("reload failed: {e:#}")),
+        };
+        self.set_config(state.config);
+        self.pending_cfg = state.pending;
+        let message = self.log_config_outcome(&outcome);
+        self.config_info(message)
+    }
+
+    fn set_config(&mut self, cfg: Config) {
+        if cfg.dns != self.cfg.dns {
+            warn!("[dns] changes take effect when deepworkd restarts");
+        }
+        self.cfg = cfg;
+    }
+
+    fn log_config_outcome(&self, outcome: &Outcome) -> String {
+        let message = match outcome {
+            Outcome::Unchanged => "config unchanged".to_string(),
+            Outcome::Applied => {
+                self.log(None, EventKind::ConfigApplied, "immediately");
+                "config applied".to_string()
+            }
+            Outcome::Queued => {
+                let reasons = self
+                    .pending_cfg
+                    .as_ref()
+                    .map(|p| p.reasons.join(", "))
+                    .unwrap_or_default();
+                self.log(None, EventKind::ConfigPending, &reasons);
+                format!("the change loosens enforcement ({reasons}); it applies in 24 hours")
+            }
+            Outcome::StillPending => "the change is still waiting".to_string(),
+            Outcome::Cancelled => {
+                "pending change cancelled: the file matches the config in effect".to_string()
+            }
+            Outcome::Rejected(e) => format!("config file ignored, keeping the one in effect: {e}"),
+        };
+        info!("config: {message}");
+        message
+    }
+
+    /// Applies a pending change once its delay is over.
+    fn check_pending_config(&mut self) {
+        let Some(p) = &self.pending_cfg else {
+            return;
+        };
+        if unix_now() < p.applies_at {
+            return;
+        }
+        let p = self.pending_cfg.take().unwrap();
+        if let Err(e) = cfgstate::promote(&self.store, &p) {
+            error!("could not apply the pending config: {e:#}");
+            self.pending_cfg = Some(p);
+            return;
+        }
+        info!(
+            "pending config applied after the delay: {}",
+            p.reasons.join(", ")
+        );
+        self.log(None, EventKind::ConfigApplied, "after delay");
+        self.set_config(p.config);
     }
 
     /// Decides whether a privilege escalation may go ahead: not while a
@@ -476,6 +571,7 @@ impl Core {
         let delta = now - self.last_tick;
         self.last_tick = now;
         self.check_clock();
+        self.check_pending_config();
         if self
             .last_policies
             .is_none_or(|t| now - t >= BROWSER_POLICIES_EVERY)

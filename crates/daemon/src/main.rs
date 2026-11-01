@@ -1,8 +1,10 @@
+mod cfgstate;
 mod config;
 mod dns;
 mod dot;
 mod enforcer;
 mod engine;
+mod loosen;
 mod schedule;
 mod server;
 mod session;
@@ -149,18 +151,30 @@ async fn main() -> Result<()> {
         bail!("deepworkd must run as root (or pass --dry-run to only log what it would do)");
     }
 
-    let cfg = Config::load(&args.config)?;
     let (default_state, default_socket) = default_paths(args.dry_run);
     let state_dir = args.state_dir.unwrap_or(default_state);
     let socket = args.socket.unwrap_or(default_socket);
     std::fs::create_dir_all(&state_dir)
         .with_context(|| format!("creating {}", state_dir.display()))?;
     let store = Store::open(&state_dir.join("deepwork.db"))?;
+    let unix_now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64);
+    let (cfg_state, outcome) = cfgstate::sync(&store, &args.config, unix_now)?;
+    let cfg = cfg_state.config.clone();
 
     let enforcer = EnforcerHandle::spawn(args.dry_run, &cfg.dns);
     let resolver = Resolver::new(cfg.dns.clone(), args.dry_run, enforcer.clone())?;
     let core = Arc::new(Mutex::new(
-        Core::new(cfg, store, enforcer, resolver.clone(), args.dry_run).await?,
+        Core::new(
+            (cfg_state, outcome),
+            args.config.clone(),
+            store,
+            enforcer,
+            resolver.clone(),
+            args.dry_run,
+        )
+        .await?,
     ));
 
     let ticker = {
@@ -179,7 +193,18 @@ async fn main() -> Result<()> {
     notify_ready();
 
     let mut sigterm = signal(SignalKind::terminate())?;
+    let reloader = {
+        let core = core.clone();
+        let mut sighup = signal(SignalKind::hangup())?;
+        async move {
+            while sighup.recv().await.is_some() {
+                let info = core.lock().await.reload();
+                info!("SIGHUP: {}", info.message);
+            }
+        }
+    };
     tokio::select! {
+        () = reloader => {}
         res = resolver.serve() => res?,
         res = server::serve(listener, core.clone()) => res?,
         () = ticker => {}

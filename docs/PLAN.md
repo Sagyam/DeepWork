@@ -45,13 +45,30 @@ design goal is:
 | `systemctl stop deepworkd` | `RefuseManualStop=yes` during sessions, polkit rule | 2 |
 | `sudo` anything | PAM hook denies sudo / su / polkit auth during sessions, also with cached credentials | 2 |
 | `pkexec`, `run0`, cached polkit approval | polkit rule asks the daemon for systemd1, resolve1 and pkexec actions | 2 |
-| Edit config to loosen | Loosening changes wait 24h; tightening is immediate | 2 |
+| Edit config to loosen | The config in effect lives in the store; loosening edits wait 24h (`deepwork config`), tightening is immediate; a broken file is ignored | 2 |
 | `docker run --privileged` (user is in `docker` group) | Accepted risk for now (user does not expect to go that far). Optional `docker.sock` lock later | 4 |
 | Tailscale exit node | nft output hook sees packets before WireGuard; still matched | 1 |
 | Browser's own DoH (Zen had strict mode 3) | Locked managed policy turns DoH off; browser DoH endpoint IPs blocked | 1 |
 | Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 |
 | SSH SOCKS tunnel / personal VPN | Heuristic detection + penalty only | 4 |
 | Live USB, GRUB cmdline, TTY root login | Out of scope. TTY root is the intended emergency exit | n/a |
+
+### Config changes (phase 2)
+
+- The config in effect is stored in SQLite (`kv` table). On start,
+  `deepwork config reload` or SIGHUP (`systemctl reload deepworkd`), the
+  daemon compares `/etc/deepwork/config.toml` with it:
+  - same, or only stricter / neutral: applied now;
+  - looser (`loosen.rs`: removed rules or profiles, block -> throttle, gentler
+    throttle, QUIC allowed, fewer / shorter / moved routines, more skip
+    tokens, shorter stopwatch minimum or surrender wait, weaker nudges, a
+    different default profile): stored as pending and applied 24h later;
+  - edited again while pending: the 24h restarts; put back: cancelled;
+  - unparseable: ignored while a config is in effect (only a broken file on
+    the very first start is fatal).
+- `[dns]` changes are neutral and take effect on the next daemon start.
+- The delay (`LOOSEN_DELAY`) is in code, not config. `config_applied` and
+  `config_pending` events go to the ledger.
 
 ### Root lock (phase 2)
 
@@ -313,7 +330,7 @@ Anything that needs root has to be installed by the user with
 - [x] PAM sudo lock (`pam_exec` querying the daemon, fail open). Covers sudo, su, su-l and polkit-1 (pkexec, run0, systemctl password prompts)
 - [x] polkit rule; `RefuseManualStop=yes` (runtime drop-in, only during sessions)
 - [x] `nft monitor` based tamper detection (plus `tc monitor`; fingerprints catch partial edits)
-- [ ] Config changes through the daemon only; 24h delay for loosening
+- [x] Config changes through the daemon only; 24h delay for loosening (`cfgstate.rs`, `loosen.rs`)
 - [x] Re-apply browser policies at session start (Zen package updates overwrite `policies.json`); ECH off for phase 4.
       Now in the daemon (`enforcer/browser.rs`, `deepworkd --browser-policies apply|remove`), synced at
       startup, session start and every minute, plus a pacman hook. Firefox family: locked `DNSOverHTTPS`

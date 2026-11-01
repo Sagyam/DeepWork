@@ -13,7 +13,7 @@ use serde::Deserialize;
 
 pub const DEFAULT_PATH: &str = "/etc/deepwork/config.toml";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub dns: DnsConfig,
@@ -24,7 +24,7 @@ pub struct Config {
     pub profiles: BTreeMap<String, Profile>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScheduleConfig {
     /// Clients warn this long before a routine starts.
@@ -35,7 +35,7 @@ pub struct ScheduleConfig {
 
 /// Reminders to start a session when none has run for a while, inside active
 /// hours.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NudgeConfig {
     pub enabled: bool,
@@ -108,7 +108,7 @@ impl TryFrom<String> for ClockTime {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DnsConfig {
     /// Port the forwarder listens on, on 127.0.0.1 and ::1.
@@ -144,14 +144,14 @@ impl Upstream {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ForwardZone {
     pub suffix: String,
     pub server: SocketAddr,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SessionConfig {
     pub default_profile: String,
@@ -321,12 +321,24 @@ impl Default for Profile {
 impl Config {
     /// Loads the config at `path`, falling back to defaults if it does not exist.
     pub fn load(path: &Path) -> Result<Self> {
-        let config = match std::fs::read_to_string(path) {
-            Ok(text) => {
-                toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Self::default(),
-            Err(e) => return Err(e).with_context(|| format!("reading {}", path.display())),
+        Self::parse(&Self::read_text(path)?).with_context(|| format!("in {}", path.display()))
+    }
+
+    /// The file's text, or `""` (the defaults) if it does not exist.
+    pub fn read_text(path: &Path) -> Result<String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => Ok(text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+            Err(e) => Err(e).with_context(|| format!("reading {}", path.display())),
+        }
+    }
+
+    /// Parses and validates config text. Empty text means the defaults.
+    pub fn parse(text: &str) -> Result<Self> {
+        let config: Self = if text.trim().is_empty() {
+            Self::default()
+        } else {
+            toml::from_str(text).context("parsing config")?
         };
         config.validate()?;
         Ok(config)

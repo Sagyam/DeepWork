@@ -9,6 +9,8 @@ Wants=network-pre.target
 [Service]
 Type=notify
 ExecStart=/usr/local/bin/deepworkd
+# Re-read the config. Loosening changes wait 24 hours.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=1
 StateDirectory=deepwork

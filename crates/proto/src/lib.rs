@@ -42,6 +42,10 @@ pub enum Request {
         service: String,
         uid: Option<u32>,
     },
+    /// The config change waiting behind the loosening delay, if any.
+    ConfigStatus,
+    /// Re-read the config file. Loosening changes wait 24 hours.
+    ReloadConfig,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -125,6 +129,23 @@ pub struct Status {
     pub nudge: Option<Nudge>,
 }
 
+/// A loosening config change waiting for its delay.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingConfig {
+    /// Unix seconds.
+    pub applies_at: i64,
+    pub applies_in_secs: i64,
+    /// What it loosens, in words.
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfigInfo {
+    /// What the last reload did, or a summary for a status request.
+    pub message: String,
+    pub pending: Option<PendingConfig>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
@@ -138,6 +159,7 @@ pub enum Response {
         allow: bool,
         message: String,
     },
+    Config(ConfigInfo),
     Error {
         message: String,
     },
