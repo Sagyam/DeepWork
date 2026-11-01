@@ -36,6 +36,8 @@ pub enum EventKind {
     ConfigApplied,
     /// A loosening config change was queued behind the delay.
     ConfigPending,
+    /// The throttle moved to a harsher escalation stage.
+    Escalate,
 }
 
 /// What happened to a routine run. Each run is recorded once.
@@ -77,6 +79,7 @@ impl EventKind {
             EventKind::EscalationDenied => "escalation_denied",
             EventKind::ConfigApplied => "config_applied",
             EventKind::ConfigPending => "config_pending",
+            EventKind::Escalate => "escalate",
         }
     }
 }

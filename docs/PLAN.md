@@ -199,7 +199,18 @@ HTTP server): a 400 KB download goes from 2 ms to 14.5 s once the server IP is
 in `slow_v4`, and fails outright in `block_v4`.
 
 Throttle defaults (profile "deep"): +400ms RTT, 50ms jitter, 256 kbit/s, no
-loss, 1 second netem queue. The goal is a **subtle nudge, not a ban**: pages
+loss, 1 second netem queue.
+
+Escalation (phase 2): every reassert (15s) the daemon reads the netem byte
+counters of all shaped devices and IFBs (`tc -s -j qdisc show`); a window
+with at least 16 KiB of throttled traffic adds 15s of "distracted" time.
+Profiles list `escalation` stages (`after_mins`, `throttle`); defaults:
+after 10 min 192 kbit/s +500ms, after 20 min 128 kbit/s +600ms (not tuned on
+real sites yet). A stage change runs `tc qdisc change` on every device
+(connections kept) and refreshes the tamper fingerprints. Distracted time is
+in memory and restarts with the daemon. Status shows `distracted_secs` and
+`escalation_stage`; the agent notifies "Throttle tightened". Verified in
+`unshare -rnm`: stage 1 after 60s of traffic, no false tamper. The goal is a **subtle nudge, not a ban**: pages
 still load, just slowly, and 240p video buffers now and then.
 
 Real-world data points (YouTube "stats for nerds", user's machine):
@@ -343,7 +354,7 @@ Anything that needs root has to be installed by the user with
 - [x] Redirect forwarded port 53 from containers / VMs: prerouting DNAT to `dns.container_dns`
       (IPv4, from docker* / br-* / virbr*), otherwise refused in the forward hook; forwarded IPv6
       DNS always refused. Tested with a bridge + veth "container" namespace
-- [ ] Throttle escalation over time spent on a site
+- [x] Throttle escalation over time spent on a site (per-profile `escalation` stages, on by default)
 
 ### Phase 3: The world
 

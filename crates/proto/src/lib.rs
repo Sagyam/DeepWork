@@ -76,6 +76,12 @@ pub struct SessionInfo {
     pub stop_locked_secs: u64,
     /// Seconds left in the surrender wait, if surrendering.
     pub surrender_remaining_secs: Option<u64>,
+    /// Time with real traffic to throttled sites in this session.
+    #[serde(default)]
+    pub distracted_secs: u64,
+    /// Throttle escalation stage reached (0 = the profile's own throttle).
+    #[serde(default)]
+    pub escalation_stage: u32,
 }
 
 /// One scheduled run of a routine.

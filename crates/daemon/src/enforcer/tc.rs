@@ -76,6 +76,32 @@ pub fn render_shape(dev: &str, ifb: &str, t: &Throttle) -> String {
     out
 }
 
+/// `tc -batch` script changing the throttle of a shaped device and its IFB
+/// in place, for escalation. Connections and queues are kept.
+pub fn render_retune(dev: &str, ifb: &str, t: &Throttle) -> String {
+    let mut out = String::new();
+    for d in [dev, ifb] {
+        let _ = writeln!(
+            out,
+            "qdisc change dev {d} parent d000:2 handle d002: {}",
+            netem(t)
+        );
+    }
+    out
+}
+
+/// Bytes sent through the throttle (`netem`) band, from `tc -s -j qdisc show`.
+pub fn netem_bytes(json: &str) -> u64 {
+    let Ok(serde_json::Value::Array(qdiscs)) = serde_json::from_str(json) else {
+        return 0;
+    };
+    qdiscs
+        .iter()
+        .filter(|q| q["handle"] == "d002:")
+        .filter_map(|q| q["bytes"].as_u64())
+        .sum()
+}
+
 /// `tc -force -batch` script undoing [`render_shape`]. Errors are expected and
 /// ignored for parts that are already gone.
 pub fn render_unshape(dev: &str) -> String {
@@ -117,6 +143,26 @@ mod tests {
             loss_pct: 0.0,
         };
         assert_eq!(netem(&t), "netem delay 0ms rate 8kbit limit 16");
+    }
+
+    #[test]
+    fn retune_and_counters() {
+        let t = Throttle {
+            rtt_ms: 600,
+            jitter_ms: 50,
+            rate_kbit: 128,
+            loss_pct: 0.0,
+        };
+        assert_eq!(
+            render_retune("wlp7s0", "dwifb3", &t),
+            "qdisc change dev wlp7s0 parent d000:2 handle d002: netem delay 300ms 25ms rate 128kbit limit 16\n\
+             qdisc change dev dwifb3 parent d000:2 handle d002: netem delay 300ms 25ms rate 128kbit limit 16\n"
+        );
+        let json = r#"[{"kind":"prio","handle":"d000:","bytes":900},
+            {"kind":"fq_codel","handle":"d001:","bytes":500},
+            {"kind":"netem","handle":"d002:","parent":"d000:2","bytes":400}]"#;
+        assert_eq!(netem_bytes(json), 400);
+        assert_eq!(netem_bytes("nonsense"), 0);
     }
 
     #[test]

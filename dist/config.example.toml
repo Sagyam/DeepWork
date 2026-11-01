@@ -61,6 +61,12 @@ repeat_mins = 15
 block_quic = true
 # Added round-trip time (split across both directions), jitter, bandwidth cap.
 throttle = { rtt_ms = 400, jitter_ms = 50, rate_kbit = 256, loss_pct = 0.0 }
+# Harsher throttles the longer throttled sites are actually used in a session
+# (15s windows with real traffic count). Omit for these defaults; [] for off.
+escalation = [
+    { after_mins = 10, throttle = { rtt_ms = 500, jitter_ms = 50, rate_kbit = 192 } },
+    { after_mins = 20, throttle = { rtt_ms = 600, jitter_ms = 50, rate_kbit = 128 } },
+]
 rules = [
     { domain = "youtube.com" },
     { domain = "youtu.be" },

@@ -168,6 +168,33 @@ pub struct Profile {
     /// Drop UDP 443 so browsers fall back from QUIC to TCP.
     pub block_quic: bool,
     pub rules: Vec<Rule>,
+    /// Harsher throttles the longer throttled sites are used in a session.
+    /// `[]` turns escalation off.
+    pub escalation: Vec<Stage>,
+}
+
+/// After `after_mins` of distracted time in a session, use `throttle`.
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Stage {
+    pub after_mins: u32,
+    pub throttle: Throttle,
+}
+
+impl Profile {
+    /// The escalation stage reached after `distracted` time (0 = none) and
+    /// the throttle that goes with it.
+    pub fn throttle_after(&self, distracted: std::time::Duration) -> (usize, Throttle) {
+        let reached = self
+            .escalation
+            .iter()
+            .take_while(|s| distracted.as_secs() >= u64::from(s.after_mins) * 60)
+            .count();
+        match reached {
+            0 => (0, self.throttle),
+            n => (n, self.escalation[n - 1].throttle),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
@@ -314,6 +341,24 @@ impl Default for Profile {
                     action: Action::Throttle,
                 })
                 .collect(),
+            escalation: vec![
+                Stage {
+                    after_mins: 10,
+                    throttle: Throttle {
+                        rtt_ms: 500,
+                        rate_kbit: 192,
+                        ..Throttle::default()
+                    },
+                },
+                Stage {
+                    after_mins: 20,
+                    throttle: Throttle {
+                        rtt_ms: 600,
+                        rate_kbit: 128,
+                        ..Throttle::default()
+                    },
+                },
+            ],
         }
     }
 }
@@ -402,29 +447,34 @@ impl Config {
             }
         }
         for (name, profile) in &self.profiles {
-            let t = &profile.throttle;
-            ensure!(
-                t.rate_kbit >= 8,
-                "profile {name}: rate_kbit must be at least 8"
-            );
-            ensure!(
-                t.rtt_ms <= 10_000,
-                "profile {name}: rtt_ms must be at most 10000"
-            );
-            ensure!(
-                t.jitter_ms <= t.rtt_ms,
-                "profile {name}: jitter_ms must not exceed rtt_ms"
-            );
-            ensure!(
-                (0.0..=50.0).contains(&t.loss_pct),
-                "profile {name}: loss_pct must be between 0 and 50"
-            );
+            validate_throttle(&profile.throttle).with_context(|| format!("profile {name}"))?;
+            let mut last = 0;
+            for stage in &profile.escalation {
+                ensure!(
+                    stage.after_mins > last,
+                    "profile {name}: escalation after_mins must be at least 1 and increasing"
+                );
+                last = stage.after_mins;
+                validate_throttle(&stage.throttle)
+                    .with_context(|| format!("profile {name}, escalation after {last} min"))?;
+            }
             for rule in &profile.rules {
                 validate_domain(&rule.domain).with_context(|| format!("profile {name}"))?;
             }
         }
         Ok(())
     }
+}
+
+fn validate_throttle(t: &Throttle) -> Result<()> {
+    ensure!(t.rate_kbit >= 8, "rate_kbit must be at least 8");
+    ensure!(t.rtt_ms <= 10_000, "rtt_ms must be at most 10000");
+    ensure!(t.jitter_ms <= t.rtt_ms, "jitter_ms must not exceed rtt_ms");
+    ensure!(
+        (0.0..=50.0).contains(&t.loss_pct),
+        "loss_pct must be between 0 and 50"
+    );
+    Ok(())
 }
 
 fn validate_domain(domain: &str) -> Result<()> {
@@ -479,6 +529,29 @@ mod tests {
         assert_eq!(work.rules[1].action, Action::Block);
         assert_eq!(work.throttle, Throttle::default());
         assert_eq!(config.dns.port, 5454);
+    }
+
+    #[test]
+    fn escalation_stages() {
+        let p = Profile::default();
+        let min = |m: u64| std::time::Duration::from_secs(m * 60);
+        assert_eq!(p.throttle_after(min(9)), (0, p.throttle));
+        assert_eq!(p.throttle_after(min(10)).0, 1);
+        assert_eq!(p.throttle_after(min(25)), (2, p.escalation[1].throttle));
+
+        let config: Config = toml::from_str(
+            r#"
+            [profiles.deep]
+            escalation = [
+                { after_mins = 5, throttle = { rate_kbit = 100 } },
+                { after_mins = 5, throttle = { rate_kbit = 50 } },
+            ]
+            "#,
+        )
+        .unwrap();
+        assert!(config.validate().is_err());
+        let off: Config = toml::from_str("[profiles.deep]\nescalation = []").unwrap();
+        assert_eq!(off.profiles["deep"].throttle_after(min(600)).0, 0);
     }
 
     #[test]

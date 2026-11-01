@@ -149,6 +149,8 @@ impl Session {
             remaining_secs,
             stop_locked_secs,
             surrender_remaining_secs: self.surrender_left.map(|d| d.as_secs()),
+            distracted_secs: 0,
+            escalation_stage: 0,
         }
     }
 }

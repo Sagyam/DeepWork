@@ -30,6 +30,9 @@ const BROWSER_POLICIES_EVERY: Duration = Duration::from_secs(60);
 const HORIZON: SignedDuration = SignedDuration::from_hours(24);
 /// Wait this long before retrying a routine whose session failed to start.
 const ROUTINE_RETRY: Duration = Duration::from_secs(60);
+/// A reassert interval with at least this much throttled traffic counts as
+/// distracted time. Filters out keep-alives from idle background tabs.
+const DISTRACTED_BYTES: u64 = 16 * 1024;
 /// Wall-clock moves larger than this, relative to boot time, are logged.
 const CLOCK_JUMP: SignedDuration = SignedDuration::from_secs(120);
 
@@ -46,6 +49,11 @@ pub struct Core {
     last_tick: Instant,
     last_persist: Instant,
     last_reassert: Instant,
+    /// Escalation bookkeeping for the running session. In memory only: a
+    /// daemon restart starts the session's escalation over.
+    distracted: Duration,
+    last_throttled: u64,
+    stage: usize,
     last_policies: Option<Instant>,
     tz: TimeZone,
     /// Routine runs from the last few days, mirrored from the store.
@@ -110,6 +118,9 @@ impl Core {
             last_tick: now,
             last_persist: now,
             last_reassert: now,
+            distracted: Duration::ZERO,
+            last_throttled: 0,
+            stage: 0,
             last_policies: None,
             tz,
             runs,
@@ -155,6 +166,7 @@ impl Core {
             )?;
         }
         self.activate_dns(&profile);
+        self.reset_escalation();
         self.store
             .log_event(unix_now(), Some(session.id), EventKind::Resume, "")?;
         self.session = Some(session);
@@ -268,7 +280,12 @@ impl Core {
         };
         let min = self.stopwatch_min();
         Status {
-            session: self.session.as_ref().map(|s| s.info(min)),
+            session: self.session.as_ref().map(|s| {
+                let mut info = s.info(min);
+                info.distracted_secs = self.distracted.as_secs();
+                info.escalation_stage = self.stage as u32;
+                info
+            }),
             profiles: self.cfg.profiles.keys().cloned().collect(),
             dry_run: self.dry_run,
             upcoming,
@@ -524,6 +541,7 @@ impl Core {
             self.runs.insert(key, RunOutcome::Started);
         }
         self.routine_retry_at = None;
+        self.reset_escalation();
         self.activate_dns(&profile);
         self.log(Some(session.id), EventKind::Start, who);
         info!(
@@ -606,12 +624,54 @@ impl Core {
                         let profile = self.profile_for(&session.profile);
                         self.activate_dns(&profile);
                     }
+                    self.escalate(id, found.throttled_bytes).await;
                 }
                 Err(e) => {
                     error!("re-applying enforcement failed: {e:#}");
                     self.log(Some(id), EventKind::EnforceError, &format!("{e:#}"));
                 }
             }
+        }
+    }
+
+    fn reset_escalation(&mut self) {
+        self.distracted = Duration::ZERO;
+        self.last_throttled = 0;
+        self.stage = 0;
+    }
+
+    /// Counts distracted time from the throttle counters and moves to a
+    /// harsher stage when one is due.
+    async fn escalate(&mut self, id: i64, throttled_bytes: u64) {
+        // Counters restart when a device is shaped again.
+        let delta = throttled_bytes
+            .checked_sub(self.last_throttled)
+            .unwrap_or(throttled_bytes);
+        self.last_throttled = throttled_bytes;
+        if delta >= DISTRACTED_BYTES {
+            self.distracted += REASSERT_EVERY;
+        }
+        let Some(session) = &self.session else {
+            return;
+        };
+        let profile = self.profile_for(&session.profile);
+        let (stage, throttle) = profile.throttle_after(self.distracted);
+        if stage == self.stage {
+            return;
+        }
+        match self.enforcer.retune(throttle).await {
+            Ok(()) => {
+                let note = format!(
+                    "stage {stage} after {} min: {} kbit/s, +{} ms",
+                    self.distracted.as_secs() / 60,
+                    throttle.rate_kbit,
+                    throttle.rtt_ms
+                );
+                info!("escalation: {note}");
+                self.log(Some(id), EventKind::Escalate, &note);
+                self.stage = stage;
+            }
+            Err(e) => error!("could not escalate the throttle: {e:#}"),
         }
     }
 

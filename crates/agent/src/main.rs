@@ -219,6 +219,16 @@ fn session_changes(prev: &Status, cur: &Status, notes: &mut Vec<Note>) {
     };
     match prev_s {
         Some(p) if p.id == c.id => {
+            if c.escalation_stage > p.escalation_stage {
+                notes.push(Note::new(
+                    Urgency::Normal,
+                    "Throttle tightened",
+                    format!(
+                        "{} on distracting sites this session. They get slower the longer you stay.",
+                        fmt_mins(c.distracted_secs)
+                    ),
+                ));
+            }
             if p.state == SessionState::Active && c.state == SessionState::Surrendering {
                 notes.push(Note::new(
                     Urgency::Critical,
@@ -385,6 +395,8 @@ mod tests {
             remaining_secs: Some(900),
             stop_locked_secs: 0,
             surrender_remaining_secs: Some(600),
+            distracted_secs: 0,
+            escalation_stage: 0,
         }
     }
 
@@ -400,6 +412,11 @@ mod tests {
         // Already running when the agent starts: not announced.
         assert!(w.on_status(s.clone()).is_empty());
         assert!(w.on_status(s.clone()).is_empty());
+
+        let mut escalated = session(1, SessionState::Active);
+        escalated.escalation_stage = 1;
+        s.session = Some(escalated);
+        assert_eq!(summaries(&w.on_status(s.clone())), ["Throttle tightened"]);
 
         s.session = Some(session(1, SessionState::Surrendering));
         assert_eq!(summaries(&w.on_status(s.clone())), ["Surrendering"]);

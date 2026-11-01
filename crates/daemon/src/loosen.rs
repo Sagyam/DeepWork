@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use crate::config::{Action, Config, Day, NudgeConfig, Profile, Routine, on_day};
+use crate::config::{Action, Config, Day, NudgeConfig, Profile, Routine, Throttle, on_day};
 
 /// Fixed in code, so it cannot itself be loosened through the config.
 pub const LOOSEN_DELAY: Duration = Duration::from_secs(24 * 60 * 60);
@@ -92,17 +92,34 @@ fn routine(old: &Routine, new: &Routine, out: &mut Vec<String>) {
     }
 }
 
+fn gentler(new: &Throttle, old: &Throttle) -> bool {
+    new.rate_kbit > old.rate_kbit
+        || new.rtt_ms < old.rtt_ms
+        || new.jitter_ms < old.jitter_ms
+        || new.loss_pct < old.loss_pct
+}
+
 fn profile(name: &str, old: &Profile, new: &Profile, out: &mut Vec<String>) {
     if old.block_quic && !new.block_quic {
         out.push(format!("profile {name}: QUIC allowed"));
     }
-    let (o, n) = (&old.throttle, &new.throttle);
-    if n.rate_kbit > o.rate_kbit
-        || n.rtt_ms < o.rtt_ms
-        || n.jitter_ms < o.jitter_ms
-        || n.loss_pct < o.loss_pct
-    {
+    if gentler(&new.throttle, &old.throttle) {
         out.push(format!("profile {name}: gentler throttle"));
+    }
+    for (i, stage) in old.escalation.iter().enumerate() {
+        match new.escalation.get(i) {
+            None => out.push(format!(
+                "profile {name}: escalation stage {} removed",
+                i + 1
+            )),
+            Some(n) if n.after_mins > stage.after_mins || gentler(&n.throttle, &stage.throttle) => {
+                out.push(format!(
+                    "profile {name}: escalation stage {} softened",
+                    i + 1
+                ));
+            }
+            Some(_) => {}
+        }
     }
     for rule in &old.rules {
         match new.rules.iter().find(|r| r.domain == rule.domain) {
@@ -238,6 +255,16 @@ mod tests {
                 "[schedule]",
                 "[session]\nsurrender_wait_secs = 60\n[schedule]",
                 "shorter surrender wait",
+            ),
+            (
+                "[profiles.deep]",
+                "[profiles.deep]\nescalation = [{ after_mins = 10, throttle = { rtt_ms = 500, rate_kbit = 192 } }]",
+                "profile deep: escalation stage 2 removed",
+            ),
+            (
+                "[profiles.deep]",
+                "[profiles.deep]\nescalation = [{ after_mins = 15, throttle = { rtt_ms = 500, rate_kbit = 192 } }, { after_mins = 20, throttle = { rtt_ms = 600, rate_kbit = 128 } }]",
+                "profile deep: escalation stage 1 softened",
             ),
         ] {
             assert_eq!(changed(from, to), [why], "{to}");

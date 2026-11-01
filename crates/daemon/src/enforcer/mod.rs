@@ -21,7 +21,7 @@ use anyhow::{Context, Result, bail};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info, warn};
 
-use crate::config::{Action, Profile};
+use crate::config::{Action, Profile, Throttle};
 
 /// Runtime drop-in that points systemd-resolved at our forwarder for the
 /// length of a session. It lives in /run, so a reboot removes it.
@@ -50,6 +50,8 @@ struct Enforcer {
     /// Started by systemd, so the stop lock applies.
     under_systemd: bool,
     active: Option<Profile>,
+    /// The throttle in force: the profile's, or an escalation stage's.
+    throttle: Option<Throttle>,
     /// Devices shaped during the current session, with a fingerprint of their
     /// tc setup (device and IFB) taken right after shaping.
     shaped: BTreeMap<String, String>,
@@ -72,6 +74,9 @@ const SHAPE_RETRY: Duration = Duration::from_secs(30);
 pub struct Reasserted {
     pub notes: Vec<String>,
     pub reprime: bool,
+    /// Total bytes through the throttle bands of all shaped devices. Resets
+    /// when a device is shaped again.
+    pub throttled_bytes: u64,
 }
 
 impl Enforcer {
@@ -245,6 +250,7 @@ impl Enforcer {
             // addresses would never be added to the sets.
             warn!("could not flush resolved cache: {e:#}");
         }
+        self.throttle = Some(profile.throttle);
         self.active = Some(profile);
         self.shaped.clear();
         self.shape_new_devices();
@@ -284,6 +290,7 @@ impl Enforcer {
 
     fn release(&mut self) -> Result<()> {
         self.active = None;
+        self.throttle = None;
         self.baseline = None;
         self.pending.clear();
         self.reprime = false;
@@ -363,7 +370,11 @@ impl Enforcer {
         self.run(
             "tc",
             &["-batch", "-"],
-            Some(&tc::render_shape(dev, &ifb, &profile.throttle)),
+            Some(&tc::render_shape(
+                dev,
+                &ifb,
+                &self.throttle.unwrap_or(profile.throttle),
+            )),
         )
         .map(drop)
     }
@@ -382,7 +393,47 @@ impl Enforcer {
         Ok(Reasserted {
             notes: std::mem::take(&mut self.pending),
             reprime: std::mem::take(&mut self.reprime),
+            throttled_bytes: self.throttled_bytes(),
         })
+    }
+
+    fn throttled_bytes(&self) -> u64 {
+        if self.dry_run {
+            return 0;
+        }
+        let ifindex: BTreeMap<String, u32> = list_devices().into_iter().collect();
+        self.shaped
+            .keys()
+            .filter_map(|dev| Some((dev, tc::ifb_name(*ifindex.get(dev)?))))
+            .flat_map(|(dev, ifb)| [dev.clone(), ifb])
+            .map(|d| {
+                self.run("tc", &["-s", "-j", "qdisc", "show", "dev", &d], None)
+                    .map(|json| tc::netem_bytes(&json))
+                    .unwrap_or(0)
+            })
+            .sum()
+    }
+
+    /// Switches every shaped device to `t` (escalation), keeping
+    /// connections, and refreshes the tamper fingerprints.
+    fn retune(&mut self, t: Throttle) -> Result<()> {
+        if self.active.is_none() {
+            return Ok(());
+        }
+        self.throttle = Some(t);
+        let ifindex: BTreeMap<String, u32> = list_devices().into_iter().collect();
+        for dev in self.shaped.keys().cloned().collect::<Vec<_>>() {
+            let Some(i) = ifindex.get(&dev) else { continue };
+            let ifb = tc::ifb_name(*i);
+            self.run(
+                "tc",
+                &["-batch", "-"],
+                Some(&tc::render_retune(&dev, &ifb, &t)),
+            )?;
+            let fingerprint = self.tc_fingerprint(&dev, &ifb);
+            self.shaped.insert(dev, fingerprint);
+        }
+        Ok(())
     }
 
     fn add_addrs(&self, action: Action, addrs: &[IpAddr], timeout_secs: u32) {
@@ -481,6 +532,7 @@ enum Cmd {
     Engage(Profile, oneshot::Sender<Result<()>>),
     Release(oneshot::Sender<Result<()>>),
     Reassert(oneshot::Sender<Result<Reasserted>>),
+    Retune(Throttle, oneshot::Sender<Result<()>>),
     /// `nft monitor` saw a change to our table.
     CheckNft,
     /// `tc monitor` saw a qdisc or filter change.
@@ -512,6 +564,7 @@ impl EnforcerHandle {
             container_dns,
             under_systemd: std::env::var_os("INVOCATION_ID").is_some(),
             active: None,
+            throttle: None,
             shaped: BTreeMap::new(),
             baseline: None,
             pending: Vec::new(),
@@ -550,6 +603,7 @@ impl EnforcerHandle {
                         Cmd::Engage(profile, reply) => drop(reply.send(enforcer.engage(profile))),
                         Cmd::Release(reply) => drop(reply.send(enforcer.release())),
                         Cmd::Reassert(reply) => drop(reply.send(enforcer.reassert())),
+                        Cmd::Retune(t, reply) => drop(reply.send(enforcer.retune(t))),
                         Cmd::CheckNft => {
                             flags.nft.store(false, Ordering::SeqCst);
                             match enforcer.verify_table() {
@@ -598,6 +652,10 @@ impl EnforcerHandle {
 
     pub async fn reassert(&self) -> Result<Reasserted> {
         self.call(Cmd::Reassert).await
+    }
+
+    pub async fn retune(&self, t: Throttle) -> Result<()> {
+        self.call(|r| Cmd::Retune(t, r)).await
     }
 
     /// Re-applies the browser policies if a package update replaced them.
