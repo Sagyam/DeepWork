@@ -4,14 +4,14 @@
 //! Answers are passed through unchanged. When a session is running and an
 //! answer belongs to a profile rule, its addresses are handed to the enforcer.
 
+use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use hickory_proto::op::{Message, MessageType, Query, ResponseCode};
 use hickory_proto::rr::{Name, RData, RecordType};
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpSocket, TcpStream, UdpSocket};
 use tokio::sync::Semaphore;
 use tokio::task::JoinSet;
@@ -22,6 +22,7 @@ use tokio_rustls::rustls::{self, ClientConfig, RootCertStore};
 use tracing::{debug, info, warn};
 
 use crate::config::{Action, DnsConfig, Rule, Upstream, domain_matches};
+use crate::dot::{self, Pipeline, read_framed, write_framed};
 use crate::enforcer::EnforcerHandle;
 use crate::enforcer::nft::EXEMPT_MARK;
 
@@ -41,6 +42,8 @@ pub struct Resolver {
     rules: RwLock<Option<Arc<Vec<Rule>>>>,
     enforcer: EnforcerHandle,
     tls: TlsConnector,
+    /// One reused connection per DNS-over-TLS upstream.
+    dot: Mutex<HashMap<(SocketAddr, String), Pipeline>>,
 }
 
 impl Resolver {
@@ -59,6 +62,7 @@ impl Resolver {
             rules: RwLock::new(None),
             enforcer,
             tls: TlsConnector::from(Arc::new(tls)),
+            dot: Mutex::new(HashMap::new()),
         }))
     }
 
@@ -166,7 +170,7 @@ impl Resolver {
             match result {
                 Ok(resp) => {
                     self.record(&resp);
-                    return Some(resp);
+                    return Some(if tcp { resp } else { fit_udp(&req, resp) });
                 }
                 Err(e) => debug!("dns: {} failed for {qname}: {e:#}", server.addr()),
             }
@@ -200,44 +204,48 @@ impl Resolver {
         .context("timed out")?
     }
 
-    async fn connect_tcp(&self, server: SocketAddr) -> Result<TcpStream> {
-        let sock = if server.is_ipv4() {
-            TcpSocket::new_v4()?
-        } else {
-            TcpSocket::new_v6()?
-        };
-        if let Some(mark) = self.mark {
-            socket2::SockRef::from(&sock).set_mark(mark)?;
-        }
-        Ok(sock.connect(server).await?)
-    }
-
     async fn forward_tcp(&self, server: SocketAddr, query: &[u8]) -> Result<Vec<u8>> {
         timeout(UPSTREAM_TIMEOUT, async {
-            let mut stream = self.connect_tcp(server).await?;
+            let mut stream = connect_tcp(server, self.mark).await?;
             write_framed(&mut stream, query).await?;
-            read_framed(&mut stream).await
+            Ok(read_framed(&mut stream).await?)
         })
         .await
         .context("timed out")?
     }
 
-    /// DNS-over-TLS (RFC 7858). One connection per query for now.
+    /// DNS-over-TLS (RFC 7858) over a reused, pipelined connection.
     async fn forward_tls(
         &self,
         server: SocketAddr,
         tls_name: &str,
         query: &[u8],
     ) -> Result<Vec<u8>> {
+        let pipeline = self.pipeline(server, tls_name)?;
+        timeout(UPSTREAM_TIMEOUT, pipeline.query(query))
+            .await
+            .context("timed out")?
+    }
+
+    fn pipeline(&self, server: SocketAddr, tls_name: &str) -> Result<Pipeline> {
+        let mut pipes = self.dot.lock().unwrap();
+        let key = (server, tls_name.to_string());
+        if let Some(p) = pipes.get(&key) {
+            return Ok(p.clone());
+        }
         let name = ServerName::try_from(tls_name.to_string())?;
-        timeout(UPSTREAM_TIMEOUT, async {
-            let tcp = self.connect_tcp(server).await?;
-            let mut stream = self.tls.connect(name, tcp).await?;
-            write_framed(&mut stream, query).await?;
-            read_framed(&mut stream).await
-        })
-        .await
-        .context("timed out")?
+        let (tls, mark) = (self.tls.clone(), self.mark);
+        let connect: dot::Connect = Arc::new(move || {
+            let (tls, name) = (tls.clone(), name.clone());
+            Box::pin(async move {
+                let tcp = connect_tcp(server, mark).await?;
+                let stream = tls.connect(name, tcp).await?;
+                Ok(Box::new(stream) as Box<dyn dot::Stream>)
+            })
+        });
+        let p = Pipeline::new(connect);
+        pipes.insert(key, p.clone());
+        Ok(p)
     }
 
     /// Hands addresses from a matching answer to the enforcer.
@@ -285,6 +293,20 @@ impl Resolver {
     }
 }
 
+/// A TCP connection that carries the exempt mark, so nft does not redirect it
+/// back to us.
+async fn connect_tcp(server: SocketAddr, mark: Option<u32>) -> Result<TcpStream> {
+    let sock = if server.is_ipv4() {
+        TcpSocket::new_v4()?
+    } else {
+        TcpSocket::new_v6()?
+    };
+    if let Some(mark) = mark {
+        socket2::SockRef::from(&sock).set_mark(mark)?;
+    }
+    Ok(sock.connect(server).await?)
+}
+
 fn normalize(name: &Name) -> String {
     name.to_ascii().trim_end_matches('.').to_ascii_lowercase()
 }
@@ -324,6 +346,32 @@ fn matching_addrs(msg: &Message, rules: &[Rule]) -> Option<(Action, Vec<IpAddr>,
     (!addrs.is_empty()).then_some((action, addrs, ttl))
 }
 
+/// An answer that fits the client's UDP limit (EDNS payload size, or 512
+/// bytes without EDNS). A DoT or TCP upstream can return more than that; the
+/// client then gets the header and question with TC set and retries over TCP.
+fn fit_udp(req: &Message, resp: Vec<u8>) -> Vec<u8> {
+    if resp.len() <= usize::from(req.max_payload()) {
+        return resp;
+    }
+    let mut truncated = match Message::from_vec(&resp) {
+        Ok(mut msg) => {
+            msg.answers.clear();
+            msg.authorities.clear();
+            msg.additionals.clear();
+            msg
+        }
+        Err(_) => {
+            let mut msg = Message::response(req.metadata.id, req.metadata.op_code);
+            msg.metadata.recursion_desired = req.metadata.recursion_desired;
+            msg.metadata.recursion_available = true;
+            msg.add_queries(req.queries.iter().cloned());
+            msg
+        }
+    };
+    truncated.metadata.truncation = true;
+    truncated.to_vec().unwrap_or(resp)
+}
+
 fn reply_with_code(req: &Message, code: ResponseCode) -> Option<Vec<u8>> {
     let mut resp = Message::error_msg(req.metadata.id, req.metadata.op_code, code);
     resp.metadata.message_type = MessageType::Response;
@@ -331,22 +379,6 @@ fn reply_with_code(req: &Message, code: ResponseCode) -> Option<Vec<u8>> {
     resp.metadata.recursion_available = true;
     resp.add_queries(req.queries.iter().cloned());
     resp.to_vec().ok()
-}
-
-async fn read_framed(stream: &mut (impl AsyncRead + Unpin)) -> Result<Vec<u8>> {
-    let len = stream.read_u16().await?;
-    let mut buf = vec![0u8; usize::from(len)];
-    stream.read_exact(&mut buf).await?;
-    Ok(buf)
-}
-
-async fn write_framed(stream: &mut (impl AsyncWrite + Unpin), msg: &[u8]) -> Result<()> {
-    let len = u16::try_from(msg.len()).context("message too long")?;
-    let mut out = Vec::with_capacity(msg.len() + 2);
-    out.extend_from_slice(&len.to_be_bytes());
-    out.extend_from_slice(msg);
-    stream.write_all(&out).await?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -417,6 +449,42 @@ mod tests {
         ];
         assert_eq!(matching_addrs(&msg, &rules).unwrap().0, Action::Block);
         assert!(matching_addrs(&msg, &[rule("youtube.com", Action::Throttle)]).is_none());
+    }
+
+    #[test]
+    fn large_udp_answers_are_truncated() {
+        let mut req = Message::query();
+        req.add_query(Query::query(
+            Name::from_ascii("big.example.").unwrap(),
+            RecordType::A,
+        ));
+        let records = (0..60u8)
+            .map(|i| rec("big.example.", 60, RData::A(A::new(10, 0, 0, i))))
+            .collect();
+        let mut big = answer("big.example.", records);
+        big.metadata.id = req.metadata.id;
+        let bytes = big.to_vec().unwrap();
+        assert!(bytes.len() > 512);
+
+        let out = Message::from_vec(&fit_udp(&req, bytes.clone())).unwrap();
+        assert!(out.metadata.truncation);
+        assert_eq!(out.metadata.id, req.metadata.id);
+        assert!(out.answers.is_empty());
+        assert_eq!(out.queries.len(), 1);
+
+        // With a 4096-byte EDNS size it fits and is passed through.
+        let mut edns = hickory_proto::op::Edns::new();
+        edns.set_max_payload(4096);
+        req.edns = Some(edns);
+        assert_eq!(fit_udp(&req, bytes.clone()), bytes);
+        // Unparseable upstream bytes still produce a truncated reply.
+        let junk = vec![0u8; 600];
+        assert!(
+            Message::from_vec(&fit_udp(&Message::query(), junk))
+                .unwrap()
+                .metadata
+                .truncation
+        );
     }
 
     #[test]

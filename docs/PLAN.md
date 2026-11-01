@@ -319,8 +319,9 @@ Anything that needs root has to be installed by the user with
       and `network.dns.echconfig.enabled` / `http3_echconfig.enabled` off; Chromium family:
       `DnsOverHttpsMode=off`, `EncryptedClientHelloEnabled=false`
 - [x] Link watch instead of periodic interface scan (`ip monitor link`, kept to CLIs like the rest)
-- [ ] DoT connection reuse (one TLS handshake per query today)
-- [ ] Truncate UDP answers larger than the client's EDNS size
+- [x] DoT connection reuse: one pipelined connection per upstream (`dot.rs`), internal message IDs,
+      20s idle close, one retry on a stale connection. Live: first query ~170 ms, then ~6 ms
+- [x] Truncate UDP answers larger than the client's EDNS size (TC set, question only)
 - [ ] Redirect forwarded port 53 from containers / VMs
 - [ ] Throttle escalation over time spent on a site
 

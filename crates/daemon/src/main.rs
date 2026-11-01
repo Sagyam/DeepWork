@@ -1,5 +1,6 @@
 mod config;
 mod dns;
+mod dot;
 mod enforcer;
 mod engine;
 mod schedule;
