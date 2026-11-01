@@ -41,8 +41,9 @@ design goal is:
 | DNS-over-HTTPS in the browser | Known DoH IPs dropped; `use-application-dns.net` canary; managed browser policies | 1 / 2 |
 | HTTP/3 (QUIC) | UDP 443 dropped during sessions, browsers fall back to TCP | 1 |
 | `sudo nft flush ruleset` | Periodic re-assert + tamper event; later `nft monitor` and a PAM sudo lock | 1 / 2 |
-| `systemctl stop deepworkd` | `RefuseManualStop=yes`, polkit rule | 2 |
-| `sudo` anything | PAM hook in `/etc/pam.d/sudo` denies sudo during sessions | 2 |
+| `systemctl stop deepworkd` | `RefuseManualStop=yes` during sessions, polkit rule | 2 |
+| `sudo` anything | PAM hook denies sudo / su / polkit auth during sessions, also with cached credentials | 2 |
+| `pkexec`, `run0`, cached polkit approval | polkit rule asks the daemon for systemd1, resolve1 and pkexec actions | 2 |
 | Edit config to loosen | Loosening changes wait 24h; tightening is immediate | 2 |
 | `docker run --privileged` (user is in `docker` group) | Accepted risk for now (user does not expect to go that far). Optional `docker.sock` lock later | 4 |
 | Tailscale exit node | nft output hook sees packets before WireGuard; still matched | 1 |
@@ -50,6 +51,35 @@ design goal is:
 | Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 |
 | SSH SOCKS tunnel / personal VPN | Heuristic detection + penalty only | 4 |
 | Live USB, GRUB cmdline, TTY root login | Out of scope. TTY root is the intended emergency exit | n/a |
+
+### Root lock (phase 2)
+
+- `deepwork-pam-gate` (in `/usr/local/lib/deepwork/`) asks the daemon
+  (`Request::Gate`) and exits 0 only to deny. `dist/pam.py` puts this block at
+  the top of `sudo`, `sudo-i`, `su`, `su-l` and `polkit-1`:
+
+  ```
+  auth     [success=ignore default=1] pam_exec.so quiet quiet_log stdout <gate>
+  auth     requisite pam_deny.so
+  account  (same two lines)
+  ```
+
+  Any failure of the gate (missing, crash, 2s timeout, daemon down) skips
+  `pam_deny`, so it fails open by construction. `account` also runs when sudo
+  has cached credentials. Root callers are always allowed.
+- `/etc/polkit-1/rules.d/10-deepwork.rules` asks the same gate for
+  `org.freedesktop.systemd1.*`, `org.freedesktop.resolve1.*` and pkexec, which
+  catches cached polkit approvals. Fails open the same way.
+- Every refusal is an `escalation_denied` event in the ledger.
+- During a session `/run/systemd/system/deepworkd.service.d/50-session.conf`
+  sets `RefuseManualStop=yes`; it is removed when the session ends.
+- Verified without root: a C harness with `pam_start_confdir` runs the real
+  block: allows with no daemon, a missing gate, a hung daemon (fails open
+  after 2s per stage) and no session; denies with the message during a session.
+- **Emergency exit** (TTY root, `Ctrl+Alt+F3`): `rm /run/systemd/system/deepworkd.service.d/50-session.conf;
+  systemctl daemon-reload; systemctl stop deepworkd; nft destroy table inet deepwork;
+  rm /run/systemd/resolved.conf.d/zz-deepwork.conf; systemctl restart systemd-resolved`.
+  Or `python3 -I dist/pam.py remove` to unhook PAM entirely.
 
 ### Safety rails (never remove)
 
@@ -265,8 +295,8 @@ Anything that needs root has to be installed by the user with
 - [x] First real routine run on the host (2026-11-02): 10 min `smoke-test` routine
       throttling only example.com started on its own, heads-up and bar worked, ended
       on time and lifted the throttle
-- [ ] PAM sudo lock (`pam_exec` querying the daemon, fail open)
-- [ ] polkit rule; `RefuseManualStop=yes`
+- [x] PAM sudo lock (`pam_exec` querying the daemon, fail open). Covers sudo, su, su-l and polkit-1 (pkexec, run0, systemctl password prompts)
+- [x] polkit rule; `RefuseManualStop=yes` (runtime drop-in, only during sessions)
 - [ ] `nft monitor` based tamper detection
 - [ ] Config changes through the daemon only; 24h delay for loosening
 - [ ] Re-apply browser policies at session start (Zen package updates overwrite `policies.json`); ECH off for phase 4

@@ -1,0 +1,24 @@
+// Installed by DeepWork as /etc/polkit-1/rules.d/10-deepwork.rules.
+//
+// During a focus session, refuse polkit actions that could stop the daemon,
+// change DNS settings or start a root shell (systemctl, run0, resolvectl,
+// pkexec). This also covers approvals polkit has cached, which the PAM hook
+// cannot see. Fails open: the gate exits 0 only when deepworkd explicitly
+// says "deny"; any error leaves polkit's normal rules in charge.
+polkit.addRule(function (action, subject) {
+    if (subject.user === "root") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    var id = action.id;
+    if (id.indexOf("org.freedesktop.systemd1.") !== 0 &&
+        id.indexOf("org.freedesktop.resolve1.") !== 0 &&
+        id !== "org.freedesktop.policykit.exec") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    try {
+        polkit.spawn(["/usr/local/lib/deepwork/deepwork-pam-gate", "polkit", id]);
+    } catch (e) {
+        return polkit.Result.NOT_HANDLED;
+    }
+    return polkit.Result.NO;
+});

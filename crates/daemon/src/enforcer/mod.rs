@@ -31,10 +31,19 @@ fn resolved_dropin(dns_port: u16) -> String {
     )
 }
 
+/// Runtime drop-in that makes `systemctl stop/restart deepworkd` fail for the
+/// length of a session. Outside sessions the daemon can be stopped and
+/// upgraded normally. Crashes still restart it (`Restart=always`).
+const STOP_DROPIN: &str = "/run/systemd/system/deepworkd.service.d/50-session.conf";
+const STOP_DROPIN_TEXT: &str = "# Written by deepworkd for the current focus session; removed when it ends.\n\
+                                [Unit]\nRefuseManualStop=yes\n";
+
 struct Enforcer {
     dry_run: bool,
     dns_port: u16,
     manage_resolved: bool,
+    /// Started by systemd, so the stop lock applies.
+    under_systemd: bool,
     active: Option<Profile>,
     /// Devices we have shaped during the current session.
     shaped: BTreeSet<String>,
@@ -104,7 +113,26 @@ impl Enforcer {
         self.active = Some(profile);
         self.shaped.clear();
         self.shape_new_devices();
+        if let Err(e) = self.set_stop_lock(true) {
+            warn!("could not lock the service against manual stops: {e:#}");
+        }
         Ok(())
+    }
+
+    fn set_stop_lock(&self, on: bool) -> Result<()> {
+        if !self.under_systemd && !self.dry_run {
+            return Ok(());
+        }
+        if on {
+            self.write_file(STOP_DROPIN, STOP_DROPIN_TEXT)?;
+        } else if self.dry_run || Path::new(STOP_DROPIN).exists() {
+            if !self.dry_run {
+                std::fs::remove_file(STOP_DROPIN)?;
+            }
+        } else {
+            return Ok(());
+        }
+        self.run("systemctl", &["daemon-reload"], None).map(drop)
     }
 
     fn write_file(&self, path: &str, contents: &str) -> Result<()> {
@@ -121,6 +149,9 @@ impl Enforcer {
 
     fn release(&mut self) -> Result<()> {
         self.active = None;
+        if let Err(e) = self.set_stop_lock(false) {
+            warn!("could not lift the manual stop lock: {e:#}");
+        }
         self.run("nft", &["destroy", "table", nft::TABLE], None)?;
         // Only after the table is gone, so resolved can reach its own
         // DNS-over-TLS servers again.
@@ -271,6 +302,7 @@ impl EnforcerHandle {
             dry_run,
             dns_port,
             manage_resolved,
+            under_systemd: std::env::var_os("INVOCATION_ID").is_some(),
             active: None,
             shaped: BTreeSet::new(),
         };

@@ -170,6 +170,7 @@ impl Core {
                 Ok(Response::Session(info))
             }
             Request::Skip { routine } => self.skip(routine.as_deref(), uid),
+            Request::Gate { service, uid } => Ok(self.gate(&service, uid)),
             Request::Stop => {
                 let min = self.stopwatch_min();
                 let session = self.session.as_mut().ok_or("no session is running")?;
@@ -301,6 +302,45 @@ impl Core {
             upcoming,
             tokens_left: left - 1,
         })
+    }
+
+    /// Decides whether a privilege escalation may go ahead: not while a
+    /// session is running. Root is always allowed.
+    fn gate(&self, service: &str, uid: Option<u32>) -> Response {
+        let allow = |message: &str| Response::Gate {
+            allow: true,
+            message: message.into(),
+        };
+        if uid == Some(0) {
+            return allow("root");
+        }
+        let Some(session) = self.session.as_ref().filter(|s| s.is_running()) else {
+            return allow("no session");
+        };
+        let left = match session.info(self.stopwatch_min()) {
+            i if i.state == SessionState::Surrendering => format!(
+                "surrender finishes in {} min",
+                i.surrender_remaining_secs.unwrap_or(0).div_ceil(60)
+            ),
+            i => match i.remaining_secs {
+                Some(rem) => format!("{} min left", rem.div_ceil(60)),
+                None => "stopwatch running".into(),
+            },
+        };
+        let who = uid.map(|u| format!(" uid {u}")).unwrap_or_default();
+        warn!("refused {service}{who} during session {}", session.id);
+        self.log(
+            Some(session.id),
+            EventKind::EscalationDenied,
+            &format!("{service}{who}"),
+        );
+        Response::Gate {
+            allow: false,
+            message: format!(
+                "deepwork: root access is locked during the focus session ({left}). \
+                 TTY root login still works; `deepwork surrender` ends the session."
+            ),
+        }
     }
 
     /// Starts the routine run that is due, if any.

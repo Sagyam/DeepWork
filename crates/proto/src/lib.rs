@@ -36,6 +36,12 @@ pub enum Request {
     Skip {
         routine: Option<String>,
     },
+    /// Asked by the PAM / polkit hook before a privilege escalation.
+    /// `uid` is the real uid of the caller, if known.
+    Gate {
+        service: String,
+        uid: Option<u32>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,6 +134,10 @@ pub enum Response {
         upcoming: Upcoming,
         tokens_left: u32,
     },
+    Gate {
+        allow: bool,
+        message: String,
+    },
     Error {
         message: String,
     },
@@ -143,9 +153,19 @@ impl Response {
 
 /// Sends one request to the daemon and reads the reply. Blocking.
 pub fn request(socket: &std::path::Path, req: &Request) -> std::io::Result<Response> {
+    request_timeout(socket, req, std::time::Duration::from_secs(10))
+}
+
+/// [`request`] with a custom read / write timeout.
+pub fn request_timeout(
+    socket: &std::path::Path,
+    req: &Request,
+    timeout: std::time::Duration,
+) -> std::io::Result<Response> {
     use std::io::{BufRead, BufReader, Write};
     let mut stream = std::os::unix::net::UnixStream::connect(socket)?;
-    stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
+    stream.set_read_timeout(Some(timeout))?;
+    stream.set_write_timeout(Some(timeout))?;
     let mut line = serde_json::to_vec(req)?;
     line.push(b'\n');
     stream.write_all(&line)?;

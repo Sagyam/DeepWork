@@ -30,6 +30,8 @@ pub enum EventKind {
     /// The wall clock moved relative to boot time. Routines follow the wall
     /// clock, so this can skip one.
     ClockJump,
+    /// sudo, su, pkexec or a guarded polkit action refused during a session.
+    EscalationDenied,
 }
 
 /// What happened to a routine run. Each run is recorded once.
@@ -68,6 +70,7 @@ impl EventKind {
             EventKind::EnforceError => "enforce_error",
             EventKind::Skip => "skip",
             EventKind::ClockJump => "clock_jump",
+            EventKind::EscalationDenied => "escalation_denied",
         }
     }
 }
