@@ -35,6 +35,7 @@ sudo python3 -I dist/browser-policies.py apply
 echo "Restart Zen / Chromium so the DNS-over-HTTPS policy takes effect."
 sudo deepworkd --print-rules >/dev/null  # validates the config
 sudo systemctl daemon-reload
-sudo systemctl enable --now deepworkd.service
+sudo systemctl enable deepworkd.service
+# Type=notify: returns once the daemon's socket is up.
 sudo systemctl restart deepworkd.service
 deepwork status

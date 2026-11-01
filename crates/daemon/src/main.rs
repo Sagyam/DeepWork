@@ -52,6 +52,25 @@ fn effective_uid() -> Result<u32> {
         .context("reading effective uid")
 }
 
+/// Tells systemd (`Type=notify`) that the daemon is ready. A no-op elsewhere.
+fn notify_ready() {
+    use std::os::linux::net::SocketAddrExt;
+    use std::os::unix::net::{SocketAddr, UnixDatagram};
+
+    let Some(path) = std::env::var_os("NOTIFY_SOCKET") else {
+        return;
+    };
+    let path = path.to_string_lossy();
+    let addr = match path.strip_prefix('@') {
+        Some(name) => SocketAddr::from_abstract_name(name.as_bytes()),
+        None => SocketAddr::from_pathname(path.as_ref()),
+    };
+    let result = addr.and_then(|addr| UnixDatagram::unbound()?.send_to_addr(b"READY=1", &addr));
+    if let Err(e) = result {
+        tracing::warn!("could not notify systemd: {e}");
+    }
+}
+
 fn default_paths(dry_run: bool) -> (PathBuf, PathBuf) {
     if !dry_run {
         return (
@@ -132,10 +151,13 @@ async fn main() -> Result<()> {
         }
     };
 
+    let listener = server::bind(&socket)?;
+    notify_ready();
+
     let mut sigterm = signal(SignalKind::terminate())?;
     tokio::select! {
         res = resolver.serve() => res?,
-        res = server::serve(&socket, core.clone()) => res?,
+        res = server::serve(listener, core.clone()) => res?,
         () = ticker => {}
         _ = sigterm.recv() => info!("SIGTERM"),
         _ = tokio::signal::ctrl_c() => info!("interrupted"),

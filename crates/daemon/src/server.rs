@@ -16,7 +16,9 @@ use crate::engine::Core;
 
 const MAX_LINE: u64 = 64 * 1024;
 
-pub async fn serve(path: &Path, core: Arc<Mutex<Core>>) -> Result<()> {
+/// Binds the socket. Separate from [`serve`] so the daemon can report itself
+/// ready to systemd only once clients can connect.
+pub fn bind(path: &Path) -> Result<UnixListener> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
     }
@@ -28,7 +30,10 @@ pub async fn serve(path: &Path, core: Arc<Mutex<Core>>) -> Result<()> {
         UnixListener::bind(path).with_context(|| format!("binding {}", path.display()))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
     tracing::info!("listening on {}", path.display());
+    Ok(listener)
+}
 
+pub async fn serve(listener: UnixListener, core: Arc<Mutex<Core>>) -> Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
         let core = core.clone();

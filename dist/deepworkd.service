@@ -6,7 +6,7 @@ Wants=network-pre.target
 # Phase 2: RefuseManualStop=yes once the surrender path is trusted.
 
 [Service]
-Type=simple
+Type=notify
 ExecStart=/usr/local/bin/deepworkd
 Restart=always
 RestartSec=1
