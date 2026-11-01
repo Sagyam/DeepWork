@@ -144,7 +144,7 @@ Real-world data points (YouTube "stats for nerds", user's machine):
 |---|---|
 | 128 kbit/s, +800ms, 2% loss, 2s queue | Felt like a full block. Loss + delay hold TCP to ~126 kbit/s (`MSS / RTT * 1.22 / sqrt(loss)`) |
 | 512 kbit/s, +300ms, no loss, 1s queue | ~400 kbit/s, 480p plays comfortably. Too lenient |
-| 256 kbit/s, +400ms, no loss, 1s queue | Current default, not yet tried |
+| 256 kbit/s, +400ms, no loss, 1s queue | **Confirmed default.** 240p plays with buffering; images on X take ~30 s. "Perfect" |
 
 ### Session model
 
@@ -199,16 +199,14 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 
 ## Next session: start here
 
-1. Ask the user to re-run `./dist/install.sh` (needs their sudo password). That
-   installs the 256 kbit/s throttle. They try `deepwork start 5m --profile
-   trial` and report whether 240p video buffers now and then while pages still
-   load. Tune `Throttle::default` from the table above.
-2. Then phase 2, starting with routines + the user agent (notifications,
-   Waybar), then the PAM sudo lock and `RefuseManualStop`.
+Phase 1 is done and the throttle is tuned (256 kbit/s confirmed on real
+sites). Start phase 2: routines + the user agent (notifications, Waybar), then
+the PAM sudo lock and `RefuseManualStop`. Anything that needs root has to be
+installed by the user with `./dist/install.sh`.
 
 ## Phases
 
-### Phase 1: Core daemon (in progress)
+### Phase 1: Core daemon (done)
 
 - [x] Cargo workspace, `proto` crate, IPC protocol
 - [x] Config (TOML) with built-in default profile
