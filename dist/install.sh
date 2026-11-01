@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Installs deepworkd as a system service. Run from the repo root:
+# Installs deepworkd as a system service. Works from any directory:
 #   ./dist/install.sh            install / upgrade
 #   ./dist/install.sh uninstall  remove (only when no session is running)
 set -euo pipefail
+cd "$(dirname "$0")/.."
 
 if [[ ${1:-} == uninstall ]]; then
     sudo systemctl disable --now deepworkd.service || true
