@@ -1,0 +1,25 @@
+[Unit]
+Description=DeepWork focus daemon
+Documentation=file:///usr/local/share/doc/deepwork/PLAN.md
+After=network-pre.target
+Wants=network-pre.target
+# Phase 2: RefuseManualStop=yes once the surrender path is trusted.
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/deepworkd
+Restart=always
+RestartSec=1
+StateDirectory=deepwork
+StateDirectoryMode=0700
+RuntimeDirectory=deepwork
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=deepwork
+# The daemon needs root for nft, tc, ip and the resolved drop-in, but nothing
+# from users' home directories.
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

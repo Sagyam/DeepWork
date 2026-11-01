@@ -1,0 +1,435 @@
+//! A small forwarding DNS resolver. During a session systemd-resolved uses it
+//! as its upstream, and nft redirects every other port 53 packet to it.
+//!
+//! Answers are passed through unchanged. When a session is running and an
+//! answer belongs to a profile rule, its addresses are handed to the enforcer.
+
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::sync::{Arc, RwLock};
+use std::time::Duration;
+
+use anyhow::{Context, Result, bail};
+use hickory_proto::op::{Message, MessageType, Query, ResponseCode};
+use hickory_proto::rr::{Name, RData, RecordType};
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpSocket, TcpStream, UdpSocket};
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
+use tokio::time::timeout;
+use tokio_rustls::TlsConnector;
+use tokio_rustls::rustls::pki_types::ServerName;
+use tokio_rustls::rustls::{self, ClientConfig, RootCertStore};
+use tracing::{debug, info, warn};
+
+use crate::config::{Action, DnsConfig, Rule, Upstream, domain_matches};
+use crate::enforcer::EnforcerHandle;
+use crate::enforcer::nft::EXEMPT_MARK;
+
+/// Firefox-family browsers disable their built-in DoH when this name fails.
+const DOH_CANARY: &str = "use-application-dns.net";
+const UPSTREAM_TIMEOUT: Duration = Duration::from_secs(2);
+const TCP_IDLE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Addresses stay in the sets this long past their DNS TTL, so a browser that
+/// caches longer than the TTL is still caught.
+const SET_TIMEOUT_SLACK_SECS: u32 = 3600;
+const PRIME_CONCURRENCY: usize = 4;
+
+pub struct Resolver {
+    cfg: DnsConfig,
+    /// `None` in dry-run, where setting `SO_MARK` is not permitted.
+    mark: Option<u32>,
+    rules: RwLock<Option<Arc<Vec<Rule>>>>,
+    enforcer: EnforcerHandle,
+    tls: TlsConnector,
+}
+
+impl Resolver {
+    pub fn new(cfg: DnsConfig, dry_run: bool, enforcer: EnforcerHandle) -> Result<Arc<Self>> {
+        let roots = RootCertStore {
+            roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
+        };
+        let tls =
+            ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_safe_default_protocol_versions()?
+                .with_root_certificates(roots)
+                .with_no_client_auth();
+        Ok(Arc::new(Self {
+            cfg,
+            mark: (!dry_run).then_some(EXEMPT_MARK),
+            rules: RwLock::new(None),
+            enforcer,
+            tls: TlsConnector::from(Arc::new(tls)),
+        }))
+    }
+
+    /// Rules to act on, or `None` outside a session.
+    pub fn set_rules(&self, rules: Option<Vec<Rule>>) {
+        *self.rules.write().unwrap() = rules.map(Arc::new);
+    }
+
+    pub async fn serve(self: Arc<Self>) -> Result<()> {
+        let mut tasks = JoinSet::new();
+        let mut bound = 0;
+        for ip in [
+            IpAddr::V4(Ipv4Addr::LOCALHOST),
+            IpAddr::V6(Ipv6Addr::LOCALHOST),
+        ] {
+            let addr = SocketAddr::new(ip, self.cfg.port);
+            match UdpSocket::bind(addr).await {
+                Ok(sock) => {
+                    tasks.spawn(self.clone().serve_udp(Arc::new(sock)));
+                    bound += 1;
+                }
+                Err(e) => warn!("dns: cannot bind udp {addr}: {e}"),
+            }
+            match TcpListener::bind(addr).await {
+                Ok(listener) => {
+                    tasks.spawn(self.clone().serve_tcp(listener));
+                }
+                Err(e) => warn!("dns: cannot bind tcp {addr}: {e}"),
+            }
+        }
+        if bound == 0 {
+            bail!("dns: could not bind port {}", self.cfg.port);
+        }
+        info!("dns: listening on port {}", self.cfg.port);
+        while let Some(res) = tasks.join_next().await {
+            res??;
+        }
+        Ok(())
+    }
+
+    async fn serve_udp(self: Arc<Self>, sock: Arc<UdpSocket>) -> Result<()> {
+        let mut buf = vec![0u8; 65535];
+        loop {
+            let (len, peer) = sock.recv_from(&mut buf).await?;
+            let query = buf[..len].to_vec();
+            let (this, sock) = (self.clone(), sock.clone());
+            tokio::spawn(async move {
+                if let Some(resp) = this.handle(&query, false).await {
+                    let _ = sock.send_to(&resp, peer).await;
+                }
+            });
+        }
+    }
+
+    async fn serve_tcp(self: Arc<Self>, listener: TcpListener) -> Result<()> {
+        loop {
+            let (stream, _) = listener.accept().await?;
+            let this = self.clone();
+            tokio::spawn(async move {
+                if let Err(e) = this.serve_tcp_conn(stream).await {
+                    debug!("dns: tcp connection ended: {e:#}");
+                }
+            });
+        }
+    }
+
+    async fn serve_tcp_conn(&self, mut stream: TcpStream) -> Result<()> {
+        loop {
+            let Ok(query) = timeout(TCP_IDLE_TIMEOUT, read_framed(&mut stream)).await else {
+                return Ok(());
+            };
+            let query = query?;
+            let Some(resp) = self.handle(&query, true).await else {
+                continue;
+            };
+            write_framed(&mut stream, &resp).await?;
+        }
+    }
+
+    /// Answers one query. `None` means the query was unparseable and is dropped.
+    async fn handle(&self, query: &[u8], tcp: bool) -> Option<Vec<u8>> {
+        let req = Message::from_vec(query).ok()?;
+        let qname = req.queries.first().map(|q| normalize(q.name()))?;
+
+        if qname == DOH_CANARY {
+            return reply_with_code(&req, ResponseCode::NXDomain);
+        }
+
+        let servers: Vec<Upstream> = match self
+            .cfg
+            .forward
+            .iter()
+            .find(|z| domain_matches(&qname, &z.suffix))
+        {
+            Some(zone) => vec![Upstream::Plain(zone.server)],
+            None => self.cfg.upstreams.clone(),
+        };
+
+        for server in servers {
+            let result = match &server {
+                Upstream::Tls { addr, tls_name } => self.forward_tls(*addr, tls_name, query).await,
+                Upstream::Plain(addr) if tcp => self.forward_tcp(*addr, query).await,
+                Upstream::Plain(addr) => self.forward_udp(*addr, query, req.metadata.id).await,
+            };
+            match result {
+                Ok(resp) => {
+                    self.record(&resp);
+                    return Some(resp);
+                }
+                Err(e) => debug!("dns: {} failed for {qname}: {e:#}", server.addr()),
+            }
+        }
+        reply_with_code(&req, ResponseCode::ServFail)
+    }
+
+    async fn forward_udp(&self, server: SocketAddr, query: &[u8], id: u16) -> Result<Vec<u8>> {
+        let local: SocketAddr = if server.is_ipv4() {
+            (Ipv4Addr::UNSPECIFIED, 0).into()
+        } else {
+            (Ipv6Addr::UNSPECIFIED, 0).into()
+        };
+        let sock = UdpSocket::bind(local).await?;
+        if let Some(mark) = self.mark {
+            socket2::SockRef::from(&sock).set_mark(mark)?;
+        }
+        sock.connect(server).await?;
+        sock.send(query).await?;
+        let mut buf = vec![0u8; 65535];
+        timeout(UPSTREAM_TIMEOUT, async {
+            loop {
+                let len = sock.recv(&mut buf).await?;
+                // Ignore anything that is not the reply to our query.
+                if len >= 2 && u16::from_be_bytes([buf[0], buf[1]]) == id {
+                    return Ok(buf[..len].to_vec());
+                }
+            }
+        })
+        .await
+        .context("timed out")?
+    }
+
+    async fn connect_tcp(&self, server: SocketAddr) -> Result<TcpStream> {
+        let sock = if server.is_ipv4() {
+            TcpSocket::new_v4()?
+        } else {
+            TcpSocket::new_v6()?
+        };
+        if let Some(mark) = self.mark {
+            socket2::SockRef::from(&sock).set_mark(mark)?;
+        }
+        Ok(sock.connect(server).await?)
+    }
+
+    async fn forward_tcp(&self, server: SocketAddr, query: &[u8]) -> Result<Vec<u8>> {
+        timeout(UPSTREAM_TIMEOUT, async {
+            let mut stream = self.connect_tcp(server).await?;
+            write_framed(&mut stream, query).await?;
+            read_framed(&mut stream).await
+        })
+        .await
+        .context("timed out")?
+    }
+
+    /// DNS-over-TLS (RFC 7858). One connection per query for now.
+    async fn forward_tls(
+        &self,
+        server: SocketAddr,
+        tls_name: &str,
+        query: &[u8],
+    ) -> Result<Vec<u8>> {
+        let name = ServerName::try_from(tls_name.to_string())?;
+        timeout(UPSTREAM_TIMEOUT, async {
+            let tcp = self.connect_tcp(server).await?;
+            let mut stream = self.tls.connect(name, tcp).await?;
+            write_framed(&mut stream, query).await?;
+            read_framed(&mut stream).await
+        })
+        .await
+        .context("timed out")?
+    }
+
+    /// Hands addresses from a matching answer to the enforcer.
+    fn record(&self, resp: &[u8]) {
+        let Some(rules) = self.rules.read().unwrap().clone() else {
+            return;
+        };
+        let Ok(msg) = Message::from_vec(resp) else {
+            return;
+        };
+        if let Some((action, addrs, ttl)) = matching_addrs(&msg, &rules) {
+            debug!("dns: {action:?} {addrs:?}");
+            self.enforcer
+                .add_addrs(action, addrs, ttl.saturating_add(SET_TIMEOUT_SLACK_SECS));
+        }
+    }
+
+    /// Resolves every rule domain once, so the sets are filled before the
+    /// browser asks.
+    pub async fn prime(self: Arc<Self>, domains: Vec<String>) {
+        // Upstreams reset connections when we open dozens of TLS sessions at
+        // once.
+        let limit = Arc::new(Semaphore::new(PRIME_CONCURRENCY));
+        let mut tasks = JoinSet::new();
+        for domain in domains {
+            for name in [domain.clone(), format!("www.{domain}")] {
+                for qtype in [RecordType::A, RecordType::AAAA] {
+                    let Ok(name) = Name::from_ascii(&name) else {
+                        continue;
+                    };
+                    let mut msg = Message::query();
+                    msg.metadata.recursion_desired = true;
+                    msg.add_query(Query::query(name, qtype));
+                    let Ok(bytes) = msg.to_vec() else { continue };
+                    let this = self.clone();
+                    let limit = limit.clone();
+                    tasks.spawn(async move {
+                        let _permit = limit.acquire().await;
+                        this.handle(&bytes, false).await
+                    });
+                }
+            }
+        }
+        while tasks.join_next().await.is_some() {}
+    }
+}
+
+fn normalize(name: &Name) -> String {
+    name.to_ascii().trim_end_matches('.').to_ascii_lowercase()
+}
+
+/// If any name in `msg` falls under a rule, returns the strictest action, every
+/// A/AAAA address in the answer, and the smallest TTL among them.
+fn matching_addrs(msg: &Message, rules: &[Rule]) -> Option<(Action, Vec<IpAddr>, u32)> {
+    let names = msg
+        .queries
+        .iter()
+        .map(|q| normalize(q.name()))
+        .chain(msg.answers.iter().map(|r| normalize(&r.name)));
+    let mut action = None;
+    for name in names {
+        for rule in rules.iter().filter(|r| domain_matches(&name, &r.domain)) {
+            if action != Some(Action::Block) {
+                action = Some(rule.action);
+            }
+        }
+    }
+    let action = action?;
+
+    let mut ttl = u32::MAX;
+    let addrs: Vec<IpAddr> = msg
+        .answers
+        .iter()
+        .filter_map(|r| {
+            let ip = match &r.data {
+                RData::A(a) => IpAddr::V4(a.0),
+                RData::AAAA(a) => IpAddr::V6(a.0),
+                _ => return None,
+            };
+            ttl = ttl.min(r.ttl);
+            Some(ip)
+        })
+        .collect();
+    (!addrs.is_empty()).then_some((action, addrs, ttl))
+}
+
+fn reply_with_code(req: &Message, code: ResponseCode) -> Option<Vec<u8>> {
+    let mut resp = Message::error_msg(req.metadata.id, req.metadata.op_code, code);
+    resp.metadata.message_type = MessageType::Response;
+    resp.metadata.recursion_desired = req.metadata.recursion_desired;
+    resp.metadata.recursion_available = true;
+    resp.add_queries(req.queries.iter().cloned());
+    resp.to_vec().ok()
+}
+
+async fn read_framed(stream: &mut (impl AsyncRead + Unpin)) -> Result<Vec<u8>> {
+    let len = stream.read_u16().await?;
+    let mut buf = vec![0u8; usize::from(len)];
+    stream.read_exact(&mut buf).await?;
+    Ok(buf)
+}
+
+async fn write_framed(stream: &mut (impl AsyncWrite + Unpin), msg: &[u8]) -> Result<()> {
+    let len = u16::try_from(msg.len()).context("message too long")?;
+    let mut out = Vec::with_capacity(msg.len() + 2);
+    out.extend_from_slice(&len.to_be_bytes());
+    out.extend_from_slice(msg);
+    stream.write_all(&out).await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hickory_proto::rr::Record;
+    use hickory_proto::rr::rdata::{A, AAAA, CNAME};
+
+    fn rule(domain: &str, action: Action) -> Rule {
+        Rule {
+            domain: domain.into(),
+            action,
+        }
+    }
+
+    fn answer(qname: &str, records: Vec<Record>) -> Message {
+        let mut msg = Message::response(7, hickory_proto::op::OpCode::Query);
+        msg.add_query(Query::query(
+            Name::from_ascii(qname).unwrap(),
+            RecordType::A,
+        ));
+        msg.add_answers(records);
+        msg
+    }
+
+    fn rec(name: &str, ttl: u32, data: RData) -> Record {
+        Record::from_rdata(Name::from_ascii(name).unwrap(), ttl, data)
+    }
+
+    #[test]
+    fn follows_cname_chain() {
+        let msg = answer(
+            "www.youtube.com.",
+            vec![
+                rec(
+                    "www.youtube.com.",
+                    300,
+                    RData::CNAME(CNAME(Name::from_ascii("youtube-ui.l.google.com.").unwrap())),
+                ),
+                rec(
+                    "youtube-ui.l.google.com.",
+                    120,
+                    RData::A(A::new(142, 250, 1, 1)),
+                ),
+                rec(
+                    "youtube-ui.l.google.com.",
+                    90,
+                    RData::AAAA(AAAA::new(0x2607, 0xf8b0, 0, 0, 0, 0, 0, 1)),
+                ),
+            ],
+        );
+        let (action, addrs, ttl) =
+            matching_addrs(&msg, &[rule("youtube.com", Action::Throttle)]).unwrap();
+        assert_eq!(action, Action::Throttle);
+        assert_eq!(addrs.len(), 2);
+        assert_eq!(ttl, 90);
+    }
+
+    #[test]
+    fn block_wins_and_unmatched_is_ignored() {
+        let msg = answer(
+            "old.reddit.com.",
+            vec![rec("old.reddit.com.", 60, RData::A(A::new(1, 2, 3, 4)))],
+        );
+        let rules = [
+            rule("com", Action::Throttle),
+            rule("reddit.com", Action::Block),
+        ];
+        assert_eq!(matching_addrs(&msg, &rules).unwrap().0, Action::Block);
+        assert!(matching_addrs(&msg, &[rule("youtube.com", Action::Throttle)]).is_none());
+    }
+
+    #[test]
+    fn canary_reply_is_nxdomain() {
+        let mut req = Message::query();
+        req.add_query(Query::query(
+            Name::from_ascii("use-application-dns.net.").unwrap(),
+            RecordType::A,
+        ));
+        let resp =
+            Message::from_vec(&reply_with_code(&req, ResponseCode::NXDomain).unwrap()).unwrap();
+        assert_eq!(resp.metadata.id, req.metadata.id);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NXDomain);
+        assert_eq!(resp.metadata.message_type, MessageType::Response);
+    }
+}

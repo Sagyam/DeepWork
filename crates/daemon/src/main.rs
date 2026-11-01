@@ -1,0 +1,149 @@
+mod config;
+mod dns;
+mod enforcer;
+mod engine;
+mod server;
+mod session;
+mod store;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::{Context, Result, bail};
+use clap::Parser;
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::Mutex;
+use tracing::info;
+
+use crate::config::Config;
+use crate::dns::Resolver;
+use crate::enforcer::EnforcerHandle;
+use crate::engine::Core;
+use crate::store::Store;
+
+#[derive(Parser)]
+#[command(version, about = "DeepWork focus daemon")]
+struct Args {
+    #[arg(long, default_value = config::DEFAULT_PATH)]
+    config: PathBuf,
+    /// Defaults to /var/lib/deepwork, or ~/.local/state/deepwork-dev with --dry-run.
+    #[arg(long)]
+    state_dir: Option<PathBuf>,
+    /// Defaults to /run/deepwork/deepworkd.sock, or $XDG_RUNTIME_DIR/deepwork-dev.sock with --dry-run.
+    #[arg(long)]
+    socket: Option<PathBuf>,
+    /// Log nft/tc/ip commands instead of running them. Does not need root.
+    #[arg(long)]
+    dry_run: bool,
+    /// Print the nft ruleset and tc script for a profile (default profile if
+    /// none is given), then exit.
+    #[arg(long, value_name = "PROFILE")]
+    print_rules: Option<Option<String>>,
+}
+
+fn effective_uid() -> Result<u32> {
+    let status = std::fs::read_to_string("/proc/self/status")?;
+    status
+        .lines()
+        .find_map(|l| l.strip_prefix("Uid:"))
+        .and_then(|rest| rest.split_whitespace().nth(1))
+        .and_then(|uid| uid.parse().ok())
+        .context("reading effective uid")
+}
+
+fn default_paths(dry_run: bool) -> (PathBuf, PathBuf) {
+    if !dry_run {
+        return (
+            PathBuf::from("/var/lib/deepwork"),
+            PathBuf::from(deepwork_proto::DEFAULT_SOCKET),
+        );
+    }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| "/tmp".into());
+    let state = std::env::var_os("XDG_STATE_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| home.join(".local/state"))
+        .join("deepwork-dev");
+    let runtime = std::env::var_os("XDG_RUNTIME_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| "/tmp".into());
+    (state, runtime.join("deepwork-dev.sock"))
+}
+
+fn print_rules(cfg: &Config, profile: Option<&str>) -> Result<()> {
+    let name = profile.unwrap_or(&cfg.session.default_profile);
+    let Some(profile) = cfg.profiles.get(name) else {
+        bail!("no profile named {name:?}");
+    };
+    print!(
+        "# nft -f -\n{}",
+        enforcer::nft::render_ruleset(&enforcer::nft::RulesetParams {
+            dns_port: cfg.dns.port,
+            block_quic: profile.block_quic,
+        })
+    );
+    print!(
+        "\n# tc -batch -  (per device; IFB created with `ip link add dwifb<ifindex> type ifb`)\n{}",
+        enforcer::tc::render_shape("DEV", "dwifbN", &profile.throttle)
+    );
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+    let args = Args::parse();
+    if let Some(profile) = &args.print_rules {
+        return print_rules(&Config::load(&args.config)?, profile.as_deref());
+    }
+    if !args.dry_run && effective_uid()? != 0 {
+        bail!("deepworkd must run as root (or pass --dry-run to only log what it would do)");
+    }
+
+    let cfg = Config::load(&args.config)?;
+    let (default_state, default_socket) = default_paths(args.dry_run);
+    let state_dir = args.state_dir.unwrap_or(default_state);
+    let socket = args.socket.unwrap_or(default_socket);
+    std::fs::create_dir_all(&state_dir)
+        .with_context(|| format!("creating {}", state_dir.display()))?;
+    let store = Store::open(&state_dir.join("deepwork.db"))?;
+
+    let enforcer = EnforcerHandle::spawn(args.dry_run, cfg.dns.port, cfg.dns.manage_resolved);
+    let resolver = Resolver::new(cfg.dns.clone(), args.dry_run, enforcer.clone())?;
+    let core = Arc::new(Mutex::new(
+        Core::new(cfg, store, enforcer, resolver.clone(), args.dry_run).await?,
+    ));
+
+    let ticker = {
+        let core = core.clone();
+        async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(1));
+            interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+            loop {
+                interval.tick().await;
+                core.lock().await.tick().await;
+            }
+        }
+    };
+
+    let mut sigterm = signal(SignalKind::terminate())?;
+    tokio::select! {
+        res = resolver.serve() => res?,
+        res = server::serve(&socket, core.clone()) => res?,
+        () = ticker => {}
+        _ = sigterm.recv() => info!("SIGTERM"),
+        _ = tokio::signal::ctrl_c() => info!("interrupted"),
+    }
+
+    // Enforcement deliberately stays in place: stopping the daemon must not
+    // end a session.
+    core.lock().await.persist();
+    let _ = std::fs::remove_file(&socket);
+    Ok(())
+}
