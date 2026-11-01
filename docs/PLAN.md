@@ -224,11 +224,11 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 ## Next session: start here
 
 Phase 2 is under way: routines, skip tokens, the agent and the bar module
-landed (2026-11-02, tested in dry-run only). Next:
+are installed and confirmed on the host (2026-11-02). The bar module is in
+`~/.config/omarchy/shell.json` next to the clock. Next:
 
-1. The user installs with `./dist/install.sh`, adds real `[[routines]]` to
-   `dist/config.local.toml`, and adds the bar module. Check the first real
-   routine run and the nudges, and tune the nudge wording/timing.
+1. The user adds real `[[routines]]` to `dist/config.local.toml`. Watch the
+   first day of nudges (09:00-21:00) and tune wording/timing.
 2. Then the PAM sudo lock and `RefuseManualStop`.
 
 Anything that needs root has to be installed by the user with
@@ -262,7 +262,9 @@ Anything that needs root has to be installed by the user with
 - [x] Skip tokens
 - [x] `deepwork-agent`: notifications, escalating nudges; `deepwork bar` module (Waybar / Omarchy shell)
 - [x] Wall-clock jump detection (`clock_jump` event), since routines use the wall clock
-- [ ] First real routine run on the host
+- [x] First real routine run on the host (2026-11-02): 10 min `smoke-test` routine
+      throttling only example.com started on its own, heads-up and bar worked, ended
+      on time and lifted the throttle
 - [ ] PAM sudo lock (`pam_exec` querying the daemon, fail open)
 - [ ] polkit rule; `RefuseManualStop=yes`
 - [ ] `nft monitor` based tamper detection
