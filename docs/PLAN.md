@@ -296,16 +296,27 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 
 ## Next session: start here
 
-Phase 2 is under way: routines, skip tokens, the agent and the bar module
-are installed and confirmed on the host (2026-11-02). The bar module is in
-`~/.config/omarchy/shell.json` next to the clock. Next:
+Phase 2 code is complete (2026-11-02). Routines, the agent and the bar are
+confirmed on the host; the rest (root lock, tamper watch, browser policies in
+the daemon, DoT reuse, container DNS, config delay, escalation) is tested in
+namespaces / dry-run only. Host check after `./dist/install.sh`, keeping a
+root shell (`sudo -s`) open in another terminal while testing PAM:
 
-1. The user adds real `[[routines]]` to `dist/config.local.toml`. Watch the
-   first day of nudges (09:00-21:00) and tune wording/timing.
-2. Then the PAM sudo lock and `RefuseManualStop`.
+1. Outside a session: `sudo true` works; `deepwork config` says no change.
+2. Start `deepwork start 5m --profile trial`:
+   - `sudo true` and `pkexec true` are refused with the DeepWork message;
+     `systemctl stop deepworkd` is refused; TTY root still works.
+   - `sudo nft delete rule ...` is impossible now, so tamper repair is only
+     testable from the root shell: delete a rule, `nft list table inet
+     deepwork` shows it back within a second; `journalctl -u deepworkd`
+     shows `tamper`.
+   - YouTube still throttled, DNS still fine (DoT reuse), Zen policy file
+     has `network.dns.echconfig.enabled` locked off.
+3. After the session: sudo works again; `systemctl stop` works again.
+4. Later: tune escalation stages and nudges on real use; then add real
+   `[[routines]]`.
 
-Anything that needs root has to be installed by the user with
-`./dist/install.sh`.
+Then phase 3 (the world).
 
 ## Phases
 
