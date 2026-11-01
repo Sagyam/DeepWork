@@ -113,6 +113,7 @@ fn print_rules(cfg: &Config, profile: Option<&str>) -> Result<()> {
         enforcer::nft::render_ruleset(&enforcer::nft::RulesetParams {
             dns_port: cfg.dns.port,
             block_quic: profile.block_quic,
+            container_dns: cfg.dns.container_dns,
         })
     );
     print!(
@@ -156,7 +157,7 @@ async fn main() -> Result<()> {
         .with_context(|| format!("creating {}", state_dir.display()))?;
     let store = Store::open(&state_dir.join("deepwork.db"))?;
 
-    let enforcer = EnforcerHandle::spawn(args.dry_run, cfg.dns.port, cfg.dns.manage_resolved);
+    let enforcer = EnforcerHandle::spawn(args.dry_run, &cfg.dns);
     let resolver = Resolver::new(cfg.dns.clone(), args.dry_run, enforcer.clone())?;
     let core = Arc::new(Mutex::new(
         Core::new(cfg, store, enforcer, resolver.clone(), args.dry_run).await?,

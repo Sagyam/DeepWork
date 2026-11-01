@@ -160,8 +160,9 @@ rules (stopwatch minimum, surrender).
      to an IFB device (`dwifb<ifindex>`) with the same prio/netem setup.
 6. The daemon's own upstream DNS sockets use `SO_MARK` with the exempt mark.
 7. Docker containers resolve through resolved's extra stub (`172.17.0.1`), so
-   they are covered too. Containers with a hardcoded `--dns` on the default
-   bridge are a known gap (forwarded port 53 is not redirected yet).
+   they are covered too. During a session, forwarded port 53 to any other
+   server (Docker's `1.1.1.1` fallback, `--dns`) is DNAT'd to
+   `dns.container_dns` (`172.17.0.1:53` here) or refused if that is unset.
 
 Tamper watch (phase 2): `nft monitor ruleset`, `tc monitor` and
 `ip monitor link` run for the life of the daemon. A matching line queues one
@@ -322,7 +323,9 @@ Anything that needs root has to be installed by the user with
 - [x] DoT connection reuse: one pipelined connection per upstream (`dot.rs`), internal message IDs,
       20s idle close, one retry on a stale connection. Live: first query ~170 ms, then ~6 ms
 - [x] Truncate UDP answers larger than the client's EDNS size (TC set, question only)
-- [ ] Redirect forwarded port 53 from containers / VMs
+- [x] Redirect forwarded port 53 from containers / VMs: prerouting DNAT to `dns.container_dns`
+      (IPv4, from docker* / br-* / virbr*), otherwise refused in the forward hook; forwarded IPv6
+      DNS always refused. Tested with a bridge + veth "container" namespace
 - [ ] Throttle escalation over time spent on a site
 
 ### Phase 3: The world

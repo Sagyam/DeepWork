@@ -120,6 +120,11 @@ pub struct DnsConfig {
     /// During a session, point systemd-resolved at the forwarder through a
     /// runtime drop-in. Needed when resolved uses DNS-over-TLS itself.
     pub manage_resolved: bool,
+    /// During a session, DNS that containers and VMs send to other servers
+    /// (port 53, forwarded from docker / br- / virbr interfaces) is sent here
+    /// instead, e.g. resolved's `DNSStubListenerExtra=172.17.0.1`. IPv4 only.
+    /// Unset: such queries are rejected. Forwarded IPv6 DNS is always rejected.
+    pub container_dns: Option<std::net::SocketAddrV4>,
 }
 
 /// `"9.9.9.9:53"` for plain DNS, or
@@ -225,6 +230,7 @@ impl Default for DnsConfig {
                 server: "100.100.100.100:53".parse().unwrap(),
             }],
             manage_resolved: true,
+            container_dns: None,
         }
     }
 }

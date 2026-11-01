@@ -16,6 +16,11 @@ upstreams = [
 # Point systemd-resolved at the forwarder during sessions (runtime drop-in in
 # /run/systemd/resolved.conf.d). Required when resolved uses DNS-over-TLS.
 manage_resolved = true
+# During sessions, DNS that containers / VMs send to other servers (forwarded
+# port 53 from docker*, br-*, virbr*) goes here instead. Point it at a host
+# resolver that goes through deepworkd, e.g. resolved with
+# DNSStubListenerExtra=172.17.0.1. Unset: such queries are refused.
+# container_dns = "172.17.0.1:53"
 
 [[dns.forward]]
 suffix = "ts.net"

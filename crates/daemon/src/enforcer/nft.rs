@@ -52,7 +52,11 @@ const DOH_V6: &[&str] = &[
 pub struct RulesetParams {
     pub dns_port: u16,
     pub block_quic: bool,
+    pub container_dns: Option<std::net::SocketAddrV4>,
 }
+
+/// Bridges that containers and VMs sit behind.
+const GUEST_IFACES: &str = r#"{ "docker*", "br-*", "virbr*" }"#;
 
 /// The whole table as one `nft -f` transaction. Replaces any previous copy.
 pub fn render_ruleset(p: &RulesetParams) -> String {
@@ -64,6 +68,12 @@ pub fn render_ruleset(p: &RulesetParams) -> String {
         "\t\tudp dport 443 reject\n"
     } else {
         ""
+    };
+    let guest_dns = match p.container_dns {
+        Some(to) => format!(
+            "\t\tiifname {GUEST_IFACES} meta nfproto ipv4 meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {to}\n"
+        ),
+        None => String::new(),
     };
     format!(
         "destroy table {TABLE}
@@ -82,6 +92,11 @@ table {TABLE} {{
 \t\tmeta l4proto {{ tcp, udp }} th dport 53 redirect to :{port}
 \t}}
 
+\tchain guest_dns {{
+\t\ttype nat hook prerouting priority -100; policy accept;
+\t\tfib daddr type local return
+{guest_dns}\t}}
+
 \tchain output {{
 \t\ttype filter hook output priority filter; policy accept;
 \t\tmeta mark and {mask} == {exempt} accept
@@ -90,6 +105,7 @@ table {TABLE} {{
 
 \tchain forward {{
 \t\ttype filter hook forward priority filter; policy accept;
+\t\tmeta l4proto {{ tcp, udp }} th dport 53 reject
 \t\tjump enforce
 \t}}
 
@@ -191,17 +207,23 @@ mod tests {
         let r = render_ruleset(&RulesetParams {
             dns_port: 5454,
             block_quic: true,
+            container_dns: Some("172.17.0.1:53".parse().unwrap()),
         });
         assert!(r.starts_with("destroy table inet deepwork\n"));
         assert!(r.contains("redirect to :5454"));
         assert!(r.contains("udp dport 443 reject"));
         assert!(r.contains("ct mark set ct mark and 0xffff0000 or 0x4457"));
 
+        assert!(r.contains("th dport 53 dnat ip to 172.17.0.1:53"));
+
         let r = render_ruleset(&RulesetParams {
             dns_port: 5454,
             block_quic: false,
+            container_dns: None,
         });
         assert!(!r.contains("udp dport 443"));
+        assert!(!r.contains("dnat"));
+        assert!(r.contains("th dport 53 reject"));
     }
 
     #[test]

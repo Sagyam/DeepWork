@@ -46,6 +46,7 @@ struct Enforcer {
     dry_run: bool,
     dns_port: u16,
     manage_resolved: bool,
+    container_dns: Option<std::net::SocketAddrV4>,
     /// Started by systemd, so the stop lock applies.
     under_systemd: bool,
     active: Option<Profile>,
@@ -111,6 +112,7 @@ impl Enforcer {
         let script = nft::render_ruleset(&nft::RulesetParams {
             dns_port: self.dns_port,
             block_quic: profile.block_quic,
+            container_dns: self.container_dns,
         });
         self.run("nft", &["-f", "-"], Some(&script)).map(drop)
     }
@@ -499,12 +501,15 @@ pub struct EnforcerHandle {
 }
 
 impl EnforcerHandle {
-    pub fn spawn(dry_run: bool, dns_port: u16, manage_resolved: bool) -> Self {
+    pub fn spawn(dry_run: bool, dns: &crate::config::DnsConfig) -> Self {
+        let (dns_port, manage_resolved, container_dns) =
+            (dns.port, dns.manage_resolved, dns.container_dns);
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut enforcer = Enforcer {
             dry_run,
             dns_port,
             manage_resolved,
+            container_dns,
             under_systemd: std::env::var_os("INVOCATION_ID").is_some(),
             active: None,
             shaped: BTreeMap::new(),
