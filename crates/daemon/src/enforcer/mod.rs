@@ -4,6 +4,7 @@
 //! talks to it through [`EnforcerHandle`]. In dry-run mode every command is
 //! logged instead of executed, so the daemon can be developed without root.
 
+pub mod browser;
 pub mod nft;
 pub mod tc;
 
@@ -214,7 +215,23 @@ impl Enforcer {
         }
     }
 
+    fn sync_browser_policies(&self) {
+        if self.dry_run {
+            debug!("[dry-run] sync browser policies");
+            return;
+        }
+        match browser::sync(true) {
+            Ok(changed) => {
+                for path in changed {
+                    info!("browser policy re-applied: {}", path.display());
+                }
+            }
+            Err(e) => warn!("could not apply browser policies: {e:#}"),
+        }
+    }
+
     fn engage(&mut self, profile: Profile) -> Result<()> {
+        self.sync_browser_policies();
         self.install_ruleset(&profile)?;
         if self.manage_resolved {
             // resolved may use DNS-over-TLS, which the ruleset now blocks, so
@@ -468,6 +485,7 @@ enum Cmd {
     CheckTc,
     /// `ip monitor link` saw a device appear or change.
     Rescan,
+    SyncBrowserPolicies,
     AddAddrs {
         action: Action,
         addrs: Vec<IpAddr>,
@@ -540,6 +558,7 @@ impl EnforcerHandle {
                             enforcer.verify_tc();
                             enforcer.shape_new_devices();
                         }
+                        Cmd::SyncBrowserPolicies => enforcer.sync_browser_policies(),
                         Cmd::Rescan => {
                             flags.link.store(false, Ordering::SeqCst);
                             enforcer.shape_new_devices();
@@ -574,6 +593,11 @@ impl EnforcerHandle {
 
     pub async fn reassert(&self) -> Result<Reasserted> {
         self.call(Cmd::Reassert).await
+    }
+
+    /// Re-applies the browser policies if a package update replaced them.
+    pub fn sync_browser_policies(&self) {
+        let _ = self.tx.send(Cmd::SyncBrowserPolicies);
     }
 
     /// Fire and forget; used from the DNS path.

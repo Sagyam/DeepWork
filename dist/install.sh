@@ -16,13 +16,14 @@ if [[ ${1:-} == uninstall ]]; then
     sudo python3 -I dist/pam.py remove
     sudo rm -f /etc/polkit-1/rules.d/10-deepwork.rules /usr/local/lib/deepwork/deepwork-pam-gate
     sudo systemctl disable --now deepworkd.service || true
+    sudo /usr/local/bin/deepworkd --browser-policies remove || true
     systemctl --user disable --now deepwork-agent.service || true
     sudo rm -f /etc/systemd/system/deepworkd.service /usr/local/bin/deepworkd /usr/local/bin/deepwork \
         /usr/local/bin/deepwork-agent /etc/systemd/user/deepwork-agent.service
     sudo systemctl daemon-reload
     # The daemon lifts enforcement when a session ends; this covers a crash.
     sudo nft destroy table inet deepwork 2>/dev/null || true
-    sudo python3 -I dist/browser-policies.py remove
+    sudo rm -f /etc/pacman.d/hooks/deepwork-browser-policies.hook
     if [[ -f /run/systemd/resolved.conf.d/zz-deepwork.conf ]]; then
         sudo rm -f /run/systemd/resolved.conf.d/zz-deepwork.conf
         sudo systemctl restart systemd-resolved
@@ -45,8 +46,10 @@ elif [[ ! -f /etc/deepwork/config.toml ]]; then
     sudo install -Dm644 dist/config.example.toml /etc/deepwork/config.toml
     echo "Installed /etc/deepwork/config.toml from the example. Review it."
 fi
-# Browsers must resolve through the system resolver, not their own DoH.
-sudo python3 -I dist/browser-policies.py apply
+# Browsers must resolve through the system resolver, not their own DoH, and
+# keep ECH off. The daemon keeps these in place; the hook covers updates.
+sudo deepworkd --browser-policies apply
+sudo install -Dm644 dist/deepwork-browser-policies.hook /etc/pacman.d/hooks/deepwork-browser-policies.hook
 echo "Restart Zen / Chromium so the DNS-over-HTTPS policy takes effect."
 sudo deepworkd --print-rules >/dev/null  # validates the config
 sudo systemctl daemon-reload

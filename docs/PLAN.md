@@ -293,7 +293,7 @@ Anything that needs root has to be installed by the user with
 - [x] Periodic re-assert of the nft table, tamper event when missing
 - [x] DNS-over-TLS upstreams; session-only resolved drop-in
 - [x] systemd unit, example config, install script (`dist/`)
-- [x] Managed browser policies turning DoH off (`dist/browser-policies.py`). The user's Zen had strict DoH (`network.trr.mode = 3`), which bypassed the resolver entirely
+- [x] Managed browser policies turning DoH off (first `dist/browser-policies.py`, now in the daemon). The user's Zen had strict DoH (`network.trr.mode = 3`), which bypassed the resolver entirely
 - [x] First real run (2026-11-01): 5 min `trial` profile. Zen and Chromium were
       both throttled, the session completed on its own, teardown restored DoT
       to NextDNS. Feedback: too harsh, felt like a block, so defaults retuned
@@ -313,7 +313,11 @@ Anything that needs root has to be installed by the user with
 - [x] polkit rule; `RefuseManualStop=yes` (runtime drop-in, only during sessions)
 - [x] `nft monitor` based tamper detection (plus `tc monitor`; fingerprints catch partial edits)
 - [ ] Config changes through the daemon only; 24h delay for loosening
-- [ ] Re-apply browser policies at session start (Zen package updates overwrite `policies.json`); ECH off for phase 4
+- [x] Re-apply browser policies at session start (Zen package updates overwrite `policies.json`); ECH off for phase 4.
+      Now in the daemon (`enforcer/browser.rs`, `deepworkd --browser-policies apply|remove`), synced at
+      startup, session start and every minute, plus a pacman hook. Firefox family: locked `DNSOverHTTPS`
+      and `network.dns.echconfig.enabled` / `http3_echconfig.enabled` off; Chromium family:
+      `DnsOverHttpsMode=off`, `EncryptedClientHelloEnabled=false`
 - [x] Link watch instead of periodic interface scan (`ip monitor link`, kept to CLIs like the rest)
 - [ ] DoT connection reuse (one TLS handshake per query today)
 - [ ] Truncate UDP answers larger than the client's EDNS size

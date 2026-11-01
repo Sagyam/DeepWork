@@ -22,6 +22,7 @@ use crate::store::{EventKind, RunOutcome, Store};
 
 const PERSIST_EVERY: Duration = Duration::from_secs(5);
 const REASSERT_EVERY: Duration = Duration::from_secs(15);
+const BROWSER_POLICIES_EVERY: Duration = Duration::from_secs(60);
 /// How far ahead routine runs are listed and can be skipped.
 const HORIZON: SignedDuration = SignedDuration::from_hours(24);
 /// Wait this long before retrying a routine whose session failed to start.
@@ -39,6 +40,7 @@ pub struct Core {
     last_tick: Instant,
     last_persist: Instant,
     last_reassert: Instant,
+    last_policies: Option<Instant>,
     tz: TimeZone,
     /// Routine runs from the last few days, mirrored from the store.
     runs: HashMap<RunKey, RunOutcome>,
@@ -99,6 +101,7 @@ impl Core {
             last_tick: now,
             last_persist: now,
             last_reassert: now,
+            last_policies: None,
             tz,
             runs,
             routine_retry_at: None,
@@ -473,6 +476,13 @@ impl Core {
         let delta = now - self.last_tick;
         self.last_tick = now;
         self.check_clock();
+        if self
+            .last_policies
+            .is_none_or(|t| now - t >= BROWSER_POLICIES_EVERY)
+        {
+            self.last_policies = Some(now);
+            self.enforcer.sync_browser_policies();
+        }
 
         let Some(session) = self.session.as_mut() else {
             self.check_routines().await;

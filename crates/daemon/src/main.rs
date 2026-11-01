@@ -41,6 +41,16 @@ struct Args {
     /// none is given), then exit.
     #[arg(long, value_name = "PROFILE")]
     print_rules: Option<Option<String>>,
+    /// Apply or remove the managed browser policies (DoH and ECH off), then
+    /// exit. The running daemon re-applies them every minute.
+    #[arg(long, value_name = "ACTION")]
+    browser_policies: Option<PolicyAction>,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum PolicyAction {
+    Apply,
+    Remove,
 }
 
 fn effective_uid() -> Result<u32> {
@@ -121,6 +131,17 @@ async fn main() -> Result<()> {
     let args = Args::parse();
     if let Some(profile) = &args.print_rules {
         return print_rules(&Config::load(&args.config)?, profile.as_deref());
+    }
+    if let Some(action) = args.browser_policies {
+        let apply = matches!(action, PolicyAction::Apply);
+        for path in enforcer::browser::sync(apply)? {
+            println!(
+                "{} {}",
+                if apply { "updated" } else { "cleaned" },
+                path.display()
+            );
+        }
+        return Ok(());
     }
     if !args.dry_run && effective_uid()? != 0 {
         bail!("deepworkd must run as root (or pass --dry-run to only log what it would do)");
