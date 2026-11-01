@@ -26,6 +26,32 @@ default_profile = "deep"
 stopwatch_min_secs = 600
 surrender_wait_secs = 600
 
+[schedule]
+# Notifications and the bar warn this long before a routine starts.
+heads_up_secs = 300
+# Routine runs you may skip per week (Monday to Sunday): `deepwork skip`.
+skip_tokens_per_week = 2
+
+# Reminders to start a session, inside active hours, when none has run for a
+# while. Each repeat is more urgent than the last.
+[nudge]
+enabled = true
+days = []          # every day; or e.g. ["mon", "tue", "wed", "thu", "fri"]
+from = "09:00"
+until = "21:00"
+after_mins = 30
+repeat_mins = 15
+
+# Routines start a countdown on their own at `start` (local time). If the
+# machine was asleep or another session was running, the run starts late with
+# whatever is left of its window. Each run happens at most once.
+# [[routines]]
+# name = "morning"
+# days = ["mon", "tue", "wed", "thu", "fri"]
+# start = "09:00"
+# duration_mins = 90
+# profile = "deep"   # optional, default_profile otherwise
+
 [profiles.deep]
 block_quic = true
 # Added round-trip time (split across both directions), jitter, bandwidth cap.

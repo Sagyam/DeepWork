@@ -1,0 +1,13 @@
+[Unit]
+Description=DeepWork notifications and nudges
+Documentation=file:///usr/local/share/doc/deepwork/PLAN.md
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/local/bin/deepwork-agent
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

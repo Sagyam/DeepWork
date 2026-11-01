@@ -1,0 +1,10 @@
+[package]
+name = "deepwork-agent"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+deepwork-proto.workspace = true
+anyhow.workspace = true
+clap.workspace = true

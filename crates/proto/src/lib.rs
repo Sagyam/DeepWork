@@ -31,6 +31,11 @@ pub enum Request {
     Surrender {
         phrase: String,
     },
+    /// Spend a skip token on the next occurrence of a routine (any routine if
+    /// `None`) that has not started yet.
+    Skip {
+        routine: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -47,6 +52,9 @@ pub struct SessionInfo {
     pub id: i64,
     pub kind: SessionKind,
     pub profile: String,
+    /// The routine that started this session, if any.
+    #[serde(default)]
+    pub routine: Option<String>,
     pub state: SessionState,
     /// Unix seconds.
     pub started_at: i64,
@@ -60,19 +68,69 @@ pub struct SessionInfo {
     pub surrender_remaining_secs: Option<u64>,
 }
 
+/// One scheduled run of a routine.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Upcoming {
+    pub routine: String,
+    pub profile: String,
+    /// Unix seconds.
+    pub starts_at: i64,
+    pub ends_at: i64,
+    /// Seconds until the start, by the daemon's clock. Negative once the
+    /// window is open but the session has not started (another session is
+    /// running).
+    pub starts_in_secs: i64,
+    pub skipped: bool,
+}
+
+/// A session that has ended.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Finished {
+    pub session: SessionInfo,
+    /// Unix seconds.
+    pub ended_at: i64,
+}
+
+/// The daemon asking the user to start a session. `level` goes up by one
+/// every repeat interval, so clients can escalate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Nudge {
+    pub level: u32,
+    /// Seconds without a session, counted from the start of active hours.
+    pub idle_secs: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub session: Option<SessionInfo>,
     pub profiles: Vec<String>,
     pub dry_run: bool,
+    /// Routine runs in the next 24 hours, soonest first.
+    #[serde(default)]
+    pub upcoming: Vec<Upcoming>,
+    /// Clients should warn about a routine this many seconds ahead.
+    #[serde(default)]
+    pub heads_up_secs: u64,
+    #[serde(default)]
+    pub skip_tokens_left: u32,
+    #[serde(default)]
+    pub last: Option<Finished>,
+    #[serde(default)]
+    pub nudge: Option<Nudge>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Response {
-    Status(Status),
+    Status(Box<Status>),
     Session(SessionInfo),
-    Error { message: String },
+    Skipped {
+        upcoming: Upcoming,
+        tokens_left: u32,
+    },
+    Error {
+        message: String,
+    },
 }
 
 impl Response {
@@ -81,6 +139,19 @@ impl Response {
             message: message.into(),
         }
     }
+}
+
+/// Sends one request to the daemon and reads the reply. Blocking.
+pub fn request(socket: &std::path::Path, req: &Request) -> std::io::Result<Response> {
+    use std::io::{BufRead, BufReader, Write};
+    let mut stream = std::os::unix::net::UnixStream::connect(socket)?;
+    stream.set_read_timeout(Some(std::time::Duration::from_secs(10)))?;
+    let mut line = serde_json::to_vec(req)?;
+    line.push(b'\n');
+    stream.write_all(&line)?;
+    let mut reply = String::new();
+    BufReader::new(stream).read_line(&mut reply)?;
+    Ok(serde_json::from_str(&reply)?)
 }
 
 #[cfg(test)]

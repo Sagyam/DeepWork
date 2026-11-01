@@ -1,10 +1,12 @@
-use std::io::{BufRead, BufReader, IsTerminal, Write};
-use std::os::unix::net::UnixStream;
-use std::path::PathBuf;
+use std::io::{IsTerminal, Write};
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
-use deepwork_proto::{Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind, SessionState};
+use deepwork_proto::{
+    Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind, SessionState, Status, Upcoming,
+};
 
 #[derive(Parser)]
 #[command(version, about = "DeepWork: focus sessions that are hard to escape")]
@@ -35,6 +37,12 @@ enum Command {
     Stop,
     /// Give up the current session. Takes a while, and it will cost you.
     Surrender,
+    /// List routine runs in the next 24 hours.
+    Routines,
+    /// Spend a skip token on the next run of a routine (or of any routine).
+    Skip { routine: Option<String> },
+    /// Print one line of Waybar-style JSON, for a bar module.
+    Bar,
 }
 
 fn main() -> Result<()> {
@@ -52,13 +60,86 @@ fn main() -> Result<()> {
             if status.dry_run {
                 println!("(daemon is in dry-run mode: nothing is enforced)");
             }
-            match status.session {
-                Some(s) => print_session(&s),
+            match &status.session {
+                Some(s) => print_session(s),
                 None => println!(
                     "No session running. Profiles: {}",
                     status.profiles.join(", ")
                 ),
             }
+            if let Some(u) = status.upcoming.iter().find(|u| !u.skipped) {
+                println!("Next routine: {}", describe(u));
+            }
+        }
+        Command::Routines => {
+            let Response::Status(status) = expect_ok(request(&cli.socket, &Request::Status)?)?
+            else {
+                bail!("unexpected reply")
+            };
+            if status.upcoming.is_empty() {
+                println!("No routine runs in the next 24 hours.");
+            }
+            for u in &status.upcoming {
+                println!("  {}", describe(u));
+            }
+            println!("Skip tokens left this week: {}", status.skip_tokens_left);
+        }
+        Command::Skip { routine } => {
+            if !std::io::stdin().is_terminal() {
+                bail!("skipping has to be confirmed by hand");
+            }
+            let Response::Status(status) = expect_ok(request(&cli.socket, &Request::Status)?)?
+            else {
+                bail!("unexpected reply")
+            };
+            let Some(next) = status
+                .upcoming
+                .iter()
+                .filter(|u| !u.skipped)
+                .find(|u| routine.as_ref().is_none_or(|r| &u.routine == r))
+            else {
+                bail!("nothing to skip in the next 24 hours");
+            };
+            if status.skip_tokens_left == 0 {
+                bail!("no skip tokens left this week");
+            }
+            print!(
+                "Skip {}? This uses 1 of {} skip tokens left this week. [y/N] ",
+                describe(next),
+                status.skip_tokens_left
+            );
+            std::io::stdout().flush()?;
+            let mut answer = String::new();
+            std::io::stdin().read_line(&mut answer)?;
+            if !answer.trim().eq_ignore_ascii_case("y") {
+                println!("Not skipped.");
+                return Ok(());
+            }
+            let req = Request::Skip {
+                routine: Some(next.routine.clone()),
+            };
+            let Response::Skipped {
+                upcoming,
+                tokens_left,
+            } = expect_ok(request(&cli.socket, &req)?)?
+            else {
+                bail!("unexpected reply")
+            };
+            println!(
+                "Skipped {}. Skip tokens left this week: {tokens_left}.",
+                describe(&upcoming)
+            );
+        }
+        Command::Bar => {
+            let line = match request(&cli.socket, &Request::Status) {
+                Ok(Response::Status(status)) => bar(&status),
+                _ => serde_json::json!({
+                    "text": "focus off",
+                    "tooltip": "deepworkd is not reachable",
+                    "class": "down",
+                }),
+            };
+            println!("{line}");
         }
         Command::Start {
             duration,
@@ -109,15 +190,95 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn request(socket: &PathBuf, req: &Request) -> Result<Response> {
-    let mut stream = UnixStream::connect(socket)
-        .with_context(|| format!("cannot reach deepworkd at {}", socket.display()))?;
-    let mut line = serde_json::to_vec(req)?;
-    line.push(b'\n');
-    stream.write_all(&line)?;
-    let mut reply = String::new();
-    BufReader::new(stream).read_line(&mut reply)?;
-    serde_json::from_str(&reply).context("bad reply from deepworkd")
+fn request(socket: &Path, req: &Request) -> Result<Response> {
+    deepwork_proto::request(socket, req)
+        .with_context(|| format!("cannot reach deepworkd at {}", socket.display()))
+}
+
+fn unix_now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs() as i64)
+}
+
+/// `morning in 4:59 (90 min, profile deep)`.
+fn describe(u: &Upcoming) -> String {
+    let when = if u.starts_in_secs > 0 {
+        format!("in {}", fmt_secs(u.starts_in_secs as u64))
+    } else if u.skipped {
+        "now".to_string()
+    } else {
+        "now, after the current session".to_string()
+    };
+    let mins = (u.ends_at - u.starts_at) / 60;
+    let skipped = if u.skipped { " [skipped]" } else { "" };
+    format!(
+        "{} {when} ({mins} min, profile {}){skipped}",
+        u.routine, u.profile
+    )
+}
+
+/// Waybar / Omarchy bar module output.
+fn bar(status: &Status) -> serde_json::Value {
+    let mut tooltip = Vec::new();
+    let (text, class) = if let Some(s) = &status.session {
+        let label = s.routine.as_deref().unwrap_or("focus");
+        tooltip.push(format!(
+            "{label}: {} focused, profile {}",
+            fmt_secs(s.elapsed_secs),
+            s.profile
+        ));
+        if s.state == SessionState::Surrendering {
+            let left = s.surrender_remaining_secs.unwrap_or(0);
+            tooltip.push(format!("surrendering, {} left", fmt_secs(left)));
+            (format!("surrender {}", fmt_secs(left)), "surrendering")
+        } else if let Some(rem) = s.remaining_secs {
+            (format!("● {}", fmt_secs(rem)), "active")
+        } else {
+            (format!("● +{}", fmt_secs(s.elapsed_secs)), "active")
+        }
+    } else if let Some(u) = status.upcoming.iter().find(|u| {
+        !u.skipped && u.starts_in_secs > 0 && u.starts_in_secs <= status.heads_up_secs as i64
+    }) {
+        (
+            format!("{} in {}", u.routine, fmt_secs(u.starts_in_secs as u64)),
+            "upcoming",
+        )
+    } else if let Some(n) = status.nudge {
+        tooltip.push(format!(
+            "No focus for {} min. `deepwork start`",
+            n.idle_secs / 60
+        ));
+        ("○ focus?".to_string(), "nudge")
+    } else {
+        ("○".to_string(), "idle")
+    };
+    if let Some(u) = status.upcoming.iter().find(|u| !u.skipped) {
+        tooltip.push(format!("next: {}", describe(u)));
+    }
+    if let Some(last) = &status.last
+        && status.session.is_none()
+    {
+        let ago = (unix_now() - last.ended_at).max(0) as u64;
+        tooltip.push(format!(
+            "last: {} focused, ended {} ago",
+            fmt_secs(last.session.elapsed_secs),
+            fmt_ago(ago)
+        ));
+    }
+    tooltip.push(format!("skip tokens: {}", status.skip_tokens_left));
+    if status.dry_run {
+        tooltip.push("dry run: nothing is enforced".into());
+    }
+    serde_json::json!({ "text": text, "tooltip": tooltip.join("\n"), "class": class })
+}
+
+fn fmt_ago(secs: u64) -> String {
+    match secs {
+        0..3600 => format!("{} min", secs / 60),
+        3600..86400 => format!("{} h", secs / 3600),
+        _ => format!("{} d", secs / 86400),
+    }
 }
 
 fn expect_ok(resp: Response) -> Result<Response> {
@@ -132,7 +293,12 @@ fn print_session(s: &SessionInfo) {
         SessionKind::Countdown { secs } => format!("countdown {}", fmt_secs(secs)),
         SessionKind::Stopwatch => "stopwatch".to_string(),
     };
-    println!("Session #{} ({kind}, profile {})", s.id, s.profile);
+    let routine = s
+        .routine
+        .as_ref()
+        .map(|r| format!(", routine {r}"))
+        .unwrap_or_default();
+    println!("Session #{} ({kind}, profile {}{routine})", s.id, s.profile);
     println!("  focused    {}", fmt_secs(s.elapsed_secs));
     if let Some(rem) = s.remaining_secs {
         println!("  remaining  {}", fmt_secs(rem));

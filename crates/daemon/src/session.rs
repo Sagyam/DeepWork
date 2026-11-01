@@ -17,6 +17,7 @@ pub struct Session {
     pub id: i64,
     pub kind: SessionKind,
     pub profile: String,
+    pub routine: Option<String>,
     pub state: SessionState,
     /// Unix seconds, for display and history only.
     pub started_at: i64,
@@ -43,6 +44,7 @@ impl Session {
             id: 0,
             kind,
             profile,
+            routine: None,
             state: SessionState::Active,
             started_at,
             elapsed: Duration::ZERO,
@@ -140,6 +142,7 @@ impl Session {
             id: self.id,
             kind: self.kind,
             profile: self.profile.clone(),
+            routine: self.routine.clone(),
             state: self.state,
             started_at: self.started_at,
             elapsed_secs: self.elapsed.as_secs(),

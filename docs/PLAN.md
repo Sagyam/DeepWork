@@ -35,6 +35,8 @@ design goal is:
 | Reboot | Active session persisted in SQLite and re-applied at boot | 1 |
 | Suspend through a countdown | Elapsed time accrues on `CLOCK_MONOTONIC`, which excludes suspend | 1 |
 | Change the wall clock | Elapsed time never uses wall clock | 1 |
+| Change the wall clock to dodge a routine | Routines follow the wall clock, so drift against `CLOCK_BOOTTIME` > 2 min is logged as `clock_jump` | 2 |
+| Start a short manual session right before a routine | The routine waits and starts when that session ends, for what is left of its window | 2 |
 | Hardcoded DNS server (`dig @8.8.8.8`) | nft redirects all port 53 to our resolver; port 853 dropped | 1 |
 | DNS-over-HTTPS in the browser | Known DoH IPs dropped; `use-application-dns.net` canary; managed browser policies | 1 / 2 |
 | HTTP/3 (QUIC) | UDP 443 dropped during sessions, browsers fall back to TCP | 1 |
@@ -83,7 +85,7 @@ rules (stopwatch minimum, surrender).
 | `crates/proto` | | IPC types shared by everything |
 | `crates/daemon` | `deepworkd` | Root daemon |
 | `crates/cli` | `deepwork` | CLI client |
-| `crates/agent` | `deepwork-agent` | User service: notifications, nudges, Waybar JSON (phase 2) |
+| `crates/agent` | `deepwork-agent` | User service: notifications, heads-ups, escalating nudges |
 | `ui/` | `deepwork-ui` | Tauri 2 + PixiJS (phase 3) |
 
 ### Tech choices
@@ -155,6 +157,27 @@ Real-world data points (YouTube "stats for nerds", user's machine):
   suspend, reboots and clock changes cannot shorten a session.
 - States: `Active`, `Surrendering { until }`, `Completed`, `Surrendered`.
 
+### Routines, skips and nudges
+
+- `[[routines]]` in the config: name, days, local start time, duration,
+  optional profile. Each run is identified by `(routine, local date)` and
+  recorded once in `routine_runs` (`started` or `skipped`), so a surrendered
+  routine never restarts and a skip cannot be reused.
+- A run is due while `start <= now < end`. If the machine was asleep, the
+  daemon was down or another session was running, it starts late with what is
+  left of the window (at least 1 minute). A failed start retries after 60s.
+- Skip tokens: `skip_tokens_per_week` (default 2, Monday to Sunday). A skip
+  applies to the next run of a routine within 24h that has not started.
+- Nudges: inside `[nudge]` active hours with no session for `after_mins`, the
+  daemon reports a level that rises every `repeat_mins`; quiet when a routine
+  starts within `after_mins`. The agent always shows the first nudge gently
+  (low, then normal, then critical) and replaces the previous one.
+- Clients: `deepwork routines`, `deepwork skip [routine]`, and `deepwork bar`
+  (one line of Waybar-style JSON; works as an Omarchy shell `command` module,
+  see `dist/bar-module.md`). `deepwork-agent` polls status every 2s and
+  sends notifications with `notify-send`; it runs as a user unit under
+  `graphical-session.target`.
+
 ## Progression (phase 3, polished last)
 
 The theme may change, so the game is split in two:
@@ -195,14 +218,21 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 | VMs (libvirt) | Not used; ignore |
 | Throttle vs block | Throttle by default ("painfully slow"), block per domain |
 | Theme | City skyline prototype; may change. World model stays theme-agnostic |
-| UI order | CLI + Waybar first, Tauri UI in phase 3 |
+| UI order | CLI + bar module first, Tauri UI in phase 3 |
+| Bar | The user's bar is the Omarchy shell (quickshell), not Waybar. `deepwork bar` serves both |
 
 ## Next session: start here
 
-Phase 1 is done and the throttle is tuned (256 kbit/s confirmed on real
-sites). Start phase 2: routines + the user agent (notifications, Waybar), then
-the PAM sudo lock and `RefuseManualStop`. Anything that needs root has to be
-installed by the user with `./dist/install.sh`.
+Phase 2 is under way: routines, skip tokens, the agent and the bar module
+landed (2026-11-02, tested in dry-run only). Next:
+
+1. The user installs with `./dist/install.sh`, adds real `[[routines]]` to
+   `dist/config.local.toml`, and adds the bar module. Check the first real
+   routine run and the nudges, and tune the nudge wording/timing.
+2. Then the PAM sudo lock and `RefuseManualStop`.
+
+Anything that needs root has to be installed by the user with
+`./dist/install.sh`.
 
 ## Phases
 
@@ -228,9 +258,11 @@ installed by the user with `./dist/install.sh`.
 
 ### Phase 2: Routines and hardening
 
-- [ ] Routines in config + scheduler with 5 minute heads-up
-- [ ] Skip tokens
-- [ ] `deepwork-agent`: notifications, escalating nudges, Waybar module
+- [x] Routines in config + scheduler with 5 minute heads-up
+- [x] Skip tokens
+- [x] `deepwork-agent`: notifications, escalating nudges; `deepwork bar` module (Waybar / Omarchy shell)
+- [x] Wall-clock jump detection (`clock_jump` event), since routines use the wall clock
+- [ ] First real routine run on the host
 - [ ] PAM sudo lock (`pam_exec` querying the daemon, fail open)
 - [ ] polkit rule; `RefuseManualStop=yes`
 - [ ] `nft monitor` based tamper detection

@@ -2,6 +2,7 @@ mod config;
 mod dns;
 mod enforcer;
 mod engine;
+mod schedule;
 mod server;
 mod session;
 mod store;
