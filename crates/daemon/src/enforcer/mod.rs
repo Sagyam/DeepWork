@@ -7,11 +7,14 @@
 pub mod nft;
 pub mod tc;
 
-use std::collections::BTreeSet;
-use std::io::Write as _;
+use std::collections::{BTreeMap, BTreeSet};
+use std::io::{BufRead as _, BufReader, Write as _};
 use std::net::IpAddr;
 use std::path::Path;
 use std::process::{Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result, bail};
 use tokio::sync::{mpsc, oneshot};
@@ -45,8 +48,28 @@ struct Enforcer {
     /// Started by systemd, so the stop lock applies.
     under_systemd: bool,
     active: Option<Profile>,
-    /// Devices we have shaped during the current session.
-    shaped: BTreeSet<String>,
+    /// Devices shaped during the current session, with a fingerprint of their
+    /// tc setup (device and IFB) taken right after shaping.
+    shaped: BTreeMap<String, String>,
+    /// `nft -t list` of our table (plus the static sets) right after it was
+    /// applied. Any difference later is tampering.
+    baseline: Option<String>,
+    /// Tamper notes found between two [`Enforcer::reassert`] calls.
+    pending: Vec<String>,
+    /// The dynamic sets were lost; DNS answers have to be collected again.
+    reprime: bool,
+    /// Devices whose shaping failed, and when to try again. Keeps a failing
+    /// device from looping through `tc monitor` events.
+    retry_at: BTreeMap<String, Instant>,
+}
+
+const SHAPE_RETRY: Duration = Duration::from_secs(30);
+
+/// What [`Enforcer::reassert`] found and fixed.
+#[derive(Debug, Default)]
+pub struct Reasserted {
+    pub notes: Vec<String>,
+    pub reprime: bool,
 }
 
 impl Enforcer {
@@ -91,15 +114,108 @@ impl Enforcer {
         self.run("nft", &["-f", "-"], Some(&script)).map(drop)
     }
 
-    fn table_exists(&self) -> bool {
-        self.dry_run
-            || self
-                .run("nft", &["list", "table", nft::TABLE], None)
-                .is_ok()
+    /// Applies the ruleset and records its fingerprint.
+    fn install_ruleset(&mut self, profile: &Profile) -> Result<()> {
+        self.apply_ruleset(profile)?;
+        self.baseline = self.table_listing();
+        Ok(())
+    }
+
+    /// Our table without the contents of the dynamic sets, or `None` if it
+    /// is gone.
+    fn table_listing(&self) -> Option<String> {
+        let mut out = self
+            .run("nft", &["-t", "list", "table", nft::TABLE], None)
+            .ok()?;
+        for set in nft::STATIC_SETS {
+            out += &self
+                .run("nft", &["list", "set", nft::TABLE, set], None)
+                .ok()?;
+        }
+        Some(out)
+    }
+
+    /// Re-applies the table if it was removed or changed, keeping the
+    /// addresses learned so far. Returns a tamper note if it had to.
+    fn verify_table(&mut self) -> Result<Option<String>> {
+        let Some(profile) = self.active.clone() else {
+            return Ok(None);
+        };
+        let current = self.table_listing();
+        let note = match &current {
+            None => "nft table was removed",
+            Some(listing) if Some(listing) != self.baseline.as_ref() => "nft table was modified",
+            _ => return Ok(None),
+        };
+        let saved: Vec<(Action, Vec<(IpAddr, u32)>)> = if current.is_some() {
+            nft::DYNAMIC_SETS
+                .iter()
+                .map(|(set, action)| {
+                    let json = self
+                        .run("nft", &["-j", "list", "set", nft::TABLE, set], None)
+                        .unwrap_or_default();
+                    (*action, nft::parse_set_elements(&json))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        self.install_ruleset(&profile)?;
+        let mut restored = 0;
+        for (action, elems) in saved {
+            if let Some(script) = nft::render_add_timed(action, &elems)
+                && self.run("nft", &["-f", "-"], Some(&script)).is_ok()
+            {
+                restored += elems.len();
+            }
+        }
+        if restored == 0 {
+            self.reprime = true;
+        }
+        warn!("tamper: {note}; re-applied ({restored} addresses kept)");
+        Ok(Some(note.to_string()))
+    }
+
+    /// The tc setup of a shaped device and its IFB, as `tc` prints it.
+    fn tc_fingerprint(&self, dev: &str, ifb: &str) -> String {
+        let views: [&[&str]; 5] = [
+            &["qdisc", "show", "dev", dev],
+            &["filter", "show", "dev", dev],
+            &["filter", "show", "dev", dev, "ingress"],
+            &["qdisc", "show", "dev", ifb],
+            &["filter", "show", "dev", ifb],
+        ];
+        views
+            .iter()
+            .map(|args| {
+                self.run("tc", args, None)
+                    .unwrap_or_else(|e| format!("error: {e}"))
+            })
+            .collect()
+    }
+
+    /// Forgets devices whose tc setup changed, so the next
+    /// [`Enforcer::shape_new_devices`] shapes them again.
+    fn verify_tc(&mut self) {
+        if self.active.is_none() || self.dry_run {
+            return;
+        }
+        let present: BTreeMap<String, u32> = list_devices().into_iter().collect();
+        for (dev, fingerprint) in self.shaped.clone() {
+            let Some(ifindex) = present.get(&dev) else {
+                self.shaped.remove(&dev);
+                continue;
+            };
+            if self.tc_fingerprint(&dev, &tc::ifb_name(*ifindex)) != fingerprint {
+                warn!("tamper: tc setup on {dev} was changed");
+                self.pending.push(format!("tc setup on {dev} was changed"));
+                self.shaped.remove(&dev);
+            }
+        }
     }
 
     fn engage(&mut self, profile: Profile) -> Result<()> {
-        self.apply_ruleset(&profile)?;
+        self.install_ruleset(&profile)?;
         if self.manage_resolved {
             // resolved may use DNS-over-TLS, which the ruleset now blocks, so
             // it has to go through us. Restarting also empties its cache.
@@ -149,6 +265,10 @@ impl Enforcer {
 
     fn release(&mut self) -> Result<()> {
         self.active = None;
+        self.baseline = None;
+        self.pending.clear();
+        self.reprime = false;
+        self.retry_at.clear();
         if let Err(e) = self.set_stop_lock(false) {
             warn!("could not lift the manual stop lock: {e:#}");
         }
@@ -162,7 +282,7 @@ impl Enforcer {
             self.run("systemctl", &["restart", "systemd-resolved"], None)?;
         }
         // Also cleans up after a crash: any device with a dwifb twin is ours.
-        let mut devices = std::mem::take(&mut self.shaped);
+        let mut devices: BTreeSet<String> = std::mem::take(&mut self.shaped).into_keys().collect();
         for (dev, ifindex) in list_devices() {
             if Path::new("/sys/class/net")
                 .join(tc::ifb_name(ifindex))
@@ -191,15 +311,23 @@ impl Enforcer {
             return;
         };
         for (dev, ifindex) in list_devices() {
-            if !tc::should_shape(&dev) || self.shaped.contains(&dev) {
+            if !tc::should_shape(&dev) || self.shaped.contains_key(&dev) {
+                continue;
+            }
+            if self.retry_at.get(&dev).is_some_and(|t| Instant::now() < *t) {
                 continue;
             }
             match self.shape(&dev, ifindex, &profile) {
                 Ok(()) => {
                     debug!("shaping {dev}");
-                    self.shaped.insert(dev);
+                    self.retry_at.remove(&dev);
+                    let fingerprint = self.tc_fingerprint(&dev, &tc::ifb_name(ifindex));
+                    self.shaped.insert(dev, fingerprint);
                 }
-                Err(e) => warn!("could not shape {dev}: {e:#}"),
+                Err(e) => {
+                    warn!("could not shape {dev}: {e:#}");
+                    self.retry_at.insert(dev, Instant::now() + SHAPE_RETRY);
+                }
             }
         }
     }
@@ -210,6 +338,9 @@ impl Enforcer {
             self.run("ip", &["link", "add", &ifb, "type", "ifb"], None)?;
         }
         self.run("ip", &["link", "set", &ifb, "up"], None)?;
+        // An existing ingress filter makes `filter replace` fail with "File
+        // exists", so a partly removed setup could never be repaired.
+        let _ = self.run("tc", &["qdisc", "del", "dev", dev, "clsact"], None);
         self.run(
             "tc",
             &["-batch", "-"],
@@ -218,38 +349,21 @@ impl Enforcer {
         .map(drop)
     }
 
-    /// Puts back anything that was removed. Returns a note per repair, which
-    /// the caller records as tampering.
-    fn reassert(&mut self) -> Result<Vec<String>> {
-        let Some(profile) = self.active.clone() else {
-            return Ok(Vec::new());
-        };
-        let mut notes = Vec::new();
-        if !self.table_exists() {
-            notes.push("nft table was removed".to_string());
-            self.apply_ruleset(&profile)?;
+    /// Puts back anything that was removed or changed. Returns the tamper
+    /// notes found since the last call, including those from the watchers.
+    fn reassert(&mut self) -> Result<Reasserted> {
+        if self.active.is_none() {
+            return Ok(Reasserted::default());
         }
-        if !self.dry_run {
-            let present: BTreeSet<String> = list_devices().into_iter().map(|(d, _)| d).collect();
-            let missing: Vec<String> = self
-                .shaped
-                .iter()
-                .filter(|dev| present.contains(*dev))
-                .filter(|dev| {
-                    self.run("tc", &["qdisc", "show", "dev", dev.as_str(), "root"], None)
-                        .map(|out| !out.contains("d000:"))
-                        .unwrap_or(true)
-                })
-                .cloned()
-                .collect();
-            for dev in missing {
-                notes.push(format!("tc setup on {dev} was removed"));
-                self.shaped.remove(&dev);
-            }
-            self.shaped.retain(|d| present.contains(d));
+        if let Some(note) = self.verify_table()? {
+            self.pending.push(note);
         }
+        self.verify_tc();
         self.shape_new_devices();
-        Ok(notes)
+        Ok(Reasserted {
+            notes: std::mem::take(&mut self.pending),
+            reprime: std::mem::take(&mut self.reprime),
+        })
     }
 
     fn add_addrs(&self, action: Action, addrs: &[IpAddr], timeout_secs: u32) {
@@ -261,6 +375,71 @@ impl Enforcer {
         {
             warn!("adding addresses failed: {e:#}");
         }
+    }
+}
+
+/// One flag per watcher: set while its check is queued, so a burst of events
+/// (`nft flush ruleset` prints dozens of lines) queues one check.
+#[derive(Default)]
+struct Flags {
+    nft: Arc<AtomicBool>,
+    tc: Arc<AtomicBool>,
+    link: Arc<AtomicBool>,
+}
+
+/// Runs a `* monitor` command for the life of the daemon and turns matching
+/// output lines into enforcer commands. Restarts it if it exits.
+fn spawn_watch(
+    argv: &'static [&'static str],
+    tx: mpsc::UnboundedSender<Cmd>,
+    queued: Arc<AtomicBool>,
+    cmd: fn() -> Cmd,
+    matches: fn(&str) -> bool,
+) {
+    let name = argv.join(" ");
+    let spawned = std::thread::Builder::new()
+        .name(format!("watch {}", argv[0]))
+        .spawn(move || {
+            loop {
+                let mut command = Command::new(argv[0]);
+                command
+                    .args(&argv[1..])
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::null());
+                // SAFETY: prctl is async-signal-safe. The monitor dies with
+                // this thread, which lives as long as the daemon.
+                unsafe {
+                    use std::os::unix::process::CommandExt as _;
+                    command.pre_exec(|| {
+                        libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM);
+                        Ok(())
+                    });
+                }
+                match command.spawn() {
+                    Ok(mut child) => {
+                        let stdout = child.stdout.take().expect("piped stdout");
+                        for line in BufReader::new(stdout).lines() {
+                            let Ok(line) = line else { break };
+                            if matches(&line) && !queued.swap(true, Ordering::SeqCst) {
+                                debug!("{name}: {line}");
+                                if tx.send(cmd()).is_err() {
+                                    let _ = child.kill();
+                                    return;
+                                }
+                            }
+                        }
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        warn!("`{name}` exited; restarting it");
+                    }
+                    Err(e) => warn!("cannot run `{name}`: {e}"),
+                }
+                std::thread::sleep(Duration::from_secs(5));
+            }
+        });
+    if let Err(e) = spawned {
+        warn!("cannot start the `{}` watcher: {e}", argv.join(" "));
     }
 }
 
@@ -282,7 +461,13 @@ fn list_devices() -> Vec<(String, u32)> {
 enum Cmd {
     Engage(Profile, oneshot::Sender<Result<()>>),
     Release(oneshot::Sender<Result<()>>),
-    Reassert(oneshot::Sender<Result<Vec<String>>>),
+    Reassert(oneshot::Sender<Result<Reasserted>>),
+    /// `nft monitor` saw a change to our table.
+    CheckNft,
+    /// `tc monitor` saw a qdisc or filter change.
+    CheckTc,
+    /// `ip monitor link` saw a device appear or change.
+    Rescan,
     AddAddrs {
         action: Action,
         addrs: Vec<IpAddr>,
@@ -304,8 +489,36 @@ impl EnforcerHandle {
             manage_resolved,
             under_systemd: std::env::var_os("INVOCATION_ID").is_some(),
             active: None,
-            shaped: BTreeSet::new(),
+            shaped: BTreeMap::new(),
+            baseline: None,
+            pending: Vec::new(),
+            reprime: false,
+            retry_at: BTreeMap::new(),
         };
+        let flags = Flags::default();
+        if !dry_run {
+            spawn_watch(
+                &["nft", "monitor", "ruleset"],
+                tx.clone(),
+                flags.nft.clone(),
+                || Cmd::CheckNft,
+                nft::monitor_line_is_ours,
+            );
+            spawn_watch(
+                &["tc", "monitor"],
+                tx.clone(),
+                flags.tc.clone(),
+                || Cmd::CheckTc,
+                |_| true,
+            );
+            spawn_watch(
+                &["ip", "monitor", "link"],
+                tx.clone(),
+                flags.link.clone(),
+                || Cmd::Rescan,
+                |_| true,
+            );
+        }
         std::thread::Builder::new()
             .name("enforcer".into())
             .spawn(move || {
@@ -314,6 +527,23 @@ impl EnforcerHandle {
                         Cmd::Engage(profile, reply) => drop(reply.send(enforcer.engage(profile))),
                         Cmd::Release(reply) => drop(reply.send(enforcer.release())),
                         Cmd::Reassert(reply) => drop(reply.send(enforcer.reassert())),
+                        Cmd::CheckNft => {
+                            flags.nft.store(false, Ordering::SeqCst);
+                            match enforcer.verify_table() {
+                                Ok(Some(note)) => enforcer.pending.push(note),
+                                Ok(None) => {}
+                                Err(e) => warn!("re-applying the nft table failed: {e:#}"),
+                            }
+                        }
+                        Cmd::CheckTc => {
+                            flags.tc.store(false, Ordering::SeqCst);
+                            enforcer.verify_tc();
+                            enforcer.shape_new_devices();
+                        }
+                        Cmd::Rescan => {
+                            flags.link.store(false, Ordering::SeqCst);
+                            enforcer.shape_new_devices();
+                        }
                         Cmd::AddAddrs {
                             action,
                             addrs,
@@ -342,7 +572,7 @@ impl EnforcerHandle {
         self.call(Cmd::Release).await
     }
 
-    pub async fn reassert(&self) -> Result<Vec<String>> {
+    pub async fn reassert(&self) -> Result<Reasserted> {
         self.call(Cmd::Reassert).await
     }
 

@@ -489,10 +489,16 @@ impl Core {
         if now - self.last_reassert >= REASSERT_EVERY {
             self.last_reassert = now;
             match self.enforcer.reassert().await {
-                Ok(notes) => {
-                    for note in notes {
+                Ok(found) => {
+                    for note in &found.notes {
                         warn!("tamper: {note}");
-                        self.log(Some(id), EventKind::Tamper, &note);
+                        self.log(Some(id), EventKind::Tamper, note);
+                    }
+                    if found.reprime
+                        && let Some(session) = &self.session
+                    {
+                        let profile = self.profile_for(&session.profile);
+                        self.activate_dns(&profile);
                     }
                 }
                 Err(e) => {

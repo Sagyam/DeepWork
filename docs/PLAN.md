@@ -40,7 +40,8 @@ design goal is:
 | Hardcoded DNS server (`dig @8.8.8.8`) | nft redirects all port 53 to our resolver; port 853 dropped | 1 |
 | DNS-over-HTTPS in the browser | Known DoH IPs dropped; `use-application-dns.net` canary; managed browser policies | 1 / 2 |
 | HTTP/3 (QUIC) | UDP 443 dropped during sessions, browsers fall back to TCP | 1 |
-| `sudo nft flush ruleset` | Periodic re-assert + tamper event; later `nft monitor` and a PAM sudo lock | 1 / 2 |
+| `sudo nft flush ruleset` | Periodic re-assert + tamper event; `nft monitor` repairs within a second; PAM sudo lock | 1 / 2 |
+| Delete or insert one nft rule, edit one tc qdisc / filter | Fingerprints (`nft -t list table` + DoH sets, `tc ... show` per device) taken after applying; any difference is re-applied and logged | 2 |
 | `systemctl stop deepworkd` | `RefuseManualStop=yes` during sessions, polkit rule | 2 |
 | `sudo` anything | PAM hook denies sudo / su / polkit auth during sessions, also with cached credentials | 2 |
 | `pkexec`, `run0`, cached polkit approval | polkit rule asks the daemon for systemd1, resolve1 and pkexec actions | 2 |
@@ -161,6 +162,19 @@ rules (stopwatch minimum, surrender).
 7. Docker containers resolve through resolved's extra stub (`172.17.0.1`), so
    they are covered too. Containers with a hardcoded `--dns` on the default
    bridge are a known gap (forwarded port 53 is not redirected yet).
+
+Tamper watch (phase 2): `nft monitor ruleset`, `tc monitor` and
+`ip monitor link` run for the life of the daemon. A matching line queues one
+check (bursts coalesce); the check compares fingerprints and repairs. When the
+table is re-applied, addresses in the dynamic sets are saved from
+`nft -j list set` and restored with their remaining timeouts; if they are lost
+(table deleted) the rule domains are primed again. A device whose shaping
+fails is retried after 30s, so a failure cannot loop through `tc monitor`.
+Re-shaping clears `clsact` first (a leftover ingress filter made
+`filter replace` fail, so a partly removed setup was never repaired before).
+Verified in `unshare -rnm` with the real daemon: rule delete, accept insert,
+`nft flush ruleset`, root / clsact / fw filter / netem / IFB edits are all
+repaired within a second; a new dummy interface is shaped within a second.
 
 Verified in a throwaway user + network namespace (`unshare -rn`, veth pair,
 HTTP server): a 400 KB download goes from 2 ms to 14.5 s once the server IP is
@@ -297,10 +311,10 @@ Anything that needs root has to be installed by the user with
       on time and lifted the throttle
 - [x] PAM sudo lock (`pam_exec` querying the daemon, fail open). Covers sudo, su, su-l and polkit-1 (pkexec, run0, systemctl password prompts)
 - [x] polkit rule; `RefuseManualStop=yes` (runtime drop-in, only during sessions)
-- [ ] `nft monitor` based tamper detection
+- [x] `nft monitor` based tamper detection (plus `tc monitor`; fingerprints catch partial edits)
 - [ ] Config changes through the daemon only; 24h delay for loosening
 - [ ] Re-apply browser policies at session start (Zen package updates overwrite `policies.json`); ECH off for phase 4
-- [ ] netlink link watch instead of periodic interface scan
+- [x] Link watch instead of periodic interface scan (`ip monitor link`, kept to CLIs like the rest)
 - [ ] DoT connection reuse (one TLS handshake per query today)
 - [ ] Truncate UDP answers larger than the client's EDNS size
 - [ ] Redirect forwarded port 53 from containers / VMs

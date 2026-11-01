@@ -114,8 +114,25 @@ table {TABLE} {{
     )
 }
 
+/// Sets filled from DNS answers, with the action they enforce.
+pub const DYNAMIC_SETS: [(&str, Action); 4] = [
+    ("slow_v4", Action::Throttle),
+    ("slow_v6", Action::Throttle),
+    ("block_v4", Action::Block),
+    ("block_v6", Action::Block),
+];
+
+/// Static sets whose contents are part of the tamper fingerprint.
+pub const STATIC_SETS: [&str; 2] = ["doh_v4", "doh_v6"];
+
 /// `nft -f` script adding resolved addresses to the matching sets.
 pub fn render_add_elements(action: Action, addrs: &[IpAddr], timeout_secs: u32) -> Option<String> {
+    let timed: Vec<(IpAddr, u32)> = addrs.iter().map(|a| (*a, timeout_secs)).collect();
+    render_add_timed(action, &timed)
+}
+
+/// Like [`render_add_elements`], with a timeout per address.
+pub fn render_add_timed(action: Action, addrs: &[(IpAddr, u32)]) -> Option<String> {
     let prefix = match action {
         Action::Throttle => "slow",
         Action::Block => "block",
@@ -124,8 +141,8 @@ pub fn render_add_elements(action: Action, addrs: &[IpAddr], timeout_secs: u32) 
     for (family, is_v4) in [("v4", true), ("v6", false)] {
         let elems: Vec<String> = addrs
             .iter()
-            .filter(|a| a.is_ipv4() == is_v4)
-            .map(|a| format!("{a} timeout {timeout_secs}s"))
+            .filter(|(a, _)| a.is_ipv4() == is_v4)
+            .map(|(a, t)| format!("{a} timeout {}s", (*t).max(1)))
             .collect();
         if !elems.is_empty() {
             let _ = writeln!(
@@ -136,6 +153,33 @@ pub fn render_add_elements(action: Action, addrs: &[IpAddr], timeout_secs: u32) 
         }
     }
     (!out.is_empty()).then_some(out)
+}
+
+/// Addresses and seconds left from `nft -j list set`.
+pub fn parse_set_elements(json: &str) -> Vec<(IpAddr, u32)> {
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
+    let sets = doc["nftables"].as_array().into_iter().flatten();
+    sets.filter_map(|item| item["set"]["elem"].as_array())
+        .flatten()
+        .filter_map(|e| {
+            let elem = &e["elem"];
+            let ip = elem["val"].as_str()?.parse().ok()?;
+            let left = elem["expires"].as_u64().or(elem["timeout"].as_u64())?;
+            Some((ip, u32::try_from(left).unwrap_or(u32::MAX)))
+        })
+        .collect()
+}
+
+/// True for `nft monitor` lines that change our table's structure. Element
+/// changes are ignored: the daemon adds them all the time and they expire.
+pub fn monitor_line_is_ours(line: &str) -> bool {
+    line.split_whitespace()
+        .collect::<Vec<_>>()
+        .windows(2)
+        .any(|w| w == ["inet", "deepwork"])
+        && !line.contains(" element ")
 }
 
 #[cfg(test)]
@@ -170,5 +214,38 @@ mod tests {
              add element inet deepwork block_v6 { 2001:db8::1 timeout 60s }\n"
         );
         assert!(render_add_elements(Action::Throttle, &[], 60).is_none());
+    }
+
+    #[test]
+    fn parses_set_listing() {
+        let json = r#"{"nftables": [{"metainfo": {"version": "1.1.7"}}, {"set": {"family": "inet",
+            "name": "slow_v4", "table": "deepwork", "type": "ipv4_addr", "flags": ["timeout"],
+            "elem": [{"elem": {"val": "1.2.3.4", "timeout": 3600, "expires": 3599}},
+                     {"elem": {"val": "5.6.7.8", "timeout": 60, "expires": 59}}]}}]}"#;
+        assert_eq!(
+            parse_set_elements(json),
+            [
+                ("1.2.3.4".parse().unwrap(), 3599),
+                ("5.6.7.8".parse().unwrap(), 59)
+            ]
+        );
+        assert!(parse_set_elements("{}").is_empty());
+        assert!(parse_set_elements("garbage").is_empty());
+    }
+
+    #[test]
+    fn monitor_filter() {
+        assert!(monitor_line_is_ours(
+            "delete rule inet deepwork enforce handle 22"
+        ));
+        assert!(monitor_line_is_ours(
+            "insert rule inet deepwork enforce accept"
+        ));
+        assert!(monitor_line_is_ours("delete table inet deepwork"));
+        assert!(!monitor_line_is_ours(
+            "add element inet deepwork slow_v4 { 9.9.9.9 timeout 1m expires 1m }"
+        ));
+        assert!(!monitor_line_is_ours("add rule inet filter input accept"));
+        assert!(!monitor_line_is_ours("add table inet deepworkx"));
     }
 }
