@@ -151,9 +151,9 @@ impl Default for SessionConfig {
 impl Default for Throttle {
     fn default() -> Self {
         Self {
-            rtt_ms: 300,
+            rtt_ms: 400,
             jitter_ms: 50,
-            rate_kbit: 512,
+            rate_kbit: 256,
             loss_pct: 0.0,
         }
     }

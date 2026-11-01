@@ -134,14 +134,17 @@ Verified in a throwaway user + network namespace (`unshare -rn`, veth pair,
 HTTP server): a 400 KB download goes from 2 ms to 14.5 s once the server IP is
 in `slow_v4`, and fails outright in `block_v4`.
 
-Throttle defaults (profile "deep"): +300ms RTT, 50ms jitter, 512 kbit/s, no
+Throttle defaults (profile "deep"): +400ms RTT, 50ms jitter, 256 kbit/s, no
 loss, 1 second netem queue. The goal is a **subtle nudge, not a ban**: pages
-still load, just slowly, and video settles around 240p with occasional
-buffering. History: the first real run (+800ms, 128 kbit/s, 2% loss, 2s
-queue) felt like a full block. TCP throughput with loss is roughly
-`MSS / RTT * 1.22 / sqrt(loss)`, about 126 kbit/s there, so loss plus delay
-was the real limit. The new values are an educated guess, not yet tried on
-real sites.
+still load, just slowly, and 240p video buffers now and then.
+
+Real-world data points (YouTube "stats for nerds", user's machine):
+
+| Setting | Result |
+|---|---|
+| 128 kbit/s, +800ms, 2% loss, 2s queue | Felt like a full block. Loss + delay hold TCP to ~126 kbit/s (`MSS / RTT * 1.22 / sqrt(loss)`) |
+| 512 kbit/s, +300ms, no loss, 1s queue | ~400 kbit/s, 480p plays comfortably. Too lenient |
+| 256 kbit/s, +400ms, no loss, 1s queue | Current default, not yet tried |
 
 ### Session model
 
@@ -197,9 +200,9 @@ Keep assets minimal (procedural shapes) until the rules feel right.
 ## Next session: start here
 
 1. Ask the user to re-run `./dist/install.sh` (needs their sudo password). That
-   installs the `Type=notify` fix and the gentler throttle (512 kbit/s, +300ms),
-   then they try `deepwork start 5m --profile trial` and report whether 240p
-   video plays with occasional buffering. Tune `Throttle::default` from that.
+   installs the 256 kbit/s throttle. They try `deepwork start 5m --profile
+   trial` and report whether 240p video buffers now and then while pages still
+   load. Tune `Throttle::default` from the table above.
 2. Then phase 2, starting with routines + the user agent (notifications,
    Waybar), then the PAM sudo lock and `RefuseManualStop`.
 

@@ -29,7 +29,7 @@ surrender_wait_secs = 600
 [profiles.deep]
 block_quic = true
 # Added round-trip time (split across both directions), jitter, bandwidth cap.
-throttle = { rtt_ms = 300, jitter_ms = 50, rate_kbit = 512, loss_pct = 0.0 }
+throttle = { rtt_ms = 400, jitter_ms = 50, rate_kbit = 256, loss_pct = 0.0 }
 rules = [
     { domain = "youtube.com" },
     { domain = "youtu.be" },
