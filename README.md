@@ -23,7 +23,7 @@ Distracting sites slow to a crawl at the network layer, routines start sessions 
 ![enforcement](https://img.shields.io/badge/enforcement-nftables_+_tc-e0a63f)
 ![status](https://img.shields.io/badge/status-phases_1--4_done-e0a63f)
 
-<img src="assets/demo.gif" width="800" alt="A tower rises in the city, then collapses when a session is abandoned">
+<img src="assets/demo.webp" width="720" alt="Set a timer, watch a hamlet grow into a metropolis, see a tower fall when you quit, then the stats and site lists">
 
 </div>
 

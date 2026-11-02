@@ -80,7 +80,20 @@ deepwork config import backup.json
 
 ## README media
 
-The screenshots and `assets/demo.gif` come from the mock UI in headless
-Chromium (Playwright, SwiftShader), 1280x800, `&hour=16`. The GIF is
-`city.demo("build")` then `city.demo("collapse")` on `?mock=city`, encoded with
-ffmpeg at 8 fps, 640 px wide.
+Screenshots and `assets/demo.webp` come from the mock UI in headless Chromium
+(Playwright), 1280x800, `&hour=16`. Launch it on the real GPU
+(`--use-angle=gl --ignore-gpu-blocklist`); SwiftShader manages ~3 fps.
+
+The demo is a montage, captured frame by frame with `page.clock.install()` and
+`clock.runFor(100)` between screenshots (10 fps, no dropped frames):
+
+| Clip | Scenario | Action |
+|---|---|---|
+| Set a timer | `hamlet` | drag `.clockdial` from 30 to 50 min, click Start focus |
+| Growth | `hamlet`, `city`, `metropolis` | 1.6 s each |
+| Collapse | `surrender` | `city.demo("collapse")` |
+| Settings | `metropolis` | cog, then Stats, then Site lists |
+
+ffmpeg adds a caption per clip (`drawtext`, Noto Sans Bold 40 px), joins them
+with 0.3 s `xfade`s, and encodes an animated WebP at 720 px, quality 55
+(about 6 MB; the swaying trees make GIF 2-3x larger).
