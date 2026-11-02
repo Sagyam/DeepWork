@@ -127,6 +127,7 @@ const ROLES: Record<string, RoleLook> = {
   grate: { color: 0x4a4c50, rough: 0.6, metal: 0.5 },
   birch: { color: 0xe8e4dc, rough: 0.9 },
   carglass: { color: 0x1a2028, rough: 0.1, metal: 0.6 },
+  steel: { color: 0x3e5a52, rough: 0.5, metal: 0.5 },
   led: { color: 0x9ab0c8, rough: 0.3, metal: 0.2, emissive: 0xd8ecff, night: 2 },
 };
 
@@ -181,6 +182,9 @@ function paneMat(kind: Pane, color: number, damage: number): THREE.MeshStandardM
 }
 
 type Look = (role: string) => THREE.MeshStandardMaterial;
+
+/** The plain material for a kit role (bridges, street furniture). */
+export const kitLook: Look = (role) => kitMat(ROLES[role] ?? ROLES.metal, 0);
 
 /** Materials for a building's roles; night-lit ones are collected in info. */
 function looks(s: Spec, info: ModelInfo): Look {
@@ -310,7 +314,7 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
 
 const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
 
-export function tree(p: Parts, x: number, z: number, s: number, seed: number) {
+export function tree(p: Parts, x: number, z: number, s: number, seed: number, y = 0) {
   const r = rng(seed);
   const name = TREES[Math.floor(r() * TREES.length)];
   const leaf = kitMat({ color: LEAVES[Math.floor(r() * LEAVES.length)], rough: 0.9 }, 0);
@@ -322,7 +326,7 @@ export function tree(p: Parts, x: number, z: number, s: number, seed: number) {
   };
   const scale = new THREE.Vector3(s, s * (0.85 + r() * 0.3), s);
   const ry = r() * Math.PI * 2;
-  for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, 0, z, 0, ry, 0, scale);
+  for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, y, z, 0, ry, 0, scale);
 }
 
 export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {

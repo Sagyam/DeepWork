@@ -54,6 +54,7 @@ PREVIEW_COLORS = {
     "blossom": (0.95, 0.65, 0.75), "led": (0.8, 0.9, 1.0), "body": (0.7, 0.1, 0.1),
     "carglass": (0.08, 0.1, 0.13), "tyre": (0.05, 0.05, 0.05), "chrome": (0.8, 0.8, 0.82),
     "headlight": (1, 0.95, 0.8), "taillight": (0.8, 0.05, 0.05), "taxisign": (1, 0.85, 0.2),
+    "steel": (0.25, 0.4, 0.35), "rock": (0.5, 0.48, 0.44),
     "skin": (0.8, 0.6, 0.45), "shirt": (0.2, 0.4, 0.7), "pants": (0.15, 0.15, 0.2), "hair": (0.15, 0.1, 0.05),
 }
 CELL_ROLES = {"window", "glass"}
@@ -1413,6 +1414,100 @@ def person():
     m.blob("hair", (0, 0.025, 1.66), (0.12, 0.125, 0.1), sub=1)
 
 
+# ---- countryside ------------------------------------------------------------
+# Cheap pieces drawn thousands of times around the city: keep them to a few
+# dozen triangles.
+
+
+def forest_broadleaf():
+    m = Mod("forest_a", ground=True, ao=2.5)
+    m.cyl("bark", 0, 0, 0, 0.22, 0.14, 2.2, seg=5, smooth=False)
+    m.blob("leaf", (0, 0, 3.2), (1.6, 1.6, 1.35), sub=1, jitter=0.18)
+    m.blob("leaf", (0.5, 0.3, 4.2), (1.05, 1.05, 0.9), sub=1, jitter=0.12)
+
+
+def forest_conifer():
+    m = Mod("forest_b", ground=True, ao=2.5)
+    m.cyl("bark", 0, 0, 0, 0.2, 0.12, 1.2, seg=5, smooth=False)
+    m.cyl("leaf", 0, 0, 0.9, 1.7, 0.1, 3.0, seg=7, smooth=False, jitter=0.12)
+    m.cyl("leaf", 0, 0, 2.9, 1.15, 0.0, 2.8, seg=7, smooth=False, M=Matrix.Rotation(0.4, 4, "Z"), jitter=0.08)
+
+
+def forest_emergent():
+    """A tall rainforest tree: bare trunk, wide flat crown above the canopy."""
+    m = Mod("forest_c", ground=True, ao=3.0)
+    m.cyl("bark", 0, 0, 0, 0.35, 0.16, 7.5, seg=6, smooth=False)
+    for end in ((1.6, 0.4, 7.6), (-1.4, 0.6, 7.8), (0.2, -1.5, 7.5)):
+        branch(m, "bark", (0, 0, 6.2), end, 0.12)
+    for c, s in (((0, 0, 8.3), (2.6, 2.4, 0.9)), ((1.5, 0.5, 7.9), (1.4, 1.3, 0.7)), ((-1.3, 0.7, 8.0), (1.5, 1.4, 0.7)), ((0.2, -1.4, 7.8), (1.3, 1.3, 0.65))):
+        m.blob("leaf", c, s, sub=1, jitter=0.15)
+
+
+def forest_bush():
+    """Undergrowth and round crowns that fill the canopy."""
+    m = Mod("forest_d", ground=True, ao=2.0)
+    m.cyl("bark", 0, 0, 0, 0.16, 0.1, 1.0, seg=5, smooth=False)
+    for c, s in (((0, 0, 1.5), (1.5, 1.4, 1.2)), ((1.0, 0.4, 1.1), (1.0, 0.9, 0.85)), ((-0.9, -0.3, 1.2), (1.0, 1.0, 0.9))):
+        m.blob("leaf", c, s, sub=1, jitter=0.14)
+
+
+def forest_far():
+    """A clump of canopy for distant woods: no trunk, two blobs."""
+    m = Mod("forest_e", ground=True, ao=2.5)
+    m.blob("leaf", (0, 0, 1.6), (1.7, 1.6, 1.3), sub=1, jitter=0.2)
+    m.blob("leaf", (0.7, 0.4, 2.4), (1.1, 1.1, 0.9), sub=1, jitter=0.15)
+
+
+def rock(name, seed_scale):
+    m = Mod(name, ground=True, ao=1.5)
+    m.blob("rock", (0, 0, 0.35 * seed_scale[2]), seed_scale, sub=1, jitter=0.18)
+
+
+def bridge():
+    """A steel truss road bridge, 44 m along x, deck top at road level."""
+    m = Mod("bridge", ao=3.0)
+    L, W, H, panels = 44.0, 11.0, 5.5, 11
+    m.box("concrete", -L / 2, -W / 2, -0.8, L / 2, W / 2, 0.06, bevel=0.04)
+    m.face("deck", [(-L / 2, -W / 2 + 1.4, 0.065), (L / 2, -W / 2 + 1.4, 0.065), (L / 2, W / 2 - 1.4, 0.065), (-L / 2, W / 2 - 1.4, 0.065)], out=Z)
+    for sy in (-1, 1):
+        m.box("concrete", -L / 2, min(sy * W / 2, sy * (W / 2 - 1.4)), 0.06, L / 2, max(sy * W / 2, sy * (W / 2 - 1.4)), 0.24)
+    # Under the deck: girders and cross beams.
+    for y in (-W / 2 + 1.5, 0, W / 2 - 1.5):
+        m.box("steel", -L / 2, y - 0.2, -1.6, L / 2, y + 0.2, -0.8)
+    step = L / panels
+    for sy in (-1, 1):
+        y = sy * (W / 2 - 0.15)
+        m.box("steel", -L / 2, y - 0.2, 0.0, L / 2, y + 0.2, 0.55)
+        m.box("steel", -L / 2 + step, y - 0.2, H - 0.45, L / 2 - step, y + 0.2, H)
+        for i in range(panels):
+            x0, x1 = -L / 2 + i * step, -L / 2 + (i + 1) * step
+            top0, top1 = max(-L / 2 + step, min(L / 2 - step, x0)), max(-L / 2 + step, min(L / 2 - step, x1))
+            if i == 0:
+                m.strut("steel", (x0, y, 0.3), (x1, y, H - 0.2), 0.32)
+            elif i == panels - 1:
+                m.strut("steel", (x0, y, H - 0.2), (x1, y, 0.3), 0.32)
+            else:
+                a, b = ((x0, y, 0.3), (x1, y, H - 0.2)) if i % 2 else ((x0, y, H - 0.2), (x1, y, 0.3))
+                m.strut("steel", a, b, 0.24)
+                m.strut("steel", (x1, y, 0.3), (x1, y, H - 0.2), 0.16)
+        m.strut("metal", (-L / 2, y - sy * 0.35, 1.0), (L / 2, y - sy * 0.35, 1.0), 0.08)
+    for i in range(1, panels):
+        x = -L / 2 + i * step
+        m.strut("steel", (x, -W / 2 + 0.15, H - 0.2), (x, W / 2 - 0.15, H - 0.2), 0.18)
+        if i < panels - 1:
+            m.strut("steel", (x, -W / 2 + 0.15, H - 0.2), (x + step, W / 2 - 0.15, H - 0.2), 0.1)
+    for sx in (-1, 1):
+        x = sx * (L / 2 - step)
+        m.box("steel", x - 0.25, -W / 2 + 0.1, H - 1.4, x + 0.25, W / 2 - 0.1, H - 0.45)
+        # Stone abutments down into the banks.
+        x0, x1 = sorted((sx * L / 2, sx * (L / 2 - 3.5)))
+        m.box("stone", x0, -W / 2 - 0.6, -6.0, x1, W / 2 + 0.6, -0.8, skip="b", bevel=0.05)
+        for sy in (-1, 1):
+            m.box("stone", sx * L / 2 - 0.5, sy * (W / 2 + 0.1) - 0.5, 0.0, sx * L / 2 + 0.5, sy * (W / 2 + 0.1) + 0.5, 1.6, bevel=0.04)
+            m.cyl("metal", sx * L / 2, sy * (W / 2 + 0.1), 1.6, 0.06, 0.06, 2.2, seg=6)
+            m.box("shopfront", sx * L / 2 - 0.18, sy * (W / 2 + 0.1) - 0.18, 3.8, sx * L / 2 + 0.18, sy * (W / 2 + 0.1) + 0.18, 4.15)
+
+
 # ---- trees ------------------------------------------------------------------
 
 
@@ -1630,6 +1725,14 @@ def build():
     tree_bush()
     tree_birch()
     tree_cherry()
+    forest_broadleaf()
+    forest_conifer()
+    forest_emergent()
+    forest_bush()
+    forest_far()
+    rock("rock_a", (1.2, 1.0, 0.8))
+    rock("rock_b", (0.9, 1.3, 1.1))
+    bridge()
 
 
 def preview(objs, path):

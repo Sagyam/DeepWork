@@ -333,7 +333,7 @@ TypeScript + three.js frontend, built with bun.
     landmark (three tiers, gold trim and crown, spire, beacon). Empty lots
     of a block are staked out with tape; countryside trees grow with the tier.
   - Kit (`ui/blender/city_kit.py`, run with `bun run kit`; made with
-    Blender 5.2): writes `ui/public/city-kit.glb` (66 pieces, ~3.2 MB). Modular
+    Blender 5.2): writes `ui/public/city-kit.glb` (74 pieces, ~3.4 MB). Modular
     pieces per kind: ground storey, floor storeys, roof. Styles: four
     cottages (gable, hip, front gable with porch, bay window under a gambrel
     with dormers); shops (two shopfronts with awnings, a café with arched
@@ -373,6 +373,13 @@ TypeScript + three.js frontend, built with bun.
     moonlight at night, shadows, ACES tone mapping, bloom on lit windows,
     lamps and beacons, fog. Orbit camera (drag / zoom), slow auto-rotate after
     30s idle, framed to the city's size.
+  - Countryside: `city/terrain.ts` (pure, unit tested) is the land itself —
+    low swells out of town, wooded foothills and a ring of peaks, a river in
+    a floodplain with a lake, and a road graded over the hills to the truss
+    bridge. `city/land.ts` builds it: one flat-shaded facet per triangle,
+    coloured by height, slope, forest cover and water's edge, with forests
+    instanced from the kit (real trees up close, canopy clumps further out)
+    plus scrub and boulders, so the city sits in jungle rather than on a lawn.
   - Street life (`city/traffic.ts`): cars, vans, taxis and buses (tier 2+)
     loop each block in the right-hand lane, evenly spaced at one speed per
     loop so they never collide; pedestrians walk the pavement both ways.

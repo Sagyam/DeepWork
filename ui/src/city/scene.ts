@@ -15,7 +15,10 @@ import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
 import { Traffic } from "./traffic";
-import { building, mat, Parts, rubble, site, tree, type ModelInfo } from "./models";
+import { Land } from "./land";
+import { piece } from "./kit";
+import { RADIUS, ROAD_Z, WATER } from "./terrain";
+import { building, kitLook, mat, Parts, rubble, site, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
@@ -56,7 +59,7 @@ export class City {
   private stars: THREE.Points;
   private sunLight = new THREE.DirectionalLight(0xffffff, 3);
   private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x4a5a3a, 1);
-  private grass: THREE.Mesh;
+  private land = new Land();
   private fx = new Fx();
   private traffic = new Traffic();
 
@@ -141,11 +144,8 @@ export class City {
     this.sunLight.shadow.normalBias = 0.6;
     this.scene.add(this.sunLight, this.sunLight.target, this.hemi);
 
-    this.grass = new THREE.Mesh(new THREE.CircleGeometry(2500, 48), new THREE.MeshStandardMaterial({ color: 0x5f8a45, roughness: 1 }));
-    this.grass.rotation.x = -Math.PI / 2;
-    this.grass.receiveShadow = true;
-    this.scene.add(this.grass, this.base, this.fx.group, this.traffic.group);
-    this.scene.fog = new THREE.Fog(0xb8c8d8, 400, 1800);
+    this.scene.add(this.land.group, this.base, this.fx.group, this.traffic.group);
+    this.scene.fog = new THREE.Fog(0xb8c8d8, 350, 3600);
 
     this.composer = new EffectComposer(r);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
@@ -450,11 +450,45 @@ export class City {
       const r = rng(l.seed);
       if (r() < 0.35) tree(parts, l.x + (r() - 0.5) * 6, l.z + (r() - 0.5) * 6, 0.8 + r() * 0.4, l.seed);
     }
-    for (const t of p.trees) tree(parts, t.x, t.z, t.s * 1.3, t.seed);
+    this.land.build(p);
+    const ground = this.land.shape;
+    for (const t of p.trees) {
+      const y = ground.height(t.x, t.z);
+      if (y > WATER + 1.2 && Math.abs(t.z - ROAD_Z) > 7) tree(parts, t.x, t.z, t.s * 1.3, t.seed, y - 0.1);
+    }
     // Roads out of town, along the street north of the first block row.
-    const { minX, maxX } = p.bounds;
-    parts.box(asphalt, 400, 0.05, ROAD, maxX + 200, 0, -PITCH_Z / 2);
-    parts.box(asphalt, 400, 0.05, ROAD, minX - 200, 0, -PITCH_Z / 2);
+    // ... all the way to the mountains, over the river on a truss bridge.
+    // The bed follows the land, so the road climbs the hills instead of
+    // slicing a flat corridor through them.
+    const { x: bx, z: bz } = ground.bridge;
+    const ribbon = (x0: number, x1: number) => {
+      const n = Math.max(2, Math.ceil((x1 - x0) / 8));
+      const pos: number[] = [];
+      const idx: number[] = [];
+      for (let i = 0; i <= n; i++) {
+        const x = x0 + ((x1 - x0) * i) / n;
+        const y = ground.height(x, ROAD_Z) + 0.045;
+        pos.push(x, y, ROAD_Z - ROAD / 2, x, y, ROAD_Z + ROAD / 2);
+      }
+      for (let i = 0; i < n; i++) {
+        const a = i * 2;
+        idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setIndex(idx);
+      g.computeVertexNormals();
+      const mesh = new THREE.Mesh(g, asphalt);
+      mesh.receiveShadow = true;
+      this.base.add(mesh);
+    };
+    ribbon(bx + 15, RADIUS - 1);
+    ribbon(-RADIUS + 1, bx - 15);
+    for (const { role, geo } of piece("bridge").parts) {
+      const m = kitLook(role);
+      if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
+      parts.add(m, geo, bx, 0, bz);
+    }
     parts.into(this.base);
     this.base.traverse((o) => {
       if (o instanceof THREE.Mesh) o.castShadow = o.material !== asphalt && o.material !== walk;
@@ -483,15 +517,16 @@ export class City {
     const c = new THREE.Vector3((minX + maxX) / 2, 0, (minZ + maxZ) / 2);
     const tallest = Math.max(10, ...p.buildings.map((b) => (b.rubble ? 0 : b.height)), p.site?.height ?? 0);
     const footprint = Math.max(maxX - minX, maxZ - minZ);
-    const dist = Math.max(70, footprint * 1.4, tallest * 2.5);
-    c.y = tallest * 0.3;
+    const dist = Math.max(95, footprint * 1.4, tallest * 2.5);
+    c.y = tallest * 0.45;
     this.controls.target.copy(c);
-    // About 22 degrees above the horizon, from the south-east, so the sky
-    // shows above the city.
-    if (jump) this.camera.position.set(c.x + dist * 0.655, c.y + dist * 0.375, c.z + dist * 0.655);
+    // About 14 degrees above the horizon, from the south-east, so the hills
+    // and the peaks behind them show above the city.
+    if (jump) this.camera.position.set(c.x + dist * 0.675, c.y + dist * 0.24, c.z + dist * 0.69);
+    // Haze that softens the hills and fades the mountains, without hiding them.
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = dist * 1.6;
-    fog.far = dist * 6;
+    fog.near = Math.max(650, dist * 3.2);
+    fog.far = Math.max(5200, dist * 14);
   }
 
   // ---- light ----------------------------------------------------------------
@@ -516,7 +551,7 @@ export class City {
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
     const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
-    (this.grass.material as THREE.MeshStandardMaterial).color.setHex(0x5f8a45).lerp(new THREE.Color(0x1a2418), d.night * 0.5);
+    this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.bloom.threshold = 0.9 - d.night * 0.1;
     for (const e of this.entries.values()) this.applyNight(e.info);
@@ -609,6 +644,7 @@ export class City {
       return true;
     });
     this.fx.update(dt, wind);
+    this.land.update(dt);
     this.traffic.update(dt);
 
     if (this.shake > 0) {
