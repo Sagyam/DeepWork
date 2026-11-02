@@ -33,6 +33,9 @@ pub enum EventKind {
     ClockJump,
     /// sudo, su, pkexec or a guarded polkit action refused during a session.
     EscalationDenied,
+    /// A userspace proxy or tunnel (`ssh -D`, Tor, ...) was running during a
+    /// session (`tunnel.rs`).
+    Tunnel,
     /// A config change took effect.
     ConfigApplied,
     /// A loosening config change was queued behind the delay.
@@ -78,6 +81,7 @@ impl EventKind {
             EventKind::Skip => "skip",
             EventKind::ClockJump => "clock_jump",
             EventKind::EscalationDenied => "escalation_denied",
+            EventKind::Tunnel => "tunnel",
             EventKind::ConfigApplied => "config_applied",
             EventKind::ConfigPending => "config_pending",
             EventKind::Escalate => "escalate",
@@ -362,7 +366,7 @@ impl Store {
         }
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump')",
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel')",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -376,6 +380,7 @@ impl Store {
             let kind = match kind.as_str() {
                 "tamper" => FactKind::Tamper,
                 "escalation_denied" => FactKind::Denied,
+                "tunnel" => FactKind::Tunnel,
                 _ => FactKind::ClockJump,
             };
             facts.push(Fact {

@@ -47,6 +47,8 @@ pub enum FactKind {
     /// A refused privilege escalation.
     Denied,
     ClockJump,
+    /// A proxy or tunnel around the throttle.
+    Tunnel,
 }
 
 /// Ordered by time first, so sorting gives a fixed fold order.
@@ -293,6 +295,7 @@ pub fn build(facts: &[Fact], running: Option<&Running>, now: Timestamp, tz: &Tim
             (FactKind::Tamper, id) => w.quake(f.ts, id),
             (FactKind::Denied, id) => w.minor(f.ts, id, WorldCause::EscalationDenied),
             (FactKind::ClockJump, id) => w.minor(f.ts, id, WorldCause::ClockJump),
+            (FactKind::Tunnel, id) => w.minor(f.ts, id, WorldCause::Tunnel),
         }
     }
 
@@ -519,6 +522,18 @@ mod tests {
         let w = world(&facts, 5000);
         assert_eq!(damage(&w), [(0, false), (0, true)]);
         assert_eq!(w.history.last().unwrap().ruined, [1]);
+    }
+
+    #[test]
+    fn a_tunnel_damages_like_a_minor_penalty() {
+        let facts = [done(10, 1, 10), event(30, FactKind::Tunnel)];
+        let w = world(&facts, 100);
+        assert_eq!(w.plots[0].damage, 1);
+        let last = w.history.last().unwrap();
+        assert_eq!(
+            (last.kind, last.cause),
+            (WorldEventKind::Damaged, WorldCause::Tunnel)
+        );
     }
 
     #[test]

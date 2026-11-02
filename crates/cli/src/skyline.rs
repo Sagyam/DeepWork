@@ -159,6 +159,7 @@ fn describe(w: &World, e: &WorldEvent) -> String {
         WorldEventKind::Damaged => {
             let why = match e.cause {
                 WorldCause::ClockJump => "wall clock jump",
+                WorldCause::Tunnel => "proxy / tunnel",
                 _ => "refused root access",
             };
             match e.plots.is_empty() {

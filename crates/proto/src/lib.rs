@@ -248,7 +248,8 @@ pub enum WorldEventKind {
     Collapsed,
     /// Tampering with enforcement: a whole district was hit.
     Quake,
-    /// A refused sudo / polkit attempt or a wall-clock jump: one building hit.
+    /// A refused sudo / polkit attempt, a wall-clock jump or a tunnel: one
+    /// building hit.
     Damaged,
 }
 
@@ -261,6 +262,8 @@ pub enum WorldCause {
     Tamper,
     EscalationDenied,
     ClockJump,
+    /// A proxy or tunnel around the throttle (`ssh -D`, Tor, ...).
+    Tunnel,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

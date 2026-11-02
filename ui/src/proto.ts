@@ -94,7 +94,7 @@ export interface Construction {
 }
 
 export type WorldEventKind = "built" | "repaired" | "collapsed" | "quake" | "damaged";
-export type WorldCause = "completed" | "surrendered" | "tamper" | "escalation_denied" | "clock_jump";
+export type WorldCause = "completed" | "surrendered" | "tamper" | "escalation_denied" | "clock_jump" | "tunnel";
 
 export interface WorldEvent {
   ts: number;

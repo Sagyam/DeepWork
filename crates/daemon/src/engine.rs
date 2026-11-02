@@ -22,6 +22,7 @@ use crate::enforcer::EnforcerHandle;
 use crate::schedule::{self, Occurrence, RunKey};
 use crate::session::Session;
 use crate::store::{EventKind, RunOutcome, Store};
+use crate::tunnel;
 use crate::world;
 
 const PERSIST_EVERY: Duration = Duration::from_secs(5);
@@ -63,6 +64,8 @@ pub struct Core {
     last: Option<(Session, i64)>,
     last_wall: Timestamp,
     last_boot: Duration,
+    /// Proxies already reported in the running session.
+    tunnels: tunnel::Reporter,
 }
 
 /// Time since boot, including suspend (`CLOCK_BOOTTIME`).
@@ -129,6 +132,7 @@ impl Core {
             last,
             last_wall: Timestamp::now(),
             last_boot: boottime(),
+            tunnels: tunnel::Reporter::default(),
         };
         core.log_config_outcome(&outcome);
         match core.store.running_session()? {
@@ -168,6 +172,7 @@ impl Core {
         }
         self.activate_dns(&profile);
         self.reset_escalation();
+        self.tunnels.clear();
         self.store
             .log_event(unix_now(), Some(session.id), EventKind::Resume, "")?;
         self.session = Some(session);
@@ -605,6 +610,7 @@ impl Core {
         }
         self.routine_retry_at = None;
         self.reset_escalation();
+        self.tunnels.clear();
         self.activate_dns(&profile);
         self.log(Some(session.id), EventKind::Start, who);
         info!(
@@ -688,12 +694,24 @@ impl Core {
                         self.activate_dns(&profile);
                     }
                     self.escalate(id, found.throttled_bytes).await;
+                    self.check_tunnels(id).await;
                 }
                 Err(e) => {
                     error!("re-applying enforcement failed: {e:#}");
                     self.log(Some(id), EventKind::EnforceError, &format!("{e:#}"));
                 }
             }
+        }
+    }
+
+    /// Logs proxies that get around the throttle; see `tunnel.rs`.
+    async fn check_tunnels(&mut self, id: i64) {
+        let Ok(found) = tokio::task::spawn_blocking(tunnel::scan).await else {
+            return;
+        };
+        for finding in self.tunnels.due(Instant::now(), found) {
+            warn!("tunnel during session {id}: {finding}");
+            self.log(Some(id), EventKind::Tunnel, &finding.to_string());
         }
     }
 

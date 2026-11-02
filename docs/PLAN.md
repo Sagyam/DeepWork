@@ -51,7 +51,8 @@ design goal is:
 | Browser's own DoH (Zen had strict mode 3) | Locked managed policy turns DoH off; browser DoH endpoint IPs blocked | 1 |
 | Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 (done) |
 | Hardcoded IP / stale DNS cache for a rule site | SNI inspection judges the connection by name, whatever the address | 4 (done) |
-| SSH SOCKS tunnel / personal VPN | Heuristic detection + penalty only | 4 |
+| SSH SOCKS tunnel / userspace proxy (Tor, v2ray, ...) | Detected while running (listening proxy process), minor penalty every 10 min; not blocked | 4 (done) |
+| Personal VPN (WireGuard, OpenVPN) | Not a bypass: nft sees packets before the tun device encrypts them, tc shapes new devices | n/a |
 | Live USB, GRUB cmdline, TTY root login | Out of scope. TTY root is the intended emergency exit | n/a |
 
 ### Config changes (phase 2)
@@ -211,6 +212,23 @@ address 4.3 s; Docs 0.2 s; Reddit reset at once; with the server address in
 `slow_v4/v6` Docs 0.4 s and YouTube 4.7 s over v4 and v6; no SNI 4.7 s; after
 `kill -9` of the daemon the address sets still throttle; no false tamper.
 
+Tunnel heuristics (phase 4, `tunnel.rs`): kernel VPNs are covered by the
+rules above, but a userspace proxy encrypts inside a process, so DNS, the
+sets and SNI never see what goes through it. Every reassert (15s) during a
+session the daemon reads `/proc/net/tcp{,6}` for listening sockets and maps
+them to processes through `/proc/<pid>/fd`. Flagged: `ssh` with dynamic
+forwarding (`-D`, `-o DynamicForward`, combined flags; plain `-L` / `-R`
+are work and ignored), known proxy clients (tor, shadowsocks, v2ray / xray,
+sing-box, clash / mihomo, hysteria, trojan, gost, chisel, naive, brook,
+microsocks, sshuttle, wstunnel, psiphon, lantern; by `comm` or argv[0/1]),
+and anything listening on 1080 / 9050 / 9150. Each is a `tunnel` event
+(minor penalty in the world, agent notifies) when first seen and again every
+10 min while it runs. A renamed proxy on another port is not caught; the goal
+is only that the easy ways cost something. Verified with a dry-run daemon:
+a fake `ssh -N -D 1080` is logged within 15s and the world shows the damage;
+`ssh -L` is not. Nothing listening on the host matches today (cloudflared is
+deliberately not on the list).
+
 Tamper watch (phase 2): `nft monitor ruleset`, `tc monitor` and
 `ip monitor link` run for the life of the daemon. A matching line queues one
 check (bursts coalesce); the check compares fingerprints and repairs. When the
@@ -329,7 +347,7 @@ streak, and a history of the last 30 changes with their cause.
 | Completed session | Builds on the oldest rubble, else a new plot. Grade from length: 25 / 50 / 90 / 180 min. Time counts toward the tier. Then repairs `1 + mins / 25` damage levels, most damaged first; doubled on a 3+ day streak |
 | Surrendered session (severe) | Its plot becomes rubble, fire does 2 damage to the 3 nearest buildings, its time does not count, the streak resets |
 | `tamper` (major) | Earthquake: 1 damage to every building in the biggest district |
-| `escalation_denied`, `clock_jump` (minor) | 1 damage to the newest building |
+| `escalation_denied`, `clock_jump`, `tunnel` (minor) | 1 damage to the newest building |
 
 - Damage 3 turns a building into rubble; the grade it had is lost for good.
 - Bursts count once: a second quake (or a second minor penalty) within 10 min is ignored.
@@ -479,8 +497,11 @@ Phase 4 (2026-11-02): SNI inspection is in (see "Network enforcement"),
 tested in namespaces only. Host check after `./dist/install.sh`: start a
 session, `journalctl -u deepworkd` shows "SNI inspection reading queue";
 `RUST_LOG=deepworkd=debug` shows `sni <name>: Slow / Pass`; YouTube still
-throttled, Google Docs / Gmail now at full speed. Next in phase 4: tunnel /
-VPN heuristics.
+throttled, Google Docs / Gmail now at full speed. Tunnel / proxy heuristics are in too
+(see "Network enforcement"); after reinstalling, `ssh -N -D 1080 <host>`
+during a session should show `tunnel` in `journalctl -u deepworkd` and damage
+in `deepwork world`. Next in phase 4: the optional docker.sock lock, then
+inverted mode and packaging.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -568,7 +589,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 ### Phase 4: Deeper enforcement
 
 - [x] NFQUEUE SNI inspection for new TLS connections (`sni.rs`, `nfqueue.rs`; profile `inspect_sni`)
-- [ ] Tunnel / VPN heuristics
+- [x] Tunnel / VPN heuristics (`tunnel.rs`: listening proxy processes during a session → `tunnel` penalty; kernel VPNs need nothing)
 - [ ] Optional docker.sock lock during sessions
 - [ ] Inverted mode: distractions throttled always, free minutes earned by focus
 - [ ] Packaging (PKGBUILD)

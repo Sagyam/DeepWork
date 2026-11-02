@@ -342,6 +342,7 @@ fn loss_note(e: &WorldEvent) -> Option<Note> {
         WorldEventKind::Damaged => {
             let why = match e.cause {
                 WorldCause::ClockJump => "Changing the clock",
+                WorldCause::Tunnel => "Tunnelling around the throttle",
                 _ => "Asking for root during a session",
             };
             Note::new(

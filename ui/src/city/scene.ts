@@ -670,7 +670,9 @@ function describeLive(ev: WorldEvent, w: World): string {
       return `You surrendered. Plot ${ev.plots[0] + 1} collapsed${ev.plots.length > 1 ? ` and fire spread to ${plots(ev.plots.slice(1))}` : ""}.`;
     case "quake":
       return ev.plots.length ? `Tampering set off an earthquake: ${plots(ev.plots)} damaged.` : "Tampering set off an earthquake.";
-    case "damaged":
-      return `${ev.cause === "clock_jump" ? "A wall clock jump" : "A refused root attempt"} damaged ${plots(ev.plots)}.`;
+    case "damaged": {
+      const why = { clock_jump: "A wall clock jump", tunnel: "A proxy around the throttle" }[ev.cause as string] ?? "A refused root attempt";
+      return `${why} damaged ${plots(ev.plots)}.`;
+    }
   }
 }

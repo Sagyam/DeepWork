@@ -59,7 +59,7 @@ export function describe(w: World, e: WorldEvent): string {
       text = e.plots.length ? `earthquake (tampering) hit ${plots(e.plots)}` : "earthquake (tampering) on empty land";
       break;
     case "damaged": {
-      const why = e.cause === "clock_jump" ? "wall clock jump" : "refused root access";
+      const why = { clock_jump: "wall clock jump", tunnel: "proxy / tunnel" }[e.cause as string] ?? "refused root access";
       text = e.plots.length ? `${why} damaged ${plots(e.plots)}` : `${why}, nothing to damage yet`;
       break;
     }

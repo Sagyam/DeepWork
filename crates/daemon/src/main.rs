@@ -11,6 +11,7 @@ mod server;
 mod session;
 mod sni;
 mod store;
+mod tunnel;
 mod world;
 
 use std::path::PathBuf;
