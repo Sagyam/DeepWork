@@ -42,6 +42,10 @@ sudo systemctl enable --now deepworkd.service
 systemctl --user enable --now deepwork-agent.service
 ```
 
+Every push to `main` builds the package in Actions; download the
+`deepwork-git-x86_64` artifact from the latest `package` run and
+`sudo pacman -U` the tarball inside it.
+
 Or build and install straight from the source tree, into `/usr/local`:
 
 ```sh

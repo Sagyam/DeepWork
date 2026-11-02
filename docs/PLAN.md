@@ -186,6 +186,15 @@ package can be cut from the same file once a tag exists. `makepkg -si` in
   `install.sh` uses, and it fails open), prints the two `systemctl enable`
   commands instead of starting the services itself, and leaves the daemon
   running if a session is active when the package is removed.
+- CI (`.github/workflows/package.yml`) builds the package in
+  `archlinux:base-devel` on every push to `main`, on tags and on demand,
+  checks that `dist/.SRCINFO` matches the PKGBUILD, and uploads the
+  `*.pkg.tar.zst` as the `deepwork-git-x86_64` artifact (install with
+  `pacman -U`). AUR publishing waits until registrations reopen. The package
+  was installed over the `/usr/local` one on 2026-11-02 and checked: units
+  point at `/usr/bin`, the daemon and agent start, the PAM hook is in place,
+  `deepwork` answers over the socket, and a reinstall keeps
+  `/etc/deepwork/config.toml`.
 
 ### Network enforcement
 
@@ -626,9 +635,9 @@ in Sites, export a backup, import it again (0 new sessions), and start a
 session from the new card.
 
 Next in phase 4: the host checks listed above, then tuning on real use. Packaging
-is in (`dist/PKGBUILD`, package `deepwork-git`, see "Packaging"); `makepkg`
-builds and the package contents were inspected, but it has not been installed
-over the /usr/local install yet.
+is in (`dist/PKGBUILD`, package `deepwork-git`, see "Packaging"); CI builds it
+on every push, and it is installed on the host now, replacing the `/usr/local`
+one.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
