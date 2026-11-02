@@ -5,6 +5,7 @@
 //! logged instead of executed, so the daemon can be developed without root.
 
 pub mod browser;
+pub mod docker;
 pub mod nft;
 pub mod tc;
 
@@ -65,6 +66,10 @@ struct Enforcer {
     /// Devices whose shaping failed, and when to try again. Keeps a failing
     /// device from looping through `tc monitor` events.
     retry_at: BTreeMap<String, Instant>,
+    docker: docker::DockerLock,
+    /// The Docker socket was closed during this session, so finding it open
+    /// again is tampering.
+    docker_locked: bool,
 }
 
 const SHAPE_RETRY: Duration = Duration::from_secs(30);
@@ -258,7 +263,36 @@ impl Enforcer {
         if let Err(e) = self.set_stop_lock(true) {
             warn!("could not lock the service against manual stops: {e:#}");
         }
+        self.docker_locked = false;
+        self.lock_docker();
         Ok(())
+    }
+
+    /// Closes the Docker socket if the profile asks for it. Finding it open
+    /// after it was closed this session is a tamper note.
+    fn lock_docker(&mut self) {
+        if !self.active.as_ref().is_some_and(|p| p.lock_docker) {
+            return;
+        }
+        if self.dry_run {
+            if !self.docker_locked {
+                info!("[dry-run] lock {}", self.docker.socket().display());
+                self.docker_locked = true;
+            }
+            return;
+        }
+        match self.docker.apply() {
+            Ok(true) if self.docker_locked => self.pending.push(format!(
+                "{} was opened again",
+                self.docker.socket().display()
+            )),
+            Ok(true) => {
+                info!("locked {}", self.docker.socket().display());
+                self.docker_locked = true;
+            }
+            Ok(false) => {}
+            Err(e) => warn!("could not lock the Docker socket: {e:#}"),
+        }
     }
 
     fn set_stop_lock(&self, on: bool) -> Result<()> {
@@ -298,6 +332,17 @@ impl Enforcer {
         self.retry_at.clear();
         if let Err(e) = self.set_stop_lock(false) {
             warn!("could not lift the manual stop lock: {e:#}");
+        }
+        // Also after a crash: the marker says the socket was ours to close.
+        self.docker_locked = false;
+        if self.dry_run {
+            debug!("[dry-run] unlock {}", self.docker.socket().display());
+        } else {
+            match self.docker.lift() {
+                Ok(true) => info!("unlocked {}", self.docker.socket().display()),
+                Ok(false) => {}
+                Err(e) => warn!("could not unlock the Docker socket: {e:#}"),
+            }
         }
         self.run("nft", &["destroy", "table", nft::TABLE], None)?;
         // Only after the table is gone, so resolved can reach its own
@@ -391,6 +436,7 @@ impl Enforcer {
         }
         self.verify_tc();
         self.shape_new_devices();
+        self.lock_docker();
         Ok(Reasserted {
             notes: std::mem::take(&mut self.pending),
             reprime: std::mem::take(&mut self.reprime),
@@ -554,7 +600,7 @@ pub struct EnforcerHandle {
 }
 
 impl EnforcerHandle {
-    pub fn spawn(dry_run: bool, dns: &crate::config::DnsConfig) -> Self {
+    pub fn spawn(dry_run: bool, dns: &crate::config::DnsConfig, state_dir: &Path) -> Self {
         let (dns_port, manage_resolved, container_dns) =
             (dns.port, dns.manage_resolved, dns.container_dns);
         let (tx, mut rx) = mpsc::unbounded_channel();
@@ -571,6 +617,8 @@ impl EnforcerHandle {
             pending: Vec::new(),
             reprime: false,
             retry_at: BTreeMap::new(),
+            docker: docker::DockerLock::new(state_dir),
+            docker_locked: false,
         };
         let flags = Flags::default();
         if !dry_run {

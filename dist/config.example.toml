@@ -63,6 +63,10 @@ block_quic = true
 # catches rule sites reached on addresses DNS never told us about, and lets
 # other sites on a shared CDN address (Docs next to YouTube) go full speed.
 inspect_sni = true
+# Take group access off /run/docker.sock during sessions, so the docker group
+# cannot start a privileged container to undo the session. Running containers
+# keep running; `docker` commands fail with "permission denied" until the end.
+lock_docker = false
 # Added round-trip time (split across both directions), jitter, bandwidth cap.
 throttle = { rtt_ms = 400, jitter_ms = 50, rate_kbit = 256, loss_pct = 0.0 }
 # Harsher throttles the longer throttled sites are actually used in a session

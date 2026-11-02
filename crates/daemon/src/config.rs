@@ -190,6 +190,9 @@ pub struct Profile {
     /// Judge new TLS connections by the server name in their ClientHello
     /// (NFQUEUE), on top of the addresses learned from DNS.
     pub inspect_sni: bool,
+    /// Take group access off `/run/docker.sock`, so members of the `docker`
+    /// group cannot start privileged containers to get around the session.
+    pub lock_docker: bool,
     pub rules: Vec<Rule>,
     /// Harsher throttles the longer throttled sites are used in a session.
     /// `[]` turns escalation off.
@@ -358,6 +361,7 @@ impl Default for Profile {
             throttle: Throttle::default(),
             block_quic: true,
             inspect_sni: true,
+            lock_docker: false,
             rules: DEFAULT_THROTTLED
                 .iter()
                 .map(|d| Rule {

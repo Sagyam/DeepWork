@@ -106,6 +106,9 @@ fn profile(name: &str, old: &Profile, new: &Profile, out: &mut Vec<String>) {
     if old.inspect_sni && !new.inspect_sni {
         out.push(format!("profile {name}: SNI inspection off"));
     }
+    if old.lock_docker && !new.lock_docker {
+        out.push(format!("profile {name}: Docker socket unlocked"));
+    }
     if gentler(&new.throttle, &old.throttle) {
         out.push(format!("profile {name}: gentler throttle"));
     }
@@ -194,6 +197,7 @@ mod tests {
                 "[[routines]]\nname = \"new\"\nstart = \"14:00\"\nduration_mins = 30\n[[routines]]",
             ),
             ("[schedule]", "[dns]\nport = 5999\n[schedule]"),
+            ("[profiles.deep]", "[profiles.deep]\nlock_docker = true"),
         ] {
             assert_eq!(changed(from, to), Vec::<String>::new(), "{to}");
         }
@@ -277,6 +281,11 @@ mod tests {
         ] {
             assert_eq!(changed(from, to), [why], "{to}");
         }
+        let locked = BASE.replace("[profiles.deep]", "[profiles.deep]\nlock_docker = true");
+        assert_eq!(
+            loosenings(&parse(&locked), &parse(BASE)),
+            ["profile deep: Docker socket unlocked"]
+        );
         let gone = loosenings(&parse(BASE), &parse("[profiles.deep]\nrules = []\n"));
         assert!(gone.contains(&"routine morning removed".to_string()));
         assert!(gone.contains(&"profile deep: youtube.com removed".to_string()));

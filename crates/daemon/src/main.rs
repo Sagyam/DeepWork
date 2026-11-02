@@ -168,7 +168,7 @@ async fn main() -> Result<()> {
     let (cfg_state, outcome) = cfgstate::sync(&store, &args.config, unix_now)?;
     let cfg = cfg_state.config.clone();
 
-    let enforcer = EnforcerHandle::spawn(args.dry_run, &cfg.dns);
+    let enforcer = EnforcerHandle::spawn(args.dry_run, &cfg.dns, &state_dir);
     let resolver = Resolver::new(cfg.dns.clone(), args.dry_run, enforcer.clone())?;
     if !args.dry_run {
         let resolver = resolver.clone();
