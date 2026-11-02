@@ -47,6 +47,16 @@ until = "21:00"
 after_mins = 30
 repeat_mins = 15
 
+# Inverted mode: distracting sites are throttled all the time, not only in
+# sessions. Completed sessions earn free minutes; `deepwork free [15m]` spends
+# them and lifts the throttle until the bank or the span runs out. Outside
+# sessions nothing is locked (sudo, systemctl and Docker work as usual).
+[inverted]
+enabled = false
+# profile = "deep"          # default_profile if unset
+free_mins_per_hour = 12     # free minutes per hour of completed focus
+max_bank_mins = 120
+
 # Routines start a countdown on their own at `start` (local time). If the
 # machine was asleep or another session was running, the run starts late with
 # whatever is left of its window. Each run happens at most once.

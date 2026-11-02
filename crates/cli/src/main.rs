@@ -7,7 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use deepwork_proto::{
-    Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind, SessionState, Status, Upcoming,
+    FreeInfo, Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind, SessionState, Status,
+    Upcoming,
 };
 
 #[derive(Parser)]
@@ -57,6 +58,13 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Inverted mode: spend banked free minutes (all, or e.g. `15m`), lifting
+    /// the throttle outside sessions. `--stop` banks the rest again.
+    Free {
+        duration: Option<String>,
+        #[arg(long, conflicts_with = "duration")]
+        stop: bool,
+    },
     /// Print one line of Waybar-style JSON, for a bar module.
     Bar,
     /// Show the config change waiting behind the 24h loosening delay, or
@@ -98,6 +106,21 @@ fn main() -> Result<()> {
             if let Some(u) = status.upcoming.iter().find(|u| !u.skipped) {
                 println!("Next routine: {}", describe(u));
             }
+            if let Some(f) = &status.free {
+                println!("{}", describe_free(f));
+            }
+        }
+        Command::Free { duration, stop } => {
+            let req = match (stop, duration) {
+                (true, _) => Request::FreeStop,
+                (false, d) => Request::Free {
+                    secs: d.as_deref().map(parse_duration).transpose()?,
+                },
+            };
+            let Response::Free(f) = expect_ok(request(&cli.socket, &req)?)? else {
+                bail!("unexpected reply")
+            };
+            println!("{}", describe_free(&f));
         }
         Command::Routines => {
             let Response::Routines {
@@ -343,6 +366,29 @@ fn describe(u: &Upcoming) -> String {
     )
 }
 
+/// `Free time: 12:00 left (40:00 banked)` and the like.
+fn describe_free(f: &FreeInfo) -> String {
+    let banked = fmt_secs(f.balance_secs);
+    match f.stops_in_secs {
+        Some(left) if f.spending => {
+            format!(
+                "Free time: {} left, throttle lifted ({banked} banked)",
+                fmt_secs(left)
+            )
+        }
+        _ => format!(
+            "Inverted mode: {banked} free banked (max {}, {} min per focused hour){}",
+            fmt_secs(f.max_bank_secs),
+            f.free_mins_per_hour,
+            if f.throttled {
+                "; distractions throttled"
+            } else {
+                ""
+            }
+        ),
+    }
+}
+
 /// Waybar / Omarchy bar module output.
 fn bar(status: &Status) -> serde_json::Value {
     let mut tooltip = Vec::new();
@@ -362,6 +408,10 @@ fn bar(status: &Status) -> serde_json::Value {
         } else {
             (format!("● +{}", fmt_secs(s.elapsed_secs)), "active")
         }
+    } else if let Some(f) = status.free.filter(|f| f.spending) {
+        let left = f.stops_in_secs.unwrap_or(0);
+        tooltip.push(format!("free time: throttle lifted for {}", fmt_secs(left)));
+        (format!("◌ free {}", fmt_secs(left)), "free")
     } else if let Some(u) = status.upcoming.iter().find(|u| {
         !u.skipped && u.starts_in_secs > 0 && u.starts_in_secs <= status.heads_up_secs as i64
     }) {
@@ -392,6 +442,12 @@ fn bar(status: &Status) -> serde_json::Value {
         ));
     }
     tooltip.push(format!("skip tokens: {}", status.skip_tokens_left));
+    if let Some(f) = status.free.filter(|f| !f.spending) {
+        tooltip.push(format!(
+            "free time banked: {} (`deepwork free`)",
+            fmt_secs(f.balance_secs)
+        ));
+    }
     if status.dry_run {
         tooltip.push("dry run: nothing is enforced".into());
     }

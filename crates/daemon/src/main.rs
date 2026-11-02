@@ -4,6 +4,7 @@ mod dns;
 mod dot;
 mod enforcer;
 mod engine;
+mod free;
 mod loosen;
 mod nfqueue;
 mod schedule;

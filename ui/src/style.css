@@ -79,6 +79,7 @@ h2 { font-size: 16px; margin: 0 0 8px; }
 .bar > div { height: 100%; background: var(--accent); border-radius: 3px; }
 .timer { font: 600 40px/1.1 system-ui, sans-serif; margin: 4px 0; font-variant-numeric: tabular-nums; }
 .timer.warn { color: var(--danger); }
+.timer.free { color: var(--ok); }
 .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
 button, select, input {
   font: inherit; color: var(--fg); background: rgba(255,255,255,0.08);

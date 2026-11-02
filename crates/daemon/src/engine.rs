@@ -8,7 +8,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use deepwork_proto::{
-    ConfigInfo, Finished, HISTORY_LIMIT, PendingConfig, Request, Response, RoutineInfo,
+    ConfigInfo, Finished, FreeInfo, HISTORY_LIMIT, PendingConfig, Request, Response, RoutineInfo,
     SessionInfo, SessionKind, SessionState, Status, Upcoming,
 };
 use jiff::tz::TimeZone;
@@ -18,7 +18,8 @@ use tracing::{error, info, warn};
 use crate::cfgstate::{self, Outcome, Pending};
 use crate::config::{Config, Profile};
 use crate::dns::Resolver;
-use crate::enforcer::EnforcerHandle;
+use crate::enforcer::{EnforcerHandle, Mode};
+use crate::free;
 use crate::schedule::{self, Occurrence, RunKey};
 use crate::session::Session;
 use crate::store::{EventKind, RunOutcome, Store};
@@ -37,6 +38,10 @@ const ROUTINE_RETRY: Duration = Duration::from_secs(60);
 const DISTRACTED_BYTES: u64 = 16 * 1024;
 /// Wall-clock moves larger than this, relative to boot time, are logged.
 const CLOCK_JUMP: SignedDuration = SignedDuration::from_secs(120);
+/// Wait this long before retrying inverted-mode enforcement that failed.
+const AMBIENT_RETRY: Duration = Duration::from_secs(60);
+/// Store key for the free-minute bank.
+const BANK_KEY: &str = "free_bank";
 
 pub struct Core {
     cfg: Config,
@@ -66,6 +71,11 @@ pub struct Core {
     last_boot: Duration,
     /// Proxies already reported in the running session.
     tunnels: tunnel::Reporter,
+    /// Free minutes for inverted mode.
+    bank: free::Bank,
+    /// The profile enforced outside sessions (inverted mode), if engaged.
+    ambient: Option<Profile>,
+    ambient_retry_at: Option<Instant>,
 }
 
 /// Time since boot, including suspend (`CLOCK_BOOTTIME`).
@@ -110,6 +120,13 @@ impl Core {
             .unwrap_or_default();
         let runs = store.runs_since(&since)?.into_iter().collect();
         let last = store.last_finished()?;
+        let bank = match store.get(BANK_KEY)? {
+            Some(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+                error!("free-minute bank unreadable, starting empty: {e}");
+                free::Bank::default()
+            }),
+            None => free::Bank::default(),
+        };
         let mut core = Self {
             cfg: cfg_state.config,
             config_path,
@@ -133,12 +150,15 @@ impl Core {
             last_wall: Timestamp::now(),
             last_boot: boottime(),
             tunnels: tunnel::Reporter::default(),
+            bank,
+            ambient: None,
+            ambient_retry_at: None,
         };
         core.log_config_outcome(&outcome);
         match core.store.running_session()? {
             Some(session) => core.resume(session).await?,
-            // Clear anything left behind by a crash outside a session.
-            None => core.enforcer.release().await?,
+            // Clears anything left behind by a crash outside a session.
+            None => core.settle().await,
         }
         Ok(core)
     }
@@ -161,7 +181,7 @@ impl Core {
     async fn resume(&mut self, session: Session) -> Result<()> {
         info!("resuming session {} ({:?})", session.id, session.kind);
         let profile = self.profile_for(&session.profile);
-        if let Err(e) = self.enforcer.engage(profile.clone()).await {
+        if let Err(e) = self.enforcer.engage(profile.clone(), Mode::Session).await {
             error!("could not re-apply enforcement: {e:#}");
             self.store.log_event(
                 unix_now(),
@@ -217,6 +237,38 @@ impl Core {
                 routines: self.routines(),
                 skip_tokens_per_week: self.cfg.schedule.skip_tokens_per_week,
             }),
+            Request::Free { secs } => {
+                if !self.cfg.inverted.enabled {
+                    return Err(
+                        "inverted mode is off: nothing is throttled outside sessions".into(),
+                    );
+                }
+                if self.session.is_some() {
+                    return Err("free minutes cannot be spent during a session".into());
+                }
+                self.bank.spend(secs.map(Duration::from_secs))?;
+                let banked = self.bank.balance_secs();
+                let note = match secs {
+                    Some(s) => format!("up to {s}s of {banked}s banked, uid {uid}"),
+                    None => format!("all {banked}s banked, uid {uid}"),
+                };
+                info!("free time started: {note}");
+                self.log(None, EventKind::FreeStart, &note);
+                self.save_bank();
+                self.sync_ambient().await;
+                Ok(Response::Free(
+                    self.free_info().ok_or("inverted mode is off")?,
+                ))
+            }
+            Request::FreeStop => {
+                if !self.bank.stop() {
+                    return Err("free time is not running".into());
+                }
+                self.end_free(&format!("stopped, uid {uid}")).await;
+                Ok(Response::Free(
+                    self.free_info().ok_or("inverted mode is off")?,
+                ))
+            }
             Request::Stop => {
                 let min = self.stopwatch_min();
                 let session = self.session.as_mut().ok_or("no session is running")?;
@@ -310,6 +362,111 @@ impl Core {
                 ended_at: *ended_at,
             }),
             nudge,
+            free: self.free_info(),
+        }
+    }
+
+    fn free_info(&self) -> Option<FreeInfo> {
+        let inv = &self.cfg.inverted;
+        inv.enabled.then(|| FreeInfo {
+            balance_secs: self.bank.balance_secs(),
+            spending: self.bank.is_spending(),
+            stops_in_secs: self.bank.stops_in(),
+            max_bank_secs: u64::from(inv.max_bank_mins) * 60,
+            free_mins_per_hour: inv.free_mins_per_hour,
+            throttled: self.ambient.is_some(),
+        })
+    }
+
+    fn save_bank(&self) {
+        let text = serde_json::to_string(&self.bank).expect("bank serializes");
+        if let Err(e) = self.store.set(BANK_KEY, Some(&text)) {
+            error!("could not save the free-minute bank: {e:#}");
+        }
+    }
+
+    /// Logs the end of free time (already stopped in the bank) and puts the
+    /// throttle back.
+    async fn end_free(&mut self, why: &str) {
+        info!("free time ended: {why}");
+        self.log(
+            None,
+            EventKind::FreeEnd,
+            &format!("{why}, {}s left", self.bank.balance_secs()),
+        );
+        self.save_bank();
+        self.sync_ambient().await;
+    }
+
+    /// The profile inverted mode wants enforced right now, if any.
+    fn wanted_ambient(&self) -> Option<Profile> {
+        if self.session.is_some() || self.bank.is_spending() {
+            return None;
+        }
+        self.cfg.ambient_profile().cloned()
+    }
+
+    /// Outside a session: brings enforcement in line with inverted mode.
+    async fn sync_ambient(&mut self) {
+        if self.session.is_some() {
+            return;
+        }
+        let want = self.wanted_ambient();
+        if want == self.ambient {
+            return;
+        }
+        match want {
+            Some(profile) => {
+                if self.ambient_retry_at.is_some_and(|t| Instant::now() < t) {
+                    return;
+                }
+                self.engage_ambient(profile).await;
+            }
+            None => {
+                info!("inverted mode: throttle lifted");
+                self.ambient = None;
+                self.release().await;
+            }
+        }
+    }
+
+    async fn engage_ambient(&mut self, profile: Profile) {
+        match self.enforcer.engage(profile.clone(), Mode::Ambient).await {
+            Ok(()) => {
+                info!("inverted mode: throttling outside sessions");
+                self.activate_dns(&profile);
+                self.ambient = Some(profile);
+                self.ambient_retry_at = None;
+                self.last_reassert = Instant::now();
+            }
+            Err(e) => {
+                error!("could not apply inverted-mode enforcement: {e:#}");
+                self.log(
+                    None,
+                    EventKind::EnforceError,
+                    &format!("inverted mode: {e:#}"),
+                );
+                self.ambient = None;
+                self.ambient_retry_at = Some(Instant::now() + AMBIENT_RETRY);
+                self.release().await;
+            }
+        }
+    }
+
+    async fn release(&mut self) {
+        self.resolver.set_rules(None);
+        if let Err(e) = self.enforcer.release().await {
+            error!("could not lift enforcement: {e:#}");
+        }
+    }
+
+    /// With no session running: inverted-mode enforcement if it is wanted,
+    /// otherwise none at all.
+    async fn settle(&mut self) {
+        self.ambient = None;
+        match self.wanted_ambient() {
+            Some(profile) => self.engage_ambient(profile).await,
+            None => self.release().await,
         }
     }
 
@@ -589,13 +746,25 @@ impl Core {
         let mut session = Session::new(kind, name, unix_now())?;
         session.routine = routine.map(|o| o.routine.clone());
 
-        if let Err(e) = self.enforcer.engage(profile.clone()).await {
-            let _ = self.enforcer.release().await;
+        // The session's rules replace the ambient ones, or nothing at all
+        // if this fails; the next tick puts ambient enforcement back.
+        self.ambient = None;
+        if let Err(e) = self.enforcer.engage(profile.clone(), Mode::Session).await {
+            self.release().await;
             return Err(format!("could not apply network rules: {e:#}"));
         }
         if let Err(e) = self.store.insert_session(&mut session) {
-            let _ = self.enforcer.release().await;
+            self.release().await;
             return Err(format!("could not save session: {e:#}"));
+        }
+        if self.bank.stop() {
+            info!("free time ended: session started");
+            self.log(
+                None,
+                EventKind::FreeEnd,
+                &format!("session started, {}s left", self.bank.balance_secs()),
+            );
+            self.save_bank();
         }
         if let Some(occ) = routine {
             let key = occ.key();
@@ -646,11 +815,23 @@ impl Core {
             kind,
             &format!("{}s", session.elapsed.as_secs()),
         );
-        self.resolver.set_rules(None);
-        if let Err(e) = self.enforcer.release().await {
-            error!("could not lift enforcement: {e:#}");
+        if kind == EventKind::Completed && self.cfg.inverted.enabled {
+            let earned = free::earned(&self.cfg.inverted, session.elapsed);
+            let added = self.bank.deposit(earned, &self.cfg.inverted);
+            info!(
+                "earned {}s of free time ({}s banked)",
+                added.as_secs(),
+                self.bank.balance_secs()
+            );
+            self.log(
+                Some(session.id),
+                EventKind::FreeEarned,
+                &format!("{}s", added.as_secs()),
+            );
+            self.save_bank();
         }
         self.last = Some((session, ended_at));
+        self.settle().await;
     }
 
     pub async fn tick(&mut self) {
@@ -668,6 +849,7 @@ impl Core {
         }
 
         let Some(session) = self.session.as_mut() else {
+            self.tick_outside(now, delta).await;
             self.check_routines().await;
             return;
         };
@@ -700,6 +882,53 @@ impl Core {
                     error!("re-applying enforcement failed: {e:#}");
                     self.log(Some(id), EventKind::EnforceError, &format!("{e:#}"));
                 }
+            }
+        }
+    }
+
+    /// Inverted mode between sessions: spends free time and keeps the
+    /// ambient enforcement in place.
+    async fn tick_outside(&mut self, now: Instant, delta: Duration) {
+        if self.bank.is_spending() {
+            if !self.cfg.inverted.enabled {
+                self.bank.stop();
+                self.end_free("inverted mode turned off").await;
+            } else if self.bank.advance(delta) {
+                let why = if self.bank.balance_secs() == 0 {
+                    "bank empty"
+                } else {
+                    "time up"
+                };
+                self.end_free(why).await;
+            } else if now - self.last_persist >= PERSIST_EVERY {
+                self.persist();
+            }
+        }
+        self.sync_ambient().await;
+        let Some(profile) = self.ambient.clone() else {
+            return;
+        };
+        if now - self.last_reassert < REASSERT_EVERY {
+            return;
+        }
+        self.last_reassert = now;
+        match self.enforcer.reassert().await {
+            Ok(found) => {
+                for note in &found.notes {
+                    warn!("inverted mode: put back: {note}");
+                    self.log(None, EventKind::AmbientRepair, note);
+                }
+                if found.reprime {
+                    self.activate_dns(&profile);
+                }
+            }
+            Err(e) => {
+                error!("re-applying inverted-mode enforcement failed: {e:#}");
+                self.log(
+                    None,
+                    EventKind::EnforceError,
+                    &format!("inverted mode: {e:#}"),
+                );
             }
         }
     }
@@ -760,6 +989,9 @@ impl Core {
     /// in place so stopping the daemon does not end a session.
     pub fn persist(&mut self) {
         self.last_persist = Instant::now();
+        if self.bank.is_spending() {
+            self.save_bank();
+        }
         if let Some(session) = &self.session
             && let Err(e) = self.store.save_session(session, None)
         {

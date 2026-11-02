@@ -51,6 +51,7 @@ design goal is:
 | Browser's own DoH (Zen had strict mode 3) | Locked managed policy turns DoH off; browser DoH endpoint IPs blocked | 1 |
 | Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 (done) |
 | Hardcoded IP / stale DNS cache for a rule site | SNI inspection judges the connection by name, whatever the address | 4 (done) |
+| Inverted mode: `sudo nft destroy table` outside a session | Put back within a second and logged (`ambient_repair`), no penalty: root is not locked then, and package upgrades reload firewalls. Stopping the daemon lifts nothing (the table stays until reboot) | 4 (done) |
 | SSH SOCKS tunnel / userspace proxy (Tor, v2ray, ...) | Detected while running (listening proxy process), minor penalty every 10 min; not blocked | 4 (done) |
 | Personal VPN (WireGuard, OpenVPN) | Not a bypass: nft sees packets before the tun device encrypts them, tc shapes new devices | n/a |
 | Live USB, GRUB cmdline, TTY root login | Out of scope. TTY root is the intended emergency exit | n/a |
@@ -286,6 +287,28 @@ help). With `lock_docker = true` in the session's profile, `enforcer/docker.rs`:
 Running containers keep running. Missing socket (Docker not installed or
 not started): nothing to do. Rootless Docker / Podman sockets belong to the
 user and grant no root, so they are not touched.
+
+### Inverted mode
+
+Off by default (`[inverted] enabled = true` turns it on at once; turning it
+off, a higher earn rate, a bigger bank or another profile wait 24h).
+
+- Outside sessions the enforcer runs in `Mode::Ambient` with the inverted
+  profile (`default_profile` if unset): the same nft / tc / resolver setup
+  as a session, but no stop lock, no Docker lock, no PAM refusal and no
+  escalation or tunnel scan. A session switches the enforcer to
+  `Mode::Session` in place (one nft transaction, tc re-applied per device)
+  and back again when it ends, without lifting everything in between.
+- Completed sessions (not surrendered) earn `free_mins_per_hour` per focused
+  hour into a bank capped at `max_bank_mins` (`free.rs`, stored in `kv` as
+  `free_bank`; ledger events `free_earned`, `free_start`, `free_end`).
+- `deepwork free [duration]` (or the app's button) lifts the throttle until
+  the bank or the span runs out; `deepwork free --stop` banks the rest.
+  Spending needs at least a minute banked and no session; starting a session
+  stops it. Time is counted from monotonic ticks, so suspend does not use it.
+- Changes to the ambient rules are put back like in sessions but logged as
+  `ambient_repair` without penalty. The point is friction, not a lock.
+- If applying fails, the daemon releases everything and retries every 60s.
 
 ### Session model
 
@@ -523,7 +546,12 @@ by default; see "Docker socket lock"), tested on a real socket in a temp dir
 and in dry-run. Host check: set `lock_docker = true` (tightening, so it
 applies at once), start a session: `ls -l /run/docker.sock` shows
 `srw-------`, `docker ps` says permission denied; after the session it is
-`srw-rw----` again. Next in phase 4: inverted mode, then packaging.
+`srw-rw----` again. Inverted mode is in too (see "Inverted mode"), checked
+end to end with a dry-run daemon. Host check: `[inverted] enabled = true`,
+`deepwork config reload`: YouTube is slow with no session, `sudo` still works;
+complete a short session, `deepwork status` shows the earned minutes,
+`deepwork free` makes YouTube fast, `deepwork free --stop` slows it again.
+Next in phase 4: packaging (PKGBUILD).
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -613,5 +641,6 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] NFQUEUE SNI inspection for new TLS connections (`sni.rs`, `nfqueue.rs`; profile `inspect_sni`)
 - [x] Tunnel / VPN heuristics (`tunnel.rs`: listening proxy processes during a session → `tunnel` penalty; kernel VPNs need nothing)
 - [x] Optional docker.sock lock during sessions (`enforcer/docker.rs`, profile `lock_docker`, off by default)
-- [ ] Inverted mode: distractions throttled always, free minutes earned by focus
+- [x] Inverted mode: distractions throttled always, free minutes earned by focus (`[inverted]`, `free.rs`,
+      `enforcer::Mode::Ambient`, `deepwork free`; agent, bar and app show the bank)
 - [ ] Packaging (PKGBUILD)

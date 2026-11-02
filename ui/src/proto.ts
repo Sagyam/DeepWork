@@ -12,7 +12,9 @@ export type Request =
   | { type: "world" }
   | { type: "history"; since: number }
   | { type: "routines" }
-  | { type: "config_status" };
+  | { type: "config_status" }
+  | { type: "free"; secs: number | null }
+  | { type: "free_stop" };
 
 export type SessionState = "active" | "surrendering" | "completed" | "surrendered";
 
@@ -61,6 +63,18 @@ export interface PendingConfig {
   reasons: string[];
 }
 
+/** Inverted mode: distractions are throttled outside sessions too, unless
+ * free minutes earned by focus are being spent. */
+export interface FreeInfo {
+  balance_secs: number;
+  spending: boolean;
+  stops_in_secs: number | null;
+  max_bank_secs: number;
+  free_mins_per_hour: number;
+  /** The outside-session throttle is on right now. */
+  throttled: boolean;
+}
+
 export interface Status {
   session: SessionInfo | null;
   profiles: string[];
@@ -70,6 +84,8 @@ export interface Status {
   skip_tokens_left: number;
   last: Finished | null;
   nudge: { level: number; idle_secs: number } | null;
+  /** Set when inverted mode is on. */
+  free: FreeInfo | null;
 }
 
 export interface Plot {
@@ -129,4 +145,5 @@ export type Response =
   | ({ type: "world" } & World)
   | { type: "history"; sessions: Finished[] }
   | { type: "routines"; routines: RoutineInfo[]; skip_tokens_per_week: number }
+  | ({ type: "free" } & FreeInfo)
   | { type: "error"; message: string };

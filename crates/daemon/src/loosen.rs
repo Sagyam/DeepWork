@@ -7,7 +7,9 @@
 
 use std::time::Duration;
 
-use crate::config::{Action, Config, Day, NudgeConfig, Profile, Routine, Throttle, on_day};
+use crate::config::{
+    Action, Config, Day, InvertedConfig, NudgeConfig, Profile, Routine, Throttle, on_day,
+};
 
 /// Fixed in code, so it cannot itself be loosened through the config.
 pub const LOOSEN_DELAY: Duration = Duration::from_secs(24 * 60 * 60);
@@ -32,6 +34,7 @@ pub fn loosenings(old: &Config, new: &Config) -> Vec<String> {
         out.push("more skip tokens".into());
     }
     nudge(&old.nudge, &new.nudge, &mut out);
+    inverted(old, new, &mut out);
     for r in &old.routines {
         match new.routines.iter().find(|n| n.name == r.name) {
             None => out.push(format!("routine {} removed", r.name)),
@@ -73,6 +76,36 @@ fn nudge(old: &NudgeConfig, new: &NudgeConfig, out: &mut Vec<String>) {
     }
     if new.after_mins > old.after_mins || new.repeat_mins > old.repeat_mins {
         out.push("slower nudges".into());
+    }
+}
+
+fn inverted(old: &Config, new: &Config, out: &mut Vec<String>) {
+    let (o, n): (&InvertedConfig, &InvertedConfig) = (&old.inverted, &new.inverted);
+    if o.enabled && !n.enabled {
+        out.push("inverted mode turned off".into());
+    }
+    // Turning it on, with any settings, is stricter than having it off.
+    if !o.enabled || !n.enabled {
+        return;
+    }
+    if n.free_mins_per_hour > o.free_mins_per_hour {
+        out.push("more free minutes per hour".into());
+    }
+    if n.max_bank_mins > o.max_bank_mins {
+        out.push("larger free-minute bank".into());
+    }
+    let name = |c: &Config| {
+        c.inverted
+            .profile
+            .clone()
+            .unwrap_or_else(|| c.session.default_profile.clone())
+    };
+    if name(old) != name(new) {
+        out.push(format!(
+            "inverted mode uses profile {} instead of {}",
+            name(new),
+            name(old)
+        ));
     }
 }
 
@@ -198,6 +231,10 @@ mod tests {
             ),
             ("[schedule]", "[dns]\nport = 5999\n[schedule]"),
             ("[profiles.deep]", "[profiles.deep]\nlock_docker = true"),
+            (
+                "[schedule]",
+                "[inverted]\nenabled = true\nfree_mins_per_hour = 30\n[schedule]",
+            ),
         ] {
             assert_eq!(changed(from, to), Vec::<String>::new(), "{to}");
         }
@@ -281,6 +318,26 @@ mod tests {
         ] {
             assert_eq!(changed(from, to), [why], "{to}");
         }
+        let on = BASE.replace("[schedule]", "[inverted]\nenabled = true\n[schedule]");
+        assert_eq!(
+            loosenings(&parse(&on), &parse(BASE)),
+            ["inverted mode turned off"]
+        );
+        let more = on.replace(
+            "enabled = true",
+            "enabled = true\nfree_mins_per_hour = 20\nmax_bank_mins = 200",
+        );
+        assert_eq!(
+            loosenings(&parse(&on), &parse(&more)),
+            ["more free minutes per hour", "larger free-minute bank"]
+        );
+        let other = on
+            .replace("enabled = true", "enabled = true\nprofile = \"lax\"")
+            .replace("[profiles.deep]", "[profiles.lax]\n[profiles.deep]");
+        assert_eq!(
+            loosenings(&parse(&on), &parse(&other)),
+            ["inverted mode uses profile lax instead of deep"]
+        );
         let locked = BASE.replace("[profiles.deep]", "[profiles.deep]\nlock_docker = true");
         assert_eq!(
             loosenings(&parse(&locked), &parse(BASE)),

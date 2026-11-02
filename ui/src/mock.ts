@@ -108,6 +108,7 @@ function build(): { world: World; status: Status; past: Finished[]; pending: Pen
     skip_tokens_left: 2,
     last: null,
     nudge: { level: 2, idle_secs: 4200 },
+    free: null,
   };
   const world: World = {
     tier: 2,
@@ -151,6 +152,10 @@ function build(): { world: World; status: Status; past: Finished[]; pending: Pen
       status.nudge = null;
       status.session = session({ type: "countdown", secs: 5400 }, 2000, true);
       world.construction = site(3, 370, true);
+      break;
+    case "inverted":
+      status.nudge = null;
+      status.free = { balance_secs: 1440, spending: false, stops_in_secs: null, max_bank_secs: 7200, free_mins_per_hour: 12, throttled: true };
       break;
     case "ruins":
       world.plots = plots(16, 5, [1, 2, 3], 0.7);
@@ -210,6 +215,19 @@ export function mockDaemon(req: Request): Response {
       return { type: "history", sessions: state.past.filter((f) => f.ended_at >= req.since) };
     case "routines":
       return { type: "routines", routines, skip_tokens_per_week: 2 };
+    case "free": {
+      const f = state.status.free;
+      if (!f) return { type: "error", message: "inverted mode is off: nothing is throttled outside sessions" };
+      if (s) return { type: "error", message: "free minutes cannot be spent during a session" };
+      Object.assign(f, { spending: true, stops_in_secs: f.balance_secs, throttled: false });
+      return { type: "free", ...f };
+    }
+    case "free_stop": {
+      const f = state.status.free;
+      if (!f?.spending) return { type: "error", message: "free time is not running" };
+      Object.assign(f, { spending: false, stops_in_secs: null, throttled: true });
+      return { type: "free", ...f };
+    }
     case "config_status":
       return { type: "config", message: state.pending ? "a loosening change is waiting" : "no change waiting", pending: state.pending };
   }

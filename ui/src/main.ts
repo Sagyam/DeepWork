@@ -111,6 +111,13 @@ function liveIdle(st: Status): string {
     const when = next.starts_in_secs > 0 ? `in ${hm(next.starts_in_secs)}` : "now";
     parts.push(`<div class="small muted">Next routine: ${escapeHtml(next.routine)} ${when} (${hm(next.ends_at - next.starts_at)})</div>`);
   }
+  const f = st.free;
+  if (f?.spending) {
+    parts.push(`<div class="muted">Free time · throttle lifted</div><div class="timer free">${clock(f.stops_in_secs ?? 0)}</div>`);
+  } else if (f) {
+    const state = f.throttled ? "Distractions are slowed down." : "";
+    parts.push(`<div class="small muted">${state} Free time banked: ${hm(f.balance_secs)} (${f.free_mins_per_hour} min per focused hour)</div>`);
+  }
   return parts.join("");
 }
 
@@ -134,11 +141,19 @@ function controls(st: Status): string {
         <button data-action="start-custom">Start</button>
         <select id="profile">${profiles}</select>
       </div>
-      ${skip}`;
+      ${skip}${freeControls(st)}`;
   }
   if (s.state !== "active") return "";
   const stop = s.kind.type === "stopwatch" ? `<button data-action="stop" ${s.stop_locked_secs > 0 ? "disabled" : ""}>Stop</button>` : "";
   return `<div class="row">${stop}<button class="link" data-action="surrender">Surrender…</button></div>`;
+}
+
+function freeControls(st: Status): string {
+  const f = st.free;
+  if (!f) return "";
+  if (f.spending) return `<div class="row"><button data-action="free-stop">Back to focus (bank the rest)</button></div>`;
+  if (f.balance_secs < 60) return "";
+  return `<div class="row"><button data-action="free">Spend free time (${hm(f.balance_secs)})</button></div>`;
 }
 
 function renderSession(st: Status) {
@@ -147,7 +162,7 @@ function renderSession(st: Status) {
   card.querySelector(".live")!.innerHTML = st.session ? liveSession(st.session) : liveIdle(st);
   // Rebuilt only when its shape changes, so typing in it survives polls.
   const s = st.session;
-  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}`;
+  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}:${st.free?.spending}:${Math.floor((st.free?.balance_secs ?? 0) / 60)}`;
   if (key !== controlsKey) {
     controlsKey = key;
     card.querySelector(".controls")!.innerHTML = controls(st);
@@ -192,6 +207,10 @@ $("#session").addEventListener("click", (ev) => {
       return act(() => call({ type: "stop" }));
     case "skip":
       return confirmSkip(btn.dataset.routine!);
+    case "free":
+      return act(() => call({ type: "free", secs: null }));
+    case "free-stop":
+      return act(() => call({ type: "free_stop" }));
     case "surrender":
       return openSurrender();
   }

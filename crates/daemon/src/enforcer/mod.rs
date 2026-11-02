@@ -43,8 +43,20 @@ const STOP_DROPIN: &str = "/run/systemd/system/deepworkd.service.d/50-session.co
 const STOP_DROPIN_TEXT: &str = "# Written by deepworkd for the current focus session; removed when it ends.\n\
                                 [Unit]\nRefuseManualStop=yes\n";
 
+/// Why enforcement is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// A focus session: network rules plus the stop lock and, if the
+    /// profile asks, the Docker lock.
+    Session,
+    /// Inverted mode outside sessions: network rules only. Root, the service
+    /// and Docker stay usable, so this can never lock anyone out.
+    Ambient,
+}
+
 struct Enforcer {
     dry_run: bool,
+    mode: Mode,
     dns_port: u16,
     manage_resolved: bool,
     container_dns: Option<std::net::SocketAddrV4>,
@@ -243,7 +255,9 @@ impl Enforcer {
         }
     }
 
-    fn engage(&mut self, profile: Profile) -> Result<()> {
+    /// Turns enforcement on, or switches an active one to `profile` and
+    /// `mode` (ambient to session and back).
+    fn engage(&mut self, profile: Profile, mode: Mode) -> Result<()> {
         self.sync_browser_policies();
         self.install_ruleset(&profile)?;
         if self.manage_resolved {
@@ -260,18 +274,44 @@ impl Enforcer {
         self.active = Some(profile);
         self.shaped.clear();
         self.shape_new_devices();
-        if let Err(e) = self.set_stop_lock(true) {
-            warn!("could not lock the service against manual stops: {e:#}");
+        self.mode = mode;
+        // Notes from before a switch belong to the previous mode.
+        self.pending.clear();
+        match mode {
+            Mode::Session => {
+                if let Err(e) = self.set_stop_lock(true) {
+                    warn!("could not lock the service against manual stops: {e:#}");
+                }
+                self.docker_locked = false;
+                self.lock_docker();
+            }
+            Mode::Ambient => self.unlock(),
         }
-        self.docker_locked = false;
-        self.lock_docker();
         Ok(())
+    }
+
+    /// Lifts the session-only locks.
+    fn unlock(&mut self) {
+        if let Err(e) = self.set_stop_lock(false) {
+            warn!("could not lift the manual stop lock: {e:#}");
+        }
+        // Also after a crash: the marker says the socket was ours to close.
+        self.docker_locked = false;
+        if self.dry_run {
+            debug!("[dry-run] unlock {}", self.docker.socket().display());
+        } else {
+            match self.docker.lift() {
+                Ok(true) => info!("unlocked {}", self.docker.socket().display()),
+                Ok(false) => {}
+                Err(e) => warn!("could not unlock the Docker socket: {e:#}"),
+            }
+        }
     }
 
     /// Closes the Docker socket if the profile asks for it. Finding it open
     /// after it was closed this session is a tamper note.
     fn lock_docker(&mut self) {
-        if !self.active.as_ref().is_some_and(|p| p.lock_docker) {
+        if self.mode != Mode::Session || !self.active.as_ref().is_some_and(|p| p.lock_docker) {
             return;
         }
         if self.dry_run {
@@ -330,20 +370,7 @@ impl Enforcer {
         self.pending.clear();
         self.reprime = false;
         self.retry_at.clear();
-        if let Err(e) = self.set_stop_lock(false) {
-            warn!("could not lift the manual stop lock: {e:#}");
-        }
-        // Also after a crash: the marker says the socket was ours to close.
-        self.docker_locked = false;
-        if self.dry_run {
-            debug!("[dry-run] unlock {}", self.docker.socket().display());
-        } else {
-            match self.docker.lift() {
-                Ok(true) => info!("unlocked {}", self.docker.socket().display()),
-                Ok(false) => {}
-                Err(e) => warn!("could not unlock the Docker socket: {e:#}"),
-            }
-        }
+        self.unlock();
         self.run("nft", &["destroy", "table", nft::TABLE], None)?;
         // Only after the table is gone, so resolved can reach its own
         // DNS-over-TLS servers again.
@@ -576,7 +603,7 @@ fn list_devices() -> Vec<(String, u32)> {
 }
 
 enum Cmd {
-    Engage(Profile, oneshot::Sender<Result<()>>),
+    Engage(Profile, Mode, oneshot::Sender<Result<()>>),
     Release(oneshot::Sender<Result<()>>),
     Reassert(oneshot::Sender<Result<Reasserted>>),
     Retune(Throttle, oneshot::Sender<Result<()>>),
@@ -606,6 +633,7 @@ impl EnforcerHandle {
         let (tx, mut rx) = mpsc::unbounded_channel();
         let mut enforcer = Enforcer {
             dry_run,
+            mode: Mode::Session,
             dns_port,
             manage_resolved,
             container_dns,
@@ -649,7 +677,9 @@ impl EnforcerHandle {
             .spawn(move || {
                 while let Some(cmd) = rx.blocking_recv() {
                     match cmd {
-                        Cmd::Engage(profile, reply) => drop(reply.send(enforcer.engage(profile))),
+                        Cmd::Engage(profile, mode, reply) => {
+                            drop(reply.send(enforcer.engage(profile, mode)))
+                        }
                         Cmd::Release(reply) => drop(reply.send(enforcer.release())),
                         Cmd::Reassert(reply) => drop(reply.send(enforcer.reassert())),
                         Cmd::Retune(t, reply) => drop(reply.send(enforcer.retune(t))),
@@ -691,8 +721,8 @@ impl EnforcerHandle {
         rx.await.context("enforcer thread is gone")?
     }
 
-    pub async fn engage(&self, profile: Profile) -> Result<()> {
-        self.call(|r| Cmd::Engage(profile, r)).await
+    pub async fn engage(&self, profile: Profile, mode: Mode) -> Result<()> {
+        self.call(|r| Cmd::Engage(profile, mode, r)).await
     }
 
     pub async fn release(&self) -> Result<()> {

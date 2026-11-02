@@ -55,6 +55,13 @@ pub enum Request {
     },
     /// The routines in the config.
     Routines,
+    /// Inverted mode: spend banked free minutes, lifting the outside-session
+    /// throttle until the bank is empty or after `secs`.
+    Free {
+        secs: Option<u64>,
+    },
+    /// Stop spending free minutes; the rest stays banked.
+    FreeStop,
 }
 
 /// The most sessions one [`Request::History`] returns.
@@ -128,6 +135,21 @@ pub struct Nudge {
     pub idle_secs: u64,
 }
 
+/// Inverted mode: distractions are throttled outside sessions too, unless
+/// free minutes earned by focus are being spent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FreeInfo {
+    pub balance_secs: u64,
+    /// Free time is running; the throttle is lifted.
+    pub spending: bool,
+    /// When spending, seconds until it stops on its own.
+    pub stops_in_secs: Option<u64>,
+    pub max_bank_secs: u64,
+    pub free_mins_per_hour: u32,
+    /// The outside-session throttle is on right now.
+    pub throttled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Status {
     pub session: Option<SessionInfo>,
@@ -145,6 +167,9 @@ pub struct Status {
     pub last: Option<Finished>,
     #[serde(default)]
     pub nudge: Option<Nudge>,
+    /// Set when inverted mode is on.
+    #[serde(default)]
+    pub free: Option<FreeInfo>,
 }
 
 /// A routine as configured. Its runs show up in [`Status::upcoming`].
@@ -302,6 +327,7 @@ pub enum Response {
         routines: Vec<RoutineInfo>,
         skip_tokens_per_week: u32,
     },
+    Free(FreeInfo),
     Error {
         message: String,
     },

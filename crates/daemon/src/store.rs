@@ -42,6 +42,15 @@ pub enum EventKind {
     ConfigPending,
     /// The throttle moved to a harsher escalation stage.
     Escalate,
+    /// A completed session added free minutes (inverted mode).
+    FreeEarned,
+    /// Free minutes started or stopped being spent.
+    FreeStart,
+    FreeEnd,
+    /// Enforcement outside sessions (inverted mode) was changed and put back.
+    /// Root is not locked then, and package upgrades can reload firewalls,
+    /// so this is recorded but carries no penalty.
+    AmbientRepair,
 }
 
 /// What happened to a routine run. Each run is recorded once.
@@ -85,6 +94,10 @@ impl EventKind {
             EventKind::ConfigApplied => "config_applied",
             EventKind::ConfigPending => "config_pending",
             EventKind::Escalate => "escalate",
+            EventKind::FreeEarned => "free_earned",
+            EventKind::FreeStart => "free_start",
+            EventKind::FreeEnd => "free_end",
+            EventKind::AmbientRepair => "ambient_repair",
         }
     }
 }

@@ -20,6 +20,7 @@ pub struct Config {
     pub session: SessionConfig,
     pub schedule: ScheduleConfig,
     pub nudge: NudgeConfig,
+    pub inverted: InvertedConfig,
     pub routines: Vec<Routine>,
     pub profiles: BTreeMap<String, Profile>,
 }
@@ -46,6 +47,21 @@ pub struct NudgeConfig {
     pub after_mins: u32,
     /// Then one more, a notch more urgent, every this many minutes.
     pub repeat_mins: u32,
+}
+
+/// Inverted mode: distractions are throttled whenever no session runs, and
+/// completed sessions earn free minutes that lift the throttle for a while.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct InvertedConfig {
+    pub enabled: bool,
+    /// The profile throttled outside sessions; `default_profile` if unset.
+    /// Its `lock_docker` is ignored: outside sessions nothing is locked.
+    pub profile: Option<String>,
+    /// Free minutes earned per hour of completed focus.
+    pub free_mins_per_hour: u32,
+    /// Free minutes are banked up to this many.
+    pub max_bank_mins: u32,
 }
 
 /// A focus slot that starts a countdown on its own.
@@ -258,6 +274,7 @@ impl Default for Config {
             session: SessionConfig::default(),
             schedule: ScheduleConfig::default(),
             nudge: NudgeConfig::default(),
+            inverted: InvertedConfig::default(),
             routines: Vec::new(),
             profiles: BTreeMap::from([("deep".to_string(), Profile::default())]),
         }
@@ -316,6 +333,17 @@ impl Default for NudgeConfig {
             until: ClockTime(Time::constant(21, 0, 0, 0)),
             after_mins: 30,
             repeat_mins: 15,
+        }
+    }
+}
+
+impl Default for InvertedConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            profile: None,
+            free_mins_per_hour: 12,
+            max_bank_mins: 120,
         }
     }
 }
@@ -392,6 +420,19 @@ impl Default for Profile {
 }
 
 impl Config {
+    /// The profile throttled outside sessions in inverted mode.
+    pub fn ambient_profile(&self) -> Option<&Profile> {
+        if !self.inverted.enabled {
+            return None;
+        }
+        let name = self
+            .inverted
+            .profile
+            .as_ref()
+            .unwrap_or(&self.session.default_profile);
+        self.profiles.get(name)
+    }
+
     /// Loads the config at `path`, falling back to defaults if it does not exist.
     pub fn load(path: &Path) -> Result<Self> {
         Self::parse(&Self::read_text(path)?).with_context(|| format!("in {}", path.display()))
@@ -444,6 +485,21 @@ impl Config {
         ensure!(
             n.after_mins >= 1 && n.repeat_mins >= 1,
             "nudge: after_mins and repeat_mins must be at least 1"
+        );
+        let inv = &self.inverted;
+        if let Some(p) = &inv.profile {
+            ensure!(
+                self.profiles.contains_key(p),
+                "inverted: profile {p:?} is not defined"
+            );
+        }
+        ensure!(
+            inv.free_mins_per_hour <= 60,
+            "inverted: free_mins_per_hour must be at most 60"
+        );
+        ensure!(
+            inv.max_bank_mins <= 24 * 60,
+            "inverted: max_bank_mins must be at most 1440"
         );
         let max_mins = crate::session::MAX_SESSION.as_secs() / 60;
         for (i, r) in self.routines.iter().enumerate() {
@@ -580,6 +636,28 @@ mod tests {
         assert!(config.validate().is_err());
         let off: Config = toml::from_str("[profiles.deep]\nescalation = []").unwrap();
         assert_eq!(off.profiles["deep"].throttle_after(min(600)).0, 0);
+    }
+
+    #[test]
+    fn parses_inverted() {
+        assert!(Config::default().ambient_profile().is_none());
+        let config = Config::parse(
+            "[inverted]\nenabled = true\nfree_mins_per_hour = 10\n[profiles.deep]\n[profiles.home]\nrules = []",
+        )
+        .unwrap();
+        assert_eq!(config.ambient_profile(), Some(&config.profiles["deep"]));
+        assert_eq!(config.inverted.max_bank_mins, 120);
+        let home =
+            Config::parse("[inverted]\nenabled = true\nprofile = \"home\"\n[profiles.deep]\n[profiles.home]\nrules = []")
+                .unwrap();
+        assert!(home.ambient_profile().unwrap().rules.is_empty());
+        for bad in [
+            "[inverted]\nprofile = \"nope\"",
+            "[inverted]\nfree_mins_per_hour = 61",
+            "[inverted]\nmax_bank_mins = 2000",
+        ] {
+            assert!(Config::parse(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]

@@ -115,6 +115,7 @@ impl Watch {
         self.failures = 0;
         if let Some(prev) = &self.prev {
             session_changes(prev, &cur, &mut notes);
+            free_changes(prev, &cur, &mut notes);
         }
         self.heads_up(&cur, &mut notes);
         self.nudge(&cur, &mut notes);
@@ -269,6 +270,42 @@ fn session_changes(prev: &Status, cur: &Status, notes: &mut Vec<Note>) {
             }
         }
         _ => notes.push(started_note(c)),
+    }
+}
+
+/// Free minutes in inverted mode: earned, running out, used up.
+fn free_changes(prev: &Status, cur: &Status, notes: &mut Vec<Note>) {
+    let (Some(p), Some(c)) = (prev.free, cur.free) else {
+        return;
+    };
+    if c.balance_secs > p.balance_secs {
+        notes.push(Note::new(
+            Urgency::Low,
+            "Free time earned",
+            format!(
+                "+{}, {} banked. `deepwork free` lifts the throttle.",
+                fmt_mins(c.balance_secs - p.balance_secs),
+                fmt_mins(c.balance_secs)
+            ),
+        ));
+    }
+    let left = |f: &deepwork_proto::FreeInfo| f.stops_in_secs.unwrap_or(0);
+    if p.spending && c.spending && left(&p) > 60 && left(&c) <= 60 {
+        notes.push(Note::new(
+            Urgency::Normal,
+            "1 minute of free time left",
+            "Distracting sites slow down again after that.",
+        ));
+    }
+    if p.spending && !c.spending && cur.session.is_none() {
+        notes.push(Note::new(
+            Urgency::Normal,
+            "Free time over",
+            format!(
+                "Distracting sites are slowed down again. {} banked.",
+                fmt_mins(c.balance_secs)
+            ),
+        ));
     }
 }
 
@@ -469,6 +506,7 @@ mod tests {
             skip_tokens_left: 2,
             last: None,
             nudge: None,
+            free: None,
         }
     }
 
@@ -593,6 +631,33 @@ mod tests {
 
         s.session = Some(session(2, SessionState::Active));
         assert_eq!(summaries(&w.on_status(s)), ["Focus session started"]);
+    }
+
+    #[test]
+    fn free_time() {
+        let free = |balance_secs, stops_in_secs: Option<u64>| deepwork_proto::FreeInfo {
+            balance_secs,
+            spending: stops_in_secs.is_some(),
+            stops_in_secs,
+            max_bank_secs: 7200,
+            free_mins_per_hour: 12,
+            throttled: stops_in_secs.is_none(),
+        };
+        let mut w = Watch::default();
+        let mut s = status();
+        s.free = Some(free(0, None));
+        assert!(w.on_status(s.clone()).is_empty());
+        s.free = Some(free(300, None));
+        assert_eq!(summaries(&w.on_status(s.clone())), ["Free time earned"]);
+        s.free = Some(free(200, Some(61)));
+        assert!(w.on_status(s.clone()).is_empty());
+        s.free = Some(free(199, Some(60)));
+        assert_eq!(
+            summaries(&w.on_status(s.clone())),
+            ["1 minute of free time left"]
+        );
+        s.free = Some(free(139, None));
+        assert_eq!(summaries(&w.on_status(s)), ["Free time over"]);
     }
 
     #[test]

@@ -2,7 +2,8 @@
 
 `deepwork bar` prints one line of Waybar-style JSON
 (`{"text", "tooltip", "class"}`) and exits. Classes: `active`, `surrendering`,
-`upcoming` (a routine within the heads-up window), `nudge`, `idle`, `down`.
+`upcoming` (a routine within the heads-up window), `free` (inverted mode:
+free minutes being spent), `nudge`, `idle`, `down`.
 
 Omarchy shell (`~/.config/omarchy/shell.json`, under `bar.layout.<section>`):
 
