@@ -51,7 +51,7 @@ export function routinesPanel(list: RoutineInfo[], perWeek: number, st: Status, 
     <h3>Next 24 hours</h3>
     ${runs}
     <p class="small muted">${st.skip_tokens_left} of ${perWeek} skip token${perWeek === 1 ? "" : "s"} left this week.
-      Routines live in <code>/etc/deepwork/config.toml</code>; run <code>deepwork config reload</code> after editing.
+      Edit routines in <button class="link" data-action="settings" data-section="routines">Settings → Routines</button>.
       Loosening changes wait 24 hours.</p>`;
 }
 
@@ -139,5 +139,6 @@ export function statsPanel(stats: Stats, sessions: Finished[], world: World | nu
 export function notice(p: PendingConfig | null): string {
   if (!p) return "";
   const reasons = p.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
-  return `<div class="nudge">Config change waiting, applies in ${hm(Math.max(0, p.applies_in_secs))}</div><ul>${reasons}</ul>`;
+  return `<div class="nudge">Config change waiting, applies in ${hm(Math.max(0, p.applies_in_secs))}</div><ul>${reasons}</ul>
+    <button class="link" data-action="settings" data-section="session">Review settings</button>`;
 }

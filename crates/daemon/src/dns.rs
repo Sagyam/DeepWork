@@ -21,7 +21,9 @@ use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::rustls::{self, ClientConfig, RootCertStore};
 use tracing::{debug, info, warn};
 
-use crate::config::{Action, DnsConfig, Rule, Upstream, domain_matches};
+use crate::config::{
+    Action, DnsConfig, ListMode, Lists, Upstream, domain_matches, judge, strictest,
+};
 use crate::dot::{self, Pipeline, read_framed, write_framed};
 use crate::enforcer::EnforcerHandle;
 use crate::enforcer::nft::EXEMPT_MARK;
@@ -39,7 +41,7 @@ pub struct Resolver {
     cfg: DnsConfig,
     /// `None` in dry-run, where setting `SO_MARK` is not permitted.
     mark: Option<u32>,
-    rules: RwLock<Option<Arc<Vec<Rule>>>>,
+    rules: RwLock<Option<Arc<Lists>>>,
     enforcer: EnforcerHandle,
     tls: TlsConnector,
     /// One reused connection per DNS-over-TLS upstream.
@@ -66,13 +68,13 @@ impl Resolver {
         }))
     }
 
-    /// Rules to act on, or `None` outside a session.
-    pub fn set_rules(&self, rules: Option<Vec<Rule>>) {
+    /// Site lists to act on, or `None` when nothing is enforced.
+    pub fn set_rules(&self, rules: Option<Lists>) {
         *self.rules.write().unwrap() = rules.map(Arc::new);
     }
 
-    /// The rules of the running session, also used by the SNI inspector.
-    pub fn rules(&self) -> Option<Arc<Vec<Rule>>> {
+    /// The lists being enforced, also used by the SNI inspector.
+    pub fn rules(&self) -> Option<Arc<Lists>> {
         self.rules.read().unwrap().clone()
     }
 
@@ -316,23 +318,21 @@ fn normalize(name: &Name) -> String {
     name.to_ascii().trim_end_matches('.').to_ascii_lowercase()
 }
 
-/// If any name in `msg` falls under a rule, returns the strictest action, every
-/// A/AAAA address in the answer, and the smallest TTL among them.
-fn matching_addrs(msg: &Message, rules: &[Rule]) -> Option<(Action, Vec<IpAddr>, u32)> {
+/// If `msg` needs an address set, returns the set (by action), every A/AAAA
+/// address in the answer, and the smallest TTL among them. The strictest
+/// deciding rule among the question and CNAME names counts, so a CNAME
+/// cannot lead around a block. Full-speed answers only need a set in an
+/// allow-only profile, where everything else is slowed.
+fn matching_addrs(msg: &Message, lists: &Lists) -> Option<(Action, Vec<IpAddr>, u32)> {
     let names = msg
         .queries
         .iter()
         .map(|q| normalize(q.name()))
         .chain(msg.answers.iter().map(|r| normalize(&r.name)));
-    let mut action = None;
-    for name in names {
-        for rule in rules.iter().filter(|r| domain_matches(&name, &r.domain)) {
-            if action != Some(Action::Block) {
-                action = Some(rule.action);
-            }
-        }
+    let action = strictest(names.filter_map(|name| judge(&lists.rules, &name)))?;
+    if action == Action::Allow && lists.mode == ListMode::BlockList {
+        return None;
     }
-    let action = action?;
 
     let mut ttl = u32::MAX;
     let addrs: Vec<IpAddr> = msg
@@ -389,6 +389,7 @@ fn reply_with_code(req: &Message, code: ResponseCode) -> Option<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Rule;
     use hickory_proto::rr::Record;
     use hickory_proto::rr::rdata::{A, AAAA, CNAME};
 
@@ -397,6 +398,17 @@ mod tests {
             domain: domain.into(),
             action,
         }
+    }
+
+    fn lists(mode: ListMode, rules: &[Rule]) -> Lists {
+        Lists {
+            mode,
+            rules: rules.to_vec(),
+        }
+    }
+
+    fn blocklist(rules: &[Rule]) -> Lists {
+        lists(ListMode::BlockList, rules)
     }
 
     fn answer(qname: &str, records: Vec<Record>) -> Message {
@@ -436,7 +448,7 @@ mod tests {
             ],
         );
         let (action, addrs, ttl) =
-            matching_addrs(&msg, &[rule("youtube.com", Action::Throttle)]).unwrap();
+            matching_addrs(&msg, &blocklist(&[rule("youtube.com", Action::Throttle)])).unwrap();
         assert_eq!(action, Action::Throttle);
         assert_eq!(addrs.len(), 2);
         assert_eq!(ttl, 90);
@@ -452,8 +464,34 @@ mod tests {
             rule("com", Action::Throttle),
             rule("reddit.com", Action::Block),
         ];
-        assert_eq!(matching_addrs(&msg, &rules).unwrap().0, Action::Block);
-        assert!(matching_addrs(&msg, &[rule("youtube.com", Action::Throttle)]).is_none());
+        assert_eq!(
+            matching_addrs(&msg, &blocklist(&rules)).unwrap().0,
+            Action::Block
+        );
+        assert!(
+            matching_addrs(&msg, &blocklist(&[rule("youtube.com", Action::Throttle)])).is_none()
+        );
+    }
+
+    #[test]
+    fn allowed_names_fill_the_allow_set_only_in_allow_only_mode() {
+        let msg = answer(
+            "music.youtube.com.",
+            vec![rec("music.youtube.com.", 60, RData::A(A::new(1, 2, 3, 4)))],
+        );
+        let rules = [
+            rule("youtube.com", Action::Throttle),
+            rule("music.youtube.com", Action::Allow),
+        ];
+        assert!(matching_addrs(&msg, &blocklist(&rules)).is_none());
+        let only = lists(ListMode::AllowOnly, &rules);
+        assert_eq!(matching_addrs(&msg, &only).unwrap().0, Action::Allow);
+        // Unlisted names need no set in allow-only mode: slow is the default.
+        let other = answer(
+            "example.com.",
+            vec![rec("example.com.", 60, RData::A(A::new(5, 6, 7, 8)))],
+        );
+        assert!(matching_addrs(&other, &only).is_none());
     }
 
     #[test]

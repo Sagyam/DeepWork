@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 use std::time::{Duration, Instant};
 
-use crate::config::{Action, Rule, domain_matches};
+use crate::config::{Action, ListMode, Lists, judge};
 use crate::enforcer::nft::{SNI_BLOCK, SNI_KEEP, SNI_PASS, SNI_SLOW};
 
 /// A ClientHello larger than this, or spread over more segments, is given up
@@ -259,24 +259,20 @@ fn server_name(data: &[u8]) -> Option<String> {
     None
 }
 
-/// The judgement for a parsed ClientHello: the strictest matching rule, or
-/// full speed for a name no rule covers. An encrypted ClientHello only shows
-/// a cover name, so it never earns full speed.
-pub fn decide(sni: Option<&str>, ech: bool, rules: &[Rule]) -> Judgement {
+/// The judgement for a parsed ClientHello, from the rule that decides the
+/// name (see [`judge`]). A name no rule covers is full speed in a block list
+/// and slow in an allow-only profile. An encrypted ClientHello only shows a
+/// cover name, so it never earns full speed: the address decides.
+pub fn decide(sni: Option<&str>, ech: bool, lists: &Lists) -> Judgement {
     let Some(name) = sni else {
         return Judgement::Keep;
     };
-    let mut action = None;
-    for rule in rules.iter().filter(|r| domain_matches(name, &r.domain)) {
-        if action != Some(Action::Block) {
-            action = Some(rule.action);
-        }
-    }
-    match action {
+    match judge(&lists.rules, name) {
         Some(Action::Block) => Judgement::Block,
         Some(Action::Throttle) => Judgement::Slow,
-        None if ech => Judgement::Keep,
-        None => Judgement::Pass,
+        _ if ech => Judgement::Keep,
+        None if lists.mode == ListMode::AllowOnly => Judgement::Slow,
+        Some(Action::Allow) | None => Judgement::Pass,
     }
 }
 
@@ -297,15 +293,15 @@ pub struct Inspector {
 }
 
 impl Inspector {
-    /// Judges one queued packet. `rules` is `None` outside a session. The
+    /// Judges one queued packet. `lists` is `None` outside a session. The
     /// name is returned once the ClientHello has been read.
     pub fn inspect(
         &mut self,
         now: Instant,
         pkt: &[u8],
-        rules: Option<&[Rule]>,
+        lists: Option<&Lists>,
     ) -> (Judgement, Option<String>) {
-        let (Some(rules), Some(tcp)) = (rules, parse_packet(pkt)) else {
+        let (Some(lists), Some(tcp)) = (lists, parse_packet(pkt)) else {
             return (Judgement::Keep, None);
         };
         if self.flows.len() >= MAX_FLOWS {
@@ -357,7 +353,7 @@ impl Inspector {
             }
             Hello::Parsed { sni, ech } => {
                 self.flows.remove(&tcp.key);
-                (decide(sni.as_deref(), ech, rules), sni)
+                (decide(sni.as_deref(), ech, lists), sni)
             }
         }
     }
@@ -366,6 +362,7 @@ impl Inspector {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Rule;
 
     /// A ClientHello record with the given extensions (type, data).
     pub fn client_hello(exts: &[(u16, Vec<u8>)]) -> Vec<u8> {
@@ -415,17 +412,22 @@ mod tests {
         p
     }
 
-    fn rules() -> Vec<Rule> {
-        vec![
-            Rule {
-                domain: "youtube.com".into(),
-                action: Action::Throttle,
-            },
-            Rule {
-                domain: "reddit.com".into(),
-                action: Action::Block,
-            },
-        ]
+    fn rule(domain: &str, action: Action) -> Rule {
+        Rule {
+            domain: domain.into(),
+            action,
+        }
+    }
+
+    fn rules() -> Lists {
+        Lists {
+            mode: ListMode::BlockList,
+            rules: vec![
+                rule("youtube.com", Action::Throttle),
+                rule("reddit.com", Action::Block),
+                rule("music.youtube.com", Action::Allow),
+            ],
+        }
     }
 
     #[test]
@@ -505,6 +507,30 @@ mod tests {
         assert_eq!(decide(Some("docs.google.com"), false, &r), Judgement::Pass);
         assert_eq!(decide(Some("docs.google.com"), true, &r), Judgement::Keep);
         assert_eq!(decide(None, false, &r), Judgement::Keep);
+        // An allowed exception inside a slowed site.
+        assert_eq!(
+            decide(Some("music.youtube.com"), false, &r),
+            Judgement::Pass
+        );
+        assert_eq!(decide(Some("music.youtube.com"), true, &r), Judgement::Keep);
+
+        let only = Lists {
+            mode: ListMode::AllowOnly,
+            rules: vec![
+                rule("google.com", Action::Allow),
+                rule("mail.google.com", Action::Block),
+            ],
+        };
+        assert_eq!(
+            decide(Some("docs.google.com"), false, &only),
+            Judgement::Pass
+        );
+        assert_eq!(
+            decide(Some("mail.google.com"), false, &only),
+            Judgement::Block
+        );
+        assert_eq!(decide(Some("example.com"), false, &only), Judgement::Slow);
+        assert_eq!(decide(Some("example.com"), true, &only), Judgement::Keep);
     }
 
     #[test]

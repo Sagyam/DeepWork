@@ -46,6 +46,22 @@ pub enum Request {
     ConfigStatus,
     /// Re-read the config file. Loosening changes wait 24 hours.
     ReloadConfig,
+    /// The config in effect, as JSON in the daemon's config shape.
+    GetConfig,
+    /// Replace the config (as JSON in the daemon's config shape) and write it
+    /// to the config file. Stricter and neutral changes apply at once;
+    /// loosening ones wait 24 hours.
+    SetConfig {
+        config: serde_json::Value,
+    },
+    /// Settings and progress (sessions, penalties, routine runs, free minutes)
+    /// in one JSON bundle, for a backup.
+    Export,
+    /// Restore a bundle made by [`Request::Export`]. Merges: sessions already
+    /// present (same profile and start) are skipped.
+    Import {
+        backup: serde_json::Value,
+    },
     /// The progression world, derived from the ledger.
     World,
     /// Sessions that ended at or after `since` (unix seconds), newest first.
@@ -319,6 +335,27 @@ pub enum Response {
         message: String,
     },
     Config(ConfigInfo),
+    /// The config in effect (JSON), any pending change, and what the last
+    /// save / reload did. `pending_config` is the settings the waiting change
+    /// would apply; an editor should show that one, with `pending` as the
+    /// warning, so a queued edit does not look like it vanished.
+    ConfigData {
+        config: serde_json::Value,
+        #[serde(default)]
+        pending_config: Option<serde_json::Value>,
+        pending: Option<PendingConfig>,
+        message: String,
+    },
+    /// A backup bundle made by [`Request::Export`].
+    Backup {
+        backup: serde_json::Value,
+    },
+    /// How many sessions a [`Request::Import`] added.
+    Imported {
+        sessions: usize,
+        message: String,
+        pending: Option<PendingConfig>,
+    },
     World(Box<World>),
     History {
         sessions: Vec<Finished>,

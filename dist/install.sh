@@ -50,11 +50,18 @@ sudo install -Dm755 target/release/deepwork-pam-gate /usr/local/lib/deepwork/dee
 sudo install -Dm644 dist/deepwork-agent.service /etc/systemd/user/deepwork-agent.service
 sudo install -Dm644 dist/deepworkd.service /etc/systemd/system/deepworkd.service
 sudo install -Dm644 docs/PLAN.md /usr/local/share/doc/deepwork/PLAN.md
-if [[ -f dist/config.local.toml ]]; then
-    sudo install -Dm644 dist/config.local.toml /etc/deepwork/config.toml
-elif [[ ! -f /etc/deepwork/config.toml ]]; then
-    sudo install -Dm644 dist/config.example.toml /etc/deepwork/config.toml
-    echo "Installed /etc/deepwork/config.toml from the example. Review it."
+# The app owns this file once installed: never overwrite settings the user
+# changed there. A first install seeds it from config.local.toml if present,
+# else from the example.
+if [[ ! -f /etc/deepwork/config.toml ]]; then
+    if [[ -f dist/config.local.toml ]]; then
+        sudo install -Dm644 dist/config.local.toml /etc/deepwork/config.toml
+    else
+        sudo install -Dm644 dist/config.example.toml /etc/deepwork/config.toml
+        echo "Installed /etc/deepwork/config.toml from the example. Review it."
+    fi
+else
+    echo "Keeping the existing /etc/deepwork/config.toml (edit it in the app's Settings)."
 fi
 # Browsers must resolve through the system resolver, not their own DoH, and
 # keep ECH off. The daemon keeps these in place; the hook covers updates.

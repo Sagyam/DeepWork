@@ -14,6 +14,8 @@
         <nav id="tabs" class="card">
           <button data-view="routines">Routines</button>
           <button data-view="stats">Stats</button>
+          <button data-settings="lists">Sites</button>
+          <button data-settings="session">Settings</button>
         </nav>
         <section id="panel" class="card" hidden></section>
       </div>
@@ -51,6 +53,26 @@
           <button id="skip-confirm" value="confirm">Skip</button>
         </menu>
       </form>
+    </dialog>
+    <dialog id="settings" class="sheet">
+      <header class="sheet-head">
+        <div>
+          <h2>Settings <span id="settings-dirty" class="dirty" hidden>unsaved</span></h2>
+          <p class="small muted">Saved by deepworkd to <code>/etc/deepwork/config.toml</code>. Loosening changes wait 24 hours.</p>
+        </div>
+        <button class="close" data-action="close-settings" title="Close (Esc)">×</button>
+      </header>
+      <div class="sheet-body">
+        <nav id="settings-nav"></nav>
+        <div id="settings-main"></div>
+      </div>
+      <footer class="sheet-foot">
+        <span id="settings-message" class="settings-message"></span>
+        <div class="row tight">
+          <button id="settings-revert" data-action="revert">Revert</button>
+          <button id="settings-save" class="primary" data-action="save">Save changes</button>
+        </div>
+      </footer>
     </dialog>
     <div id="tip" hidden></div>
     <script type="module" src="/src/main.ts"></script>

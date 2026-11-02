@@ -6,7 +6,7 @@
 // Each load replays the history (its timestamps are relative to now). In the
 // console, `city.demo("collapse" | "build" | "damage", plot?)` plays one
 // transition (the tallest building if no plot is given).
-import type { Construction, Finished, PendingConfig, Plot, Request, Response, RoutineInfo, SessionInfo, Status, World, WorldEvent } from "./proto";
+import type { Config, Construction, Finished, PendingConfig, Plot, Request, Response, RoutineInfo, SessionInfo, Status, World, WorldEvent } from "./proto";
 import { SURRENDER_PHRASE } from "./proto";
 
 const scenario = new URLSearchParams(location.search).get("mock") ?? "city";
@@ -68,6 +68,55 @@ const routines: RoutineInfo[] = [
   { name: "morning", days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", duration_mins: 90, profile: "deep" },
   { name: "evening", days: [], start: "20:30", duration_mins: 50, profile: "deep" },
 ];
+
+/** The settings sheet in a browser has something real to edit. */
+let config: Config = {
+  dns: {
+    port: 5454,
+    upstreams: [
+      { addr: "9.9.9.9:853", tls_name: "dns.quad9.net" },
+      { addr: "1.1.1.1:853", tls_name: "cloudflare-dns.com" },
+    ],
+    forward: [{ suffix: "ts.net", server: "100.100.100.100:53" }],
+    manage_resolved: true,
+    container_dns: "172.17.0.1:53",
+  },
+  session: { default_profile: "deep", stopwatch_min_secs: 600, surrender_wait_secs: 600 },
+  schedule: { heads_up_secs: 300, skip_tokens_per_week: 2 },
+  nudge: { enabled: true, days: [], from: "09:00", until: "21:00", after_mins: 30, repeat_mins: 15 },
+  inverted: { enabled: false, profile: null, free_mins_per_hour: 12, max_bank_mins: 120 },
+  routines: routines.map((r) => ({ ...r, days: [...r.days], profile: null })),
+  profiles: {
+    deep: {
+      mode: "block_list",
+      throttle: { rtt_ms: 400, jitter_ms: 50, rate_kbit: 256, loss_pct: 0 },
+      block_quic: true,
+      inspect_sni: true,
+      lock_docker: false,
+      rules: [
+        { domain: "youtube.com", action: "throttle" },
+        { domain: "youtu.be", action: "throttle" },
+        { domain: "reddit.com", action: "throttle" },
+        { domain: "x.com", action: "throttle" },
+        { domain: "instagram.com", action: "block" },
+        { domain: "docs.rs", action: "allow" },
+      ],
+      escalation: [
+        { after_mins: 10, throttle: { rtt_ms: 500, jitter_ms: 50, rate_kbit: 192, loss_pct: 0 } },
+        { after_mins: 20, throttle: { rtt_ms: 600, jitter_ms: 50, rate_kbit: 128, loss_pct: 0 } },
+      ],
+    },
+    trial: {
+      mode: "allow_only",
+      throttle: { rtt_ms: 300, jitter_ms: 40, rate_kbit: 512, loss_pct: 0 },
+      block_quic: true,
+      inspect_sni: true,
+      lock_docker: false,
+      rules: [{ domain: "docs.rs", action: "allow" }],
+      escalation: [],
+    },
+  },
+};
 
 /** About a month of past sessions: mostly mornings, some evenings, a few surrenders. */
 function pastSessions(): Finished[] {
@@ -230,5 +279,38 @@ export function mockDaemon(req: Request): Response {
     }
     case "config_status":
       return { type: "config", message: state.pending ? "a loosening change is waiting" : "no change waiting", pending: state.pending };
+    case "get_config":
+      return {
+        type: "config_data",
+        config,
+        pending_config: state.pending ? config : null,
+        pending: state.pending,
+        message: "settings loaded",
+      };
+    case "set_config":
+      config = JSON.parse(JSON.stringify(req.config)) as Config;
+      state.pending = null;
+      return { type: "config_data", config, pending_config: null, pending: null, message: "config applied" };
+    case "export":
+      return {
+        type: "backup",
+        backup: {
+          format: "deepwork-backup",
+          version: 1,
+          exported_at: t0,
+          config: "# the mock does not write TOML\n",
+          sessions: state.past,
+          events: history.filter((e) => e.kind === "quake" || e.kind === "damaged").map((e) => ({
+            ts: e.ts,
+            session_id: e.session_id,
+            kind: e.cause === "tamper" ? "tamper" : "clock_jump",
+            detail: "",
+          })),
+          routine_runs: [],
+          free_bank: state.status.free ? { balance_ms: state.status.free.balance_secs * 1000, spending: null } : null,
+        },
+      };
+    case "import":
+      return { type: "imported", sessions: 0, message: "mock: backup accepted", pending: state.pending };
   }
 }

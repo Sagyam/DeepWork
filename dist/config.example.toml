@@ -1,6 +1,8 @@
 # /etc/deepwork/config.toml
-# Machine-specific copy: put it in dist/config.local.toml (gitignored) and
-# install.sh uses that instead.
+# The app's Settings screen edits this file through deepworkd; hand edits still
+# work (`deepwork config reload` afterwards). Loosening changes wait 24 hours.
+# A first install seeds the file from dist/config.local.toml (gitignored) or
+# from this example; later installs leave an existing file alone.
 # Every key is optional. A [profiles] table replaces the built-in profile.
 
 [dns]

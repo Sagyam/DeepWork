@@ -7,9 +7,10 @@
 //! cancels the pending change. A file that does not parse is ignored while a
 //! config is in effect, so a typo cannot take the daemon down mid-session.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use tracing::warn;
 
 use crate::config::Config;
@@ -117,7 +118,7 @@ fn load_pending(store: &Store) -> Result<Option<Pending>> {
     }))
 }
 
-fn save(store: &Store, text: &str, pending: Option<&Pending>) -> Result<()> {
+fn store_state(store: &Store, text: &str, pending: Option<&Pending>) -> Result<()> {
     store.set(EFFECTIVE, Some(text))?;
     let json = pending.map(|p| {
         serde_json::json!({ "text": p.text, "applies_at": p.applies_at, "reasons": p.reasons })
@@ -126,10 +127,8 @@ fn save(store: &Store, text: &str, pending: Option<&Pending>) -> Result<()> {
     store.set(PENDING, json.as_deref())
 }
 
-/// Reads the file and the stored state and settles them. Errors only when
-/// there is no usable config at all (first start with a broken file).
-pub fn sync(store: &Store, path: &Path, now: i64) -> Result<(State, Outcome)> {
-    let stored = store
+fn stored_effective(store: &Store) -> Result<Option<(String, Config)>> {
+    Ok(store
         .get(EFFECTIVE)?
         .and_then(|text| match Config::parse(&text) {
             Ok(config) => Some((text, config)),
@@ -137,30 +136,72 @@ pub fn sync(store: &Store, path: &Path, now: i64) -> Result<(State, Outcome)> {
                 warn!("stored config no longer parses, using the file: {e:#}");
                 None
             }
-        });
-    let pending = load_pending(store)?;
-    let file = Config::read_text(path)?;
+        }))
+}
+
+/// Settles `file` against the config in effect and writes the store. Pure
+/// apart from the store.
+fn settle(
+    store: &Store,
+    stored: Option<(String, Config)>,
+    pending: Option<Pending>,
+    file: &str,
+    now: i64,
+) -> Result<(State, Outcome)> {
     let (outcome, pending) = decide(
         stored.as_ref().map(|(t, c)| (t.as_str(), c)),
         pending.as_ref(),
-        &file,
+        file,
         now,
     );
     let (text, config) = match (&outcome, stored) {
-        (Outcome::Applied, _) => (file.clone(), Config::parse(&file)?),
-        (Outcome::Rejected(e), None) => {
-            return Err(anyhow::anyhow!("{e}")).with_context(|| format!("in {}", path.display()));
-        }
+        (Outcome::Applied, _) => (file.to_string(), Config::parse(file)?),
+        // A broken file keeps the config in effect. Only fatal on first start.
+        (Outcome::Rejected(e), None) => bail!("{e}"),
         (_, Some((text, config))) => (text, config),
         (_, None) => unreachable!("decide applies the file on first start"),
     };
-    save(store, &text, pending.as_ref())?;
+    store_state(store, &text, pending.as_ref())?;
     Ok((State { config, pending }, outcome))
+}
+
+/// Reads the file and the stored state and settles them. Errors only when
+/// there is no usable config at all (first start with a broken file).
+pub fn sync(store: &Store, path: &Path, now: i64) -> Result<(State, Outcome)> {
+    let stored = stored_effective(store)?;
+    let pending = load_pending(store)?;
+    let file = Config::read_text(path)?;
+    settle(store, stored, pending, &file, now).with_context(|| format!("in {}", path.display()))
+}
+
+/// Writes config text and settles it, as if the user had edited the file.
+/// Used by the app's settings screen. Validates before touching anything.
+pub fn apply(store: &Store, path: &Path, text: &str, now: i64) -> Result<(State, Outcome)> {
+    Config::parse(text).with_context(|| "checking the new settings")?;
+    // Write first: if the file is not writable (a dry-run daemon owned by the
+    // user, a read-only /etc), the config in the store is left untouched.
+    write_file(path, text)?;
+    let stored = stored_effective(store)?;
+    let pending = load_pending(store)?;
+    settle(store, stored, pending, text, now)
+}
+
+/// Replaces the config file atomically, so a crash or power loss cannot leave
+/// a half-written file that the daemon would reject on start.
+fn write_file(path: &Path, text: &str) -> Result<()> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    }
+    let tmp = path.with_extension("toml.tmp");
+    std::fs::write(&tmp, text).with_context(|| format!("writing {}", tmp.display()))?;
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o644))?;
+    std::fs::rename(&tmp, path).with_context(|| format!("replacing {}", path.display()))?;
+    Ok(())
 }
 
 /// Makes a pending change the config in effect.
 pub fn promote(store: &Store, pending: &Pending) -> Result<()> {
-    save(store, &pending.text, None)
+    store_state(store, &pending.text, None)
 }
 
 #[cfg(test)]
@@ -226,6 +267,39 @@ mod tests {
             decide(Some((&t, &c)), Some(&p), STRICTER, 0),
             (Outcome::Applied, None)
         );
+    }
+
+    #[test]
+    fn apply_writes_the_file_and_respects_the_delay() {
+        let dir = std::env::temp_dir().join(format!("dw-apply-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let store = Store::in_memory().unwrap();
+
+        std::fs::write(&path, STRICT).unwrap();
+        sync(&store, &path, 0).unwrap();
+
+        let (state, outcome) = apply(&store, &path, STRICTER, 10).unwrap();
+        assert_eq!(outcome, Outcome::Applied);
+        assert_eq!(state.config.schedule.skip_tokens_per_week, 0);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), STRICTER);
+
+        let (state, outcome) = apply(&store, &path, LOOSE, 20).unwrap();
+        assert_eq!(outcome, Outcome::Queued);
+        assert_eq!(state.config.schedule.skip_tokens_per_week, 0);
+        assert_eq!(state.pending.unwrap().applies_at, 20 + 24 * 3600);
+        // The file still holds what the user asked for.
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), LOOSE);
+
+        let (state, outcome) = sync(&store, &path, 30).unwrap();
+        assert_eq!(outcome, Outcome::StillPending);
+        assert_eq!(state.config.schedule.skip_tokens_per_week, 0);
+
+        std::fs::write(&path, "[broken").unwrap();
+        let (state, outcome) = sync(&store, &path, 40).unwrap();
+        assert!(matches!(outcome, Outcome::Rejected(_)));
+        assert_eq!(state.config.schedule.skip_tokens_per_week, 0);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

@@ -7,8 +7,9 @@ slows distracting sites down at the network layer (DNS-informed nftables sets +
 tc/netem). Your browser keeps working for real work. Routines start sessions on
 their own, and quitting early costs you progress in a small virtual world.
 
-Status: phases 1 and 2 done (daemon, routines, hardening); phase 3 (the world)
-in progress. See [docs/PLAN.md](docs/PLAN.md).
+Status: phases 1–3 done (daemon, routines, hardening, the world and the app);
+phase 4 (deeper enforcement, settings and backups) nearly done. See
+[docs/PLAN.md](docs/PLAN.md).
 
 ## Layout
 
@@ -18,6 +19,7 @@ in progress. See [docs/PLAN.md](docs/PLAN.md).
 | `crates/cli` | `deepwork`, the CLI |
 | `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
 | `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
+| `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer and the full settings sheet |
 | `dist/` | systemd unit, example config, install script |
 
 ## Develop without root
@@ -38,6 +40,8 @@ deepwork start --stopwatch   # stopwatch, can be stopped after 10 minutes
 deepwork status
 deepwork surrender           # the only way out of a countdown; it takes 10 minutes
 deepwork world               # the city your sessions built, and what giving in cost
+deepwork config export backup.json   # settings + progress in one file
+deepwork config import backup.json
 ./dist/install.sh uninstall
 ```
 

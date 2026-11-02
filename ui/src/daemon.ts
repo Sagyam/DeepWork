@@ -1,6 +1,15 @@
 import { invoke } from "@tauri-apps/api/core";
 import { mockDaemon } from "./mock";
-import type { Finished, PendingConfig, Request, Response, RoutineInfo, Status, World } from "./proto";
+import type {
+  Config,
+  Finished,
+  PendingConfig,
+  Request,
+  Response,
+  RoutineInfo,
+  Status,
+  World,
+} from "./proto";
 
 const inTauri = "__TAURI_INTERNALS__" in window;
 
@@ -51,4 +60,37 @@ export async function pendingConfig(): Promise<PendingConfig | null> {
   const r = await call({ type: "config_status" });
   if (r.type !== "config") throw new Error(`unexpected reply ${r.type}`);
   return r.pending;
+}
+
+export interface SavedConfig {
+  /** The config in effect. */
+  config: Config;
+  /** What a waiting loosening change would apply, if there is one. */
+  pendingConfig: Config | null;
+  pending: PendingConfig | null;
+  message: string;
+}
+
+export async function getConfig(): Promise<SavedConfig> {
+  const r = await call({ type: "get_config" });
+  if (r.type !== "config_data") throw new Error(`unexpected reply ${r.type}`);
+  return { config: r.config, pendingConfig: r.pending_config, pending: r.pending, message: r.message };
+}
+
+export async function saveConfig(config: Config): Promise<SavedConfig> {
+  const r = await call({ type: "set_config", config });
+  if (r.type !== "config_data") throw new Error(`unexpected reply ${r.type}`);
+  return { config: r.config, pendingConfig: r.pending_config, pending: r.pending, message: r.message };
+}
+
+export async function exportBackup(): Promise<unknown> {
+  const r = await call({ type: "export" });
+  if (r.type !== "backup") throw new Error(`unexpected reply ${r.type}`);
+  return r.backup;
+}
+
+export async function importBackup(backup: unknown): Promise<{ sessions: number; message: string; pending: PendingConfig | null }> {
+  const r = await call({ type: "import", backup });
+  if (r.type !== "imported") throw new Error(`unexpected reply ${r.type}`);
+  return r;
 }

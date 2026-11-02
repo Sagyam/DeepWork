@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "The main window may call the daemon proxy.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

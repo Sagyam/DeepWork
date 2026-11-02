@@ -7,8 +7,11 @@
 
 use std::time::Duration;
 
+use std::collections::BTreeSet;
+
 use crate::config::{
-    Action, Config, Day, InvertedConfig, NudgeConfig, Profile, Routine, Throttle, on_day,
+    Action, Config, Day, InvertedConfig, ListMode, NudgeConfig, Profile, Routine, Throttle,
+    Verdict, judge, on_day,
 };
 
 /// Fixed in code, so it cannot itself be loosened through the config.
@@ -160,17 +163,33 @@ fn profile(name: &str, old: &Profile, new: &Profile, out: &mut Vec<String>) {
             Some(_) => {}
         }
     }
-    for rule in &old.rules {
-        match new.rules.iter().find(|r| r.domain == rule.domain) {
-            None => out.push(format!("profile {name}: {} removed", rule.domain)),
-            Some(r) if rule.action == Action::Block && r.action == Action::Throttle => {
-                out.push(format!(
-                    "profile {name}: {} throttled, not blocked",
-                    rule.domain
-                ));
-            }
-            Some(_) => {}
+    if old.mode == ListMode::AllowOnly && new.mode == ListMode::BlockList {
+        out.push(format!("profile {name}: allow-only mode off"));
+    }
+    // Every name is decided by the rules covering its most specific listed
+    // domain (or by the mode, if none does), so comparing the listed domains
+    // of both versions and the mode covers every name.
+    let domains: BTreeSet<&str> = old
+        .rules
+        .iter()
+        .chain(&new.rules)
+        .map(|r| r.domain.as_str())
+        .collect();
+    let listed = |p: &Profile, d: &str| p.rules.iter().find(|r| r.domain == d).map(|r| r.action);
+    for d in domains {
+        let was = old.mode.verdict(judge(&old.rules, d));
+        let now = new.mode.verdict(judge(&new.rules, d));
+        if now >= was {
+            continue;
         }
+        let why = match (listed(old, d), listed(new, d), now) {
+            (Some(_), None, _) => "removed",
+            (Some(Action::Block), Some(Action::Throttle), _) => "throttled, not blocked",
+            (_, Some(Action::Allow), _) => "allowed",
+            (_, _, Verdict::Pass) => "full speed",
+            _ => "slowed, not blocked",
+        };
+        out.push(format!("profile {name}: {d} {why}"));
     }
 }
 
@@ -343,6 +362,40 @@ mod tests {
             loosenings(&parse(&locked), &parse(BASE)),
             ["profile deep: Docker socket unlocked"]
         );
+        let allow = BASE.replace(
+            r#"{ domain = "reddit.com", action = "block" }"#,
+            r#"{ domain = "reddit.com", action = "block" }, { domain = "music.youtube.com", action = "allow" }"#,
+        );
+        assert_eq!(
+            loosenings(&parse(BASE), &parse(&allow)),
+            ["profile deep: music.youtube.com allowed"]
+        );
+        // Dropping an exception, or allowing a site nothing slowed, is not looser.
+        assert!(loosenings(&parse(&allow), &parse(BASE)).is_empty());
+        let unrelated = BASE.replace(
+            r#"{ domain = "youtube.com" }"#,
+            r#"{ domain = "youtube.com" }, { domain = "docs.rs", action = "allow" }"#,
+        );
+        assert!(loosenings(&parse(BASE), &parse(&unrelated)).is_empty());
+
+        let only = BASE.replace("[profiles.deep]", "[profiles.deep]\nmode = \"allow_only\"");
+        assert!(loosenings(&parse(BASE), &parse(&only)).is_empty());
+        assert_eq!(
+            loosenings(&parse(&only), &parse(BASE)),
+            ["profile deep: allow-only mode off"]
+        );
+        let more = only.replace(
+            r#"{ domain = "youtube.com" }"#,
+            r#"{ domain = "youtube.com" }, { domain = "docs.rs", action = "allow" }"#,
+        );
+        assert_eq!(
+            loosenings(&parse(&only), &parse(&more)),
+            ["profile deep: docs.rs allowed"]
+        );
+        // In allow-only mode an explicit throttle rule is the default anyway.
+        let fewer = only.replace(r#"{ domain = "youtube.com" }, "#, "");
+        assert!(loosenings(&parse(&only), &parse(&fewer)).is_empty());
+
         let gone = loosenings(&parse(BASE), &parse("[profiles.deep]\nrules = []\n"));
         assert!(gone.contains(&"routine morning removed".to_string()));
         assert!(gone.contains(&"profile deep: youtube.com removed".to_string()));

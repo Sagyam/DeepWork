@@ -1,6 +1,7 @@
 //! SQLite persistence: sessions and an append-only event ledger. The future
 //! game state is derived from the ledger, so nothing here is ever rewritten.
 
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 use std::time::Duration;
 
@@ -8,6 +9,7 @@ use anyhow::{Context, Result};
 use deepwork_proto::{SessionKind, SessionState};
 use rusqlite::{Connection, OptionalExtension, params};
 
+use crate::backup::{Backup, BackupEvent, BackupRun};
 use crate::schedule::RunKey;
 use crate::session::Session;
 use crate::world::{Fact, FactKind};
@@ -204,6 +206,15 @@ impl Store {
             .and_then(|(s, ended)| Some((s, ended?))))
     }
 
+    /// Every session that has ended, oldest first, for a backup.
+    pub fn all_finished(&self) -> Result<Vec<(Session, i64)>> {
+        Ok(self
+            .sessions_where("ended_at IS NOT NULL ORDER BY ended_at, id", [])?
+            .into_iter()
+            .filter_map(|(s, ended)| Some((s, ended?)))
+            .collect())
+    }
+
     /// Sessions that ended at or after `since`, newest first, with when they
     /// ended.
     pub fn finished_since(&self, since: i64, limit: usize) -> Result<Vec<(Session, i64)>> {
@@ -315,6 +326,136 @@ impl Store {
         )?)
     }
 
+    /// Penalty events that shape the world, for a backup.
+    pub fn penalty_events(&self) -> Result<Vec<BackupEvent>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT ts, session_id, kind, detail FROM events
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel')
+             ORDER BY ts, id",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(BackupEvent {
+                ts: r.get(0)?,
+                session_id: r.get(1)?,
+                kind: r.get(2)?,
+                detail: r.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Every routine run, for a backup.
+    pub fn all_runs(&self) -> Result<Vec<BackupRun>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT routine, date, outcome, ts, session_id FROM routine_runs ORDER BY date, routine",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(BackupRun {
+                routine: r.get(0)?,
+                date: r.get(1)?,
+                outcome: r.get(2)?,
+                ts: r.get(3)?,
+                session_id: r.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Merges a backup into the store. Returns how many sessions were new.
+    /// Sessions already present (same profile and start) are skipped, and the
+    /// same bundle is never merged twice, so importing is safe to repeat.
+    pub fn import_backup(&self, b: &Backup) -> Result<usize> {
+        // Exported-at plus the shape: two bundles exported in the same second
+        // but with different contents are still merged.
+        let marker = format!("{}:{}:{}", b.exported_at, b.sessions.len(), b.events.len());
+        if self.get("backup.imported")?.as_deref() == Some(&marker) {
+            return Ok(0);
+        }
+        let tx = self.conn.unchecked_transaction()?;
+        let mut added = 0;
+        let mut ids: HashMap<i64, i64> = HashMap::new();
+        let mut seen: HashSet<i64> = HashSet::new();
+        for s in &b.sessions {
+            if !matches!(s.state, SessionState::Completed | SessionState::Surrendered) {
+                continue;
+            }
+            let existing: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM sessions WHERE started_at = ?1 AND profile = ?2 LIMIT 1",
+                    params![s.started_at, s.profile],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(id) = existing {
+                seen.insert(s.id);
+                ids.insert(s.id, id);
+                continue;
+            }
+            tx.execute(
+                "INSERT INTO sessions
+                    (kind, profile, state, started_at, elapsed_ms, surrender_left_ms, routine, ended_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, NULL, ?6, ?7)",
+                params![
+                    serde_json::to_string(&s.kind)?,
+                    s.profile,
+                    state_str(s.state)?,
+                    s.started_at,
+                    i64::try_from(s.elapsed_secs.saturating_mul(1000)).unwrap_or(i64::MAX),
+                    s.routine,
+                    s.ended_at,
+                ],
+            )?;
+            ids.insert(s.id, tx.last_insert_rowid());
+            added += 1;
+        }
+        for e in &b.events {
+            let Some(kind) = penalty_kind(&e.kind) else {
+                continue;
+            };
+            let session_id = match e.session_id {
+                None => None,
+                // A penalty on a session that was already here is already in
+                // the ledger; one on a session missing from the bundle has
+                // nowhere to point.
+                Some(old) => match ids.get(&old) {
+                    Some(new) if !seen.contains(&old) => Some(*new),
+                    _ => continue,
+                },
+            };
+            // A later backup of the same machine still carries events from
+            // before; they are already here, so match them exactly.
+            let duplicate: Option<i64> = tx
+                .query_row(
+                    "SELECT id FROM events
+                     WHERE ts = ?1 AND session_id IS ?2 AND kind = ?3 AND detail = ?4
+                     LIMIT 1",
+                    params![e.ts, session_id, kind.as_str(), e.detail],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if duplicate.is_none() {
+                tx.execute(
+                    "INSERT INTO events (ts, session_id, kind, detail) VALUES (?1, ?2, ?3, ?4)",
+                    params![e.ts, session_id, kind.as_str(), e.detail],
+                )?;
+            }
+        }
+        for r in &b.routine_runs {
+            let session_id = r.session_id.and_then(|old| ids.get(&old).copied());
+            tx.execute(
+                "INSERT OR IGNORE INTO routine_runs (routine, date, outcome, ts, session_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![r.routine, r.date, r.outcome, r.ts, session_id],
+            )?;
+        }
+        tx.commit()?;
+        if let Some(bank) = &b.free_bank {
+            self.set("free_bank", Some(&bank.to_string()))?;
+        }
+        self.set("backup.imported", Some(&marker))?;
+        Ok(added)
+    }
+
     pub fn get(&self, key: &str) -> Result<Option<String>> {
         Ok(self
             .conn
@@ -410,6 +551,16 @@ impl Store {
         let mut stmt = self.conn.prepare("SELECT kind FROM events ORDER BY id")?;
         let rows = stmt.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+}
+
+fn penalty_kind(kind: &str) -> Option<EventKind> {
+    match kind {
+        "tamper" => Some(EventKind::Tamper),
+        "escalation_denied" => Some(EventKind::EscalationDenied),
+        "clock_jump" => Some(EventKind::ClockJump),
+        "tunnel" => Some(EventKind::Tunnel),
+        _ => None,
     }
 }
 
@@ -593,6 +744,71 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn backup_round_trip_merges_once() {
+        let from = Store::in_memory().unwrap();
+        let mut s =
+            Session::new(SessionKind::Countdown { secs: 1500 }, "deep".into(), 100).unwrap();
+        from.insert_session(&mut s).unwrap();
+        s.advance(Duration::from_secs(1500));
+        s.state = SessionState::Completed;
+        from.save_session(&s, Some(1600)).unwrap();
+        from.log_event(1700, Some(s.id), EventKind::Tamper, "nft")
+            .unwrap();
+        from.insert_run(
+            &("morning".into(), "2026-11-02".into()),
+            RunOutcome::Started,
+            100,
+            Some(s.id),
+        )
+        .unwrap();
+        from.set("free_bank", Some(r#"{"balance_ms":60000,"spending":null}"#))
+            .unwrap();
+
+        let backup = Backup {
+            format: crate::backup::FORMAT.into(),
+            version: crate::backup::VERSION,
+            exported_at: 1234,
+            config: "[profiles.deep]\nrules = []\n".into(),
+            sessions: from
+                .all_finished()
+                .unwrap()
+                .into_iter()
+                .map(|(s, ended_at)| crate::backup::BackupSession {
+                    id: s.id,
+                    kind: s.kind,
+                    profile: s.profile,
+                    routine: s.routine,
+                    state: s.state,
+                    started_at: s.started_at,
+                    elapsed_secs: s.elapsed.as_secs(),
+                    ended_at,
+                })
+                .collect(),
+            events: from.penalty_events().unwrap(),
+            routine_runs: from.all_runs().unwrap(),
+            free_bank: from
+                .get("free_bank")
+                .unwrap()
+                .and_then(|t| serde_json::from_str(&t).ok()),
+        };
+
+        let to = Store::in_memory().unwrap();
+        assert_eq!(to.import_backup(&backup).unwrap(), 1);
+        let (session, ended) = to.last_finished().unwrap().unwrap();
+        assert_eq!(
+            (session.profile.as_str(), session.elapsed.as_secs(), ended),
+            ("deep", 1500, 1600)
+        );
+        assert_eq!(to.penalty_events().unwrap()[0].session_id, Some(session.id));
+        assert_eq!(to.all_runs().unwrap()[0].session_id, Some(session.id));
+        assert_eq!(to.get("free_bank").unwrap(), from.get("free_bank").unwrap());
+        // Importing the same bundle again changes nothing.
+        assert_eq!(to.import_backup(&backup).unwrap(), 0);
+        assert_eq!(to.all_finished().unwrap().len(), 1);
+        assert_eq!(to.penalty_events().unwrap().len(), 1);
     }
 
     #[test]

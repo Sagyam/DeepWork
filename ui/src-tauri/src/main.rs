@@ -7,6 +7,9 @@ use std::path::PathBuf;
 
 use deepwork_proto::{Request, Response};
 
+/// Backups are small; refuse anything that could be a mistake.
+const MAX_BACKUP_BYTES: u64 = 32 * 1024 * 1024;
+
 fn socket() -> PathBuf {
     std::env::var_os("DEEPWORK_SOCKET")
         .map(PathBuf::from)
@@ -29,9 +32,34 @@ async fn daemon(request: Request) -> Result<Response, String> {
     .map_err(|e| e.to_string())?
 }
 
+/// Reads a backup the user chose in the native dialog. The path comes from
+/// the dialog, not from page content.
+#[tauri::command]
+async fn read_file(path: String) -> Result<String, String> {
+    let meta = std::fs::metadata(&path).map_err(|e| format!("reading {path}: {e}"))?;
+    if meta.len() > MAX_BACKUP_BYTES {
+        return Err(format!(
+            "{path} is larger than 32 MB; that is not a DeepWork backup"
+        ));
+    }
+    std::fs::read_to_string(&path).map_err(|e| format!("reading {path}: {e}"))
+}
+
+/// Writes a backup to the path the user chose. Atomic, so a full disk cannot
+/// leave half a backup behind.
+#[tauri::command]
+async fn write_file(path: String, contents: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    let tmp = target.with_extension("json.tmp");
+    std::fs::write(&tmp, contents).map_err(|e| format!("writing {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, &target).map_err(|e| format!("saving {path}: {e}"))?;
+    Ok(())
+}
+
 fn main() {
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![daemon])
+        .plugin(tauri_plugin_dialog::init())
+        .invoke_handler(tauri::generate_handler![daemon, read_file, write_file])
         .run(tauri::generate_context!())
         .expect("error while running DeepWork");
 }

@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{debug, info, trace, warn};
 
-use crate::config::Rule;
+use crate::config::Lists;
 use crate::enforcer::nft::{MARK_MASK, SNI_QUEUE};
 use crate::sni::Inspector;
 
@@ -282,7 +282,7 @@ impl Queue {
 /// Reads the SNI queue for the life of the daemon. `rules` gives the rules
 /// of the running session. If the queue cannot be bound (no
 /// `nfnetlink_queue`), queued packets pass unjudged and binding is retried.
-pub fn spawn(rules: Arc<dyn Fn() -> Option<Arc<Vec<Rule>>> + Send + Sync>) {
+pub fn spawn(rules: Arc<dyn Fn() -> Option<Arc<Lists>> + Send + Sync>) {
     let spawned = std::thread::Builder::new()
         .name("sni".into())
         .spawn(move || {
@@ -312,7 +312,7 @@ pub fn spawn(rules: Arc<dyn Fn() -> Option<Arc<Vec<Rule>>> + Send + Sync>) {
     }
 }
 
-fn serve(queue: &Queue, rules: &dyn Fn() -> Option<Arc<Vec<Rule>>>) -> io::Result<()> {
+fn serve(queue: &Queue, rules: &dyn Fn() -> Option<Arc<Lists>>) -> io::Result<()> {
     let mut inspector = Inspector::default();
     let mut buf = vec![0u8; COPY_RANGE as usize + 4096];
     loop {
@@ -326,8 +326,7 @@ fn serve(queue: &Queue, rules: &dyn Fn() -> Option<Arc<Vec<Rule>>>) -> io::Resul
             let Incoming::Packet { id, mark, payload } = msg else {
                 continue;
             };
-            let (judgement, name) =
-                inspector.inspect(Instant::now(), payload, rules.as_deref().map(Vec::as_slice));
+            let (judgement, name) = inspector.inspect(Instant::now(), payload, rules.as_deref());
             match name {
                 Some(name) => debug!("sni {name}: {judgement:?}"),
                 None => trace!("sni packet {id}: {judgement:?}"),

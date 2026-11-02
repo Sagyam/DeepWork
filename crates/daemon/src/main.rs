@@ -1,3 +1,4 @@
+mod backup;
 mod cfgstate;
 mod config;
 mod dns;
@@ -121,6 +122,7 @@ fn print_rules(cfg: &Config, profile: Option<&str>) -> Result<()> {
             dns_port: cfg.dns.port,
             block_quic: profile.block_quic,
             inspect_sni: profile.inspect_sni,
+            allow_only: profile.mode == crate::config::ListMode::AllowOnly,
             container_dns: cfg.dns.container_dns,
         })
     );

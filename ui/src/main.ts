@@ -3,6 +3,7 @@ import { BUILDINGS, TIERS, ago, clock, describe, escapeHtml, hhmm, hm, isLoss } 
 import { dayTip, notice, routinesPanel, skippable, statsPanel } from "./panels";
 import { SURRENDER_PHRASE, type Finished, type RoutineInfo, type SessionInfo, type Status, type World } from "./proto";
 import { midnight, summarize, type Stats } from "./stats";
+import { openSettings, type SettingsSection } from "./settings";
 import { City } from "./city/scene";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -121,25 +122,48 @@ function liveIdle(st: Status): string {
   return parts.join("");
 }
 
+type StartMode = "timer" | "stopwatch";
+const PRESETS = [25, 50, 90];
+let startMode: StartMode = "timer";
+let startMins = 25;
+let startProfile: string | null = null;
+
+function startLabel(): string {
+  if (startMode === "stopwatch") return "Start stopwatch";
+  if (!(startMins >= 1)) return "Start focus";
+  return `Start ${startMins}-minute focus`;
+}
+
 function controls(st: Status): string {
   const s = st.session;
   if (!s) {
-    const profiles = st.profiles.map((p) => `<option>${escapeHtml(p)}</option>`).join("");
+    if (startProfile && !st.profiles.includes(startProfile)) startProfile = null;
+    const profiles = st.profiles
+      .map((p) => `<option${p === startProfile ? " selected" : ""}>${escapeHtml(p)}</option>`)
+      .join("");
     const next = st.upcoming.find((u) => !u.skipped && u.starts_in_secs > 0);
     const skip = next && st.skip_tokens_left > 0
-      ? `<button class="link" data-action="skip" data-routine="${escapeHtml(next.routine)}">Skip ${escapeHtml(next.routine)} (${st.skip_tokens_left} left this week)</button>`
+      ? `<div class="start-extra"><button class="link" data-action="skip" data-routine="${escapeHtml(next.routine)}">Skip ${escapeHtml(next.routine)} (${st.skip_tokens_left} left this week)</button></div>`
       : "";
-    return `
-      <div class="row">
-        <button class="primary" data-action="start" data-mins="25">25m</button>
-        <button class="primary" data-action="start" data-mins="50">50m</button>
-        <button class="primary" data-action="start" data-mins="90">90m</button>
-        <button data-action="stopwatch">Stopwatch</button>
-      </div>
-      <div class="row">
-        <input class="minutes" id="mins" type="number" min="1" max="360" placeholder="min" />
-        <button data-action="start-custom">Start</button>
-        <select id="profile">${profiles}</select>
+    const chips = PRESETS.map(
+      (m) =>
+        `<button class="chip${startMode === "timer" && startMins === m ? " on" : ""}" data-action="mins" data-mins="${m}"><b>${m}</b><span>min</span></button>`,
+    ).join("");
+    const custom = !PRESETS.includes(startMins);
+    return `<div class="start-block">
+        <div class="seg start-mode">
+          <button class="${startMode === "timer" ? "on" : ""}" data-action="mode" data-mode="timer">Focus timer</button>
+          <button class="${startMode === "stopwatch" ? "on" : ""}" data-action="mode" data-mode="stopwatch">Stopwatch</button>
+        </div>
+        <div class="chips"${startMode === "stopwatch" ? " hidden" : ""}>
+          ${chips}
+          <label class="chip custom${custom ? " on" : ""}">
+            <input id="mins" type="number" min="1" max="360" value="${startMins}" aria-label="Custom minutes" />
+            <span>min</span>
+          </label>
+        </div>
+        <label class="start-profile"><span>Profile</span><select id="profile">${profiles}</select></label>
+        <button class="start-button primary" data-action="start-selected">${startLabel()}</button>
       </div>
       ${skip}${freeControls(st)}`;
   }
@@ -186,23 +210,33 @@ async function act(fn: () => Promise<unknown>) {
 }
 
 function start(kind: { type: "countdown"; secs: number } | { type: "stopwatch" }) {
-  const profile = (document.getElementById("profile") as HTMLSelectElement | null)?.value ?? null;
+  const profile =
+    startProfile ?? (document.getElementById("profile") as HTMLSelectElement | null)?.value ?? null;
   return act(() => call({ type: "start", kind, profile }));
+}
+
+function redrawControls() {
+  if (!status) return;
+  actionError("");
+  controlsKey = "";
+  renderSession(status);
 }
 
 $("#session").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (!btn) return;
   switch (btn.dataset.action) {
-    case "start":
-      return start({ type: "countdown", secs: Number(btn.dataset.mins) * 60 });
-    case "start-custom": {
-      const mins = Number(($("#mins") as HTMLInputElement).value);
-      if (!(mins >= 1)) return actionError("Enter the length in minutes.");
-      return start({ type: "countdown", secs: Math.round(mins * 60) });
-    }
-    case "stopwatch":
-      return start({ type: "stopwatch" });
+    case "mode":
+      startMode = btn.dataset.mode as StartMode;
+      return redrawControls();
+    case "mins":
+      startMode = "timer";
+      startMins = Number(btn.dataset.mins);
+      return redrawControls();
+    case "start-selected":
+      if (startMode === "stopwatch") return start({ type: "stopwatch" });
+      if (!(startMins >= 1)) return actionError("Enter the length in minutes.");
+      return start({ type: "countdown", secs: Math.round(startMins * 60) });
     case "stop":
       return act(() => call({ type: "stop" }));
     case "skip":
@@ -214,6 +248,24 @@ $("#session").addEventListener("click", (ev) => {
     case "surrender":
       return openSurrender();
   }
+});
+
+// The custom length updates the button in place, so typing never loses focus.
+$("#session").addEventListener("change", (ev) => {
+  const el = ev.target as HTMLSelectElement;
+  if (el.id === "profile") startProfile = el.value;
+});
+
+$("#session").addEventListener("input", (ev) => {
+  const el = ev.target as HTMLInputElement;
+  if (el.id !== "mins") return;
+  startMins = Number(el.value);
+  const button = document.querySelector<HTMLButtonElement>(".start-button");
+  if (button) button.textContent = startLabel();
+  for (const chip of document.querySelectorAll<HTMLElement>(".chip[data-mins]")) {
+    chip.classList.toggle("on", Number(chip.dataset.mins) === startMins);
+  }
+  document.querySelector(".chip.custom")?.classList.toggle("on", !PRESETS.includes(startMins));
 });
 
 // Surrender: the phrase has to be typed, so paste and drop are refused.
@@ -301,12 +353,32 @@ async function open(next: View) {
 
 $("#tabs").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
-  if (btn) void open(btn.dataset.view as View);
+  if (!btn) return;
+  if (btn.dataset.settings) {
+    void openSettings(btn.dataset.settings as SettingsSection);
+    return;
+  }
+  void open(btn.dataset.view as View);
+});
+
+// Settings and imports can change the world or the pending config.
+window.addEventListener("deepwork:changed", () => {
+  lastWorldFetch = 0;
+  void poll();
+});
+$("#notice").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest("button");
+  if (btn?.dataset.action === "settings") {
+    void openSettings((btn.dataset.section as SettingsSection) ?? "session");
+  }
 });
 $("#panel").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (btn?.dataset.action === "close") void open(view);
   if (btn?.dataset.action === "skip") confirmSkip(btn.dataset.routine!);
+  if (btn?.dataset.action === "settings") {
+    void openSettings((btn.dataset.section as SettingsSection) ?? "session");
+  }
 });
 document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && view && !document.querySelector("dialog[open]")) void open(view);

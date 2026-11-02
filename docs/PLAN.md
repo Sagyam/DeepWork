@@ -72,6 +72,16 @@ design goal is:
 - `[dns]` changes are neutral and take effect on the next daemon start.
 - The delay (`LOOSEN_DELAY`) is in code, not config. `config_applied` and
   `config_pending` events go to the ledger.
+- The app's Settings screen is the primary editor: `GetConfig` / `SetConfig`
+  send the whole config as JSON, the daemon validates it, writes
+  `/etc/deepwork/config.toml` atomically and runs the same tightening /
+  loosening comparison. Editing the file by hand still works
+  (`deepwork config reload`), and the app never needs the file.
+  `install.sh` only seeds the file on a first install, so updating the
+  package no longer wipes settings changed in the app.
+- A stricter profile change is re-applied to a running session at once, so a
+  block list added mid-session is not a lie. `Escalation` restarts from stage 0
+  with the new throttle.
 
 ### Root lock (phase 2)
 
@@ -489,9 +499,36 @@ TypeScript + three.js frontend, built with bun.
     (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
-  phrase typed by hand: paste and drop are refused); idle card (nudge, next
-  routine, skip, start 25 / 50 / 90 min, custom, stopwatch, profile); the
-  last five world events.
+  phrase typed by hand: paste and drop are refused); the last five world
+  events.
+- Starting a session is one card, not a scatter of buttons: a
+  Focus timer / Stopwatch switch, 25 / 50 / 90 min chips with a custom minutes
+  field, a profile picker and one primary Start button whose label follows the
+  choice. The profile and length survive the one-second polls. Skip and free
+  time sit below as secondary actions.
+- **Settings sheet** (the `Settings` tab, or `Sites` for the lists): every key
+  in `config.toml` is editable, with no file hunting.
+  - Session: default profile, stopwatch minimum, surrender wait, routine
+    heads-up, skip tokens, nudges (days, hours, delay, repeat).
+  - Site lists per profile: Block list / Allow only mode, and three grouped
+    lists (Allow, Slow, Block) with add / edit / remove. `music.youtube.com`
+    allowed inside a slowed `youtube.com` is one row. Throttle numbers,
+    escalation stages, QUIC / SNI / Docker toggles.
+  - Routines: name, days, start, length, profile, add / remove.
+  - Inverted mode: on/off, profile, earn rate, bank cap.
+  - DNS: port, upstreams (plain or DNS-over-TLS), forward zones, resolved and
+    container DNS, with a note that DNS waits for a daemon restart.
+  - Save sends the whole config; the daemon validates and answers with what
+    happened ("applied", or the loosening reasons and the 24h delay). A pending
+    banner stays at the top of every section. Unsaved edits are guarded on
+    close.
+- **Backup** (Settings → Backup, and `deepwork config export|import`): one
+  JSON bundle with the settings, ended sessions, penalty events, routine runs
+  and free-minute bank. Import merges; a session already present (same profile
+  and start) is skipped, events are matched exactly and a bundle is never
+  merged twice, so the same file can be imported again. Import is refused
+  while a session runs. The native file dialog comes from
+  `tauri-plugin-dialog`; a plain browser dev page downloads / uploads instead.
 - Routines and Stats panels (tabs under the city card, Esc closes). Routines:
   the configured routines (`Request::Routines`), the next 24 hours of runs
   with a Skip per routine's next run, tokens left. Skips are confirmed in a
@@ -551,6 +588,17 @@ end to end with a dry-run daemon. Host check: `[inverted] enabled = true`,
 `deepwork config reload`: YouTube is slow with no session, `sudo` still works;
 complete a short session, `deepwork status` shows the earned minutes,
 `deepwork free` makes YouTube fast, `deepwork free --stop` slows it again.
+Settings and backups (2026-11-02): every key is editable in the app's Settings
+sheet, the timer start card was reshaped, and `deepwork config export|import`
+plus the Backup section carry settings and progress in one file. Checked
+against a dry-run daemon over the real socket (get / set / pending / export /
+import, no duplicate penalties) and with `bun run build`; the installed daemon
+needs `./dist/install.sh` before the app can use the new requests. Host check
+after reinstalling: open Settings, add a blocked domain (applies at once),
+remove one (shows the 24h reasons and the pending banner), add an allow entry
+in Sites, export a backup, import it again (0 new sessions), and start a
+session from the new card.
+
 Next in phase 4: packaging (PKGBUILD).
 
 Phase 2 code is complete. Routines, the agent and the bar are
@@ -643,4 +691,12 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Optional docker.sock lock during sessions (`enforcer/docker.rs`, profile `lock_docker`, off by default)
 - [x] Inverted mode: distractions throttled always, free minutes earned by focus (`[inverted]`, `free.rs`,
       `enforcer::Mode::Ambient`, `deepwork free`; agent, bar and app show the bank)
+- [x] Settings in the app: the whole config over the socket (with the 24h
+      loosening delay), per-profile allow / slow / block lists, routines,
+      nudges, inverted mode and DNS; the daemon still writes the file
+- [x] Backup and restore: settings, sessions, penalties, routine runs and the
+      free-minute bank in one JSON bundle (`Request::Export` / `Import`,
+      `deepwork config export|import`, native file dialogs in the app)
+- [x] Timer start card rebuilt around one choice (mode, length, profile,
+      Start) instead of a row of haphazard buttons
 - [ ] Packaging (PKGBUILD)

@@ -13,6 +13,10 @@ export type Request =
   | { type: "history"; since: number }
   | { type: "routines" }
   | { type: "config_status" }
+  | { type: "get_config" }
+  | { type: "set_config"; config: Config }
+  | { type: "export" }
+  | { type: "import"; backup: unknown }
   | { type: "free"; secs: number | null }
   | { type: "free_stop" };
 
@@ -61,6 +65,99 @@ export interface PendingConfig {
   applies_at: number;
   applies_in_secs: number;
   reasons: string[];
+}
+
+/** Mirrors the daemon's `config.rs`. Everything but the profiles has a
+ * default, so hand-written partial files still parse; the app always sends a
+ * whole config back. */
+export type ListMode = "block_list" | "allow_only";
+export type RuleAction = "throttle" | "block" | "allow";
+
+export interface Rule {
+  domain: string;
+  action: RuleAction;
+}
+
+export interface Throttle {
+  rtt_ms: number;
+  jitter_ms: number;
+  rate_kbit: number;
+  loss_pct: number;
+}
+
+export interface Stage {
+  after_mins: number;
+  throttle: Throttle;
+}
+
+export interface Profile {
+  mode: ListMode;
+  throttle: Throttle;
+  block_quic: boolean;
+  inspect_sni: boolean;
+  lock_docker: boolean;
+  rules: Rule[];
+  escalation: Stage[];
+}
+
+export interface Routine {
+  name: string;
+  days: string[];
+  start: string;
+  duration_mins: number;
+  profile: string | null;
+}
+
+export type Upstream = string | { addr: string; tls_name: string };
+
+export interface ForwardZone {
+  suffix: string;
+  server: string;
+}
+
+export interface DnsConfig {
+  port: number;
+  upstreams: Upstream[];
+  forward: ForwardZone[];
+  manage_resolved: boolean;
+  container_dns: string | null;
+}
+
+export interface SessionConfig {
+  default_profile: string;
+  stopwatch_min_secs: number;
+  surrender_wait_secs: number;
+}
+
+export interface ScheduleConfig {
+  heads_up_secs: number;
+  skip_tokens_per_week: number;
+}
+
+export interface NudgeConfig {
+  enabled: boolean;
+  days: string[];
+  from: string;
+  until: string;
+  after_mins: number;
+  repeat_mins: number;
+}
+
+export interface InvertedConfig {
+  enabled: boolean;
+  profile: string | null;
+  free_mins_per_hour: number;
+  max_bank_mins: number;
+}
+
+export interface Config {
+  dns: DnsConfig;
+  session: SessionConfig;
+  schedule: ScheduleConfig;
+  nudge: NudgeConfig;
+  inverted: InvertedConfig;
+  routines: Routine[];
+  profiles: Record<string, Profile>;
 }
 
 /** Inverted mode: distractions are throttled outside sessions too, unless
@@ -142,6 +239,16 @@ export type Response =
   | ({ type: "session" } & SessionInfo)
   | { type: "skipped"; upcoming: Upcoming; tokens_left: number }
   | { type: "config"; message: string; pending: PendingConfig | null }
+  | {
+      type: "config_data";
+      config: Config;
+      /** The settings the waiting change would apply, if any. */
+      pending_config: Config | null;
+      pending: PendingConfig | null;
+      message: string;
+    }
+  | { type: "backup"; backup: unknown }
+  | { type: "imported"; sessions: number; message: string; pending: PendingConfig | null }
   | ({ type: "world" } & World)
   | { type: "history"; sessions: Finished[] }
   | { type: "routines"; routines: RoutineInfo[]; skip_tokens_per_week: number }

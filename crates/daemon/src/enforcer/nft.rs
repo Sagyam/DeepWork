@@ -66,7 +66,14 @@ pub struct RulesetParams {
     pub block_quic: bool,
     pub container_dns: Option<std::net::SocketAddrV4>,
     pub inspect_sni: bool,
+    /// Allow-only profile: web traffic to addresses outside `allow_*` is slowed.
+    pub allow_only: bool,
 }
+
+/// Never slowed by allow-only mode: loopback, private and link-local
+/// networks, CGNAT (Tailscale) and multicast.
+const LOCAL_V4: &str = "127.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4";
+const LOCAL_V6: &str = "::1, fc00::/7, fe80::/10, ff00::/8";
 
 /// Bridges that containers and VMs sit behind.
 const GUEST_IFACES: &str = r#"{ "docker*", "br-*", "virbr*" }"#;
@@ -108,6 +115,20 @@ pub fn render_ruleset(p: &RulesetParams) -> String {
         format!("0x{SNI_SLOW:x}"),
         format!("0x{SNI_KEEP:x}"),
     );
+    // Allow-only: new web connections we open to an address no allowed name
+    // resolved to start out throttled. Only ports 80 / 443, so VPNs, SSH and
+    // Tailscale keep working; SNI inspection then judges them by name.
+    let allow_only = if p.allow_only {
+        let web = "ct direction original ct mark and {mask} == 0x0 tcp dport { 80, 443 }";
+        let web = web.replace("{mask}", &mask);
+        format!(
+            "\t\t{web} ip daddr != {{ {LOCAL_V4} }} ip daddr != @allow_v4 ct mark set ct mark and {keep} or {throttle}
+\t\t{web} ip6 daddr != {{ {LOCAL_V6} }} ip6 daddr != @allow_v6 ct mark set ct mark and {keep} or {throttle}
+"
+        )
+    } else {
+        String::new()
+    };
     let guest_dns = match p.container_dns {
         Some(to) => format!(
             "\t\tiifname {GUEST_IFACES} meta nfproto ipv4 meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {to}\n"
@@ -121,6 +142,8 @@ table {TABLE} {{
 \tset slow_v6 {{ type ipv6_addr; flags timeout; }}
 \tset block_v4 {{ type ipv4_addr; flags timeout; }}
 \tset block_v6 {{ type ipv6_addr; flags timeout; }}
+\tset allow_v4 {{ type ipv4_addr; flags timeout; }}
+\tset allow_v6 {{ type ipv6_addr; flags timeout; }}
 \tset doh_v4 {{ type ipv4_addr; flags interval; elements = {{ {doh_v4} }}; }}
 \tset doh_v6 {{ type ipv6_addr; flags interval; elements = {{ {doh_v6} }}; }}
 
@@ -168,7 +191,7 @@ table {TABLE} {{
 \t\tct mark and {mask} == {pass} meta mark set meta mark and {keep} return
 \t\tip daddr @slow_v4 ct mark and {mask} == 0x0 ct mark set ct mark and {keep} or {throttle}
 \t\tip6 daddr @slow_v6 ct mark and {mask} == 0x0 ct mark set ct mark and {keep} or {throttle}
-\t\tct mark and {mask} {{ {throttle}, {slow} }} meta mark set meta mark and {keep} or {throttle}
+{allow_only}\t\tct mark and {mask} {{ {throttle}, {slow} }} meta mark set meta mark and {keep} or {throttle}
 \t}}
 }}
 ",
@@ -179,11 +202,13 @@ table {TABLE} {{
 }
 
 /// Sets filled from DNS answers, with the action they enforce.
-pub const DYNAMIC_SETS: [(&str, Action); 4] = [
+pub const DYNAMIC_SETS: [(&str, Action); 6] = [
     ("slow_v4", Action::Throttle),
     ("slow_v6", Action::Throttle),
     ("block_v4", Action::Block),
     ("block_v6", Action::Block),
+    ("allow_v4", Action::Allow),
+    ("allow_v6", Action::Allow),
 ];
 
 /// Static sets whose contents are part of the tamper fingerprint.
@@ -200,6 +225,7 @@ pub fn render_add_timed(action: Action, addrs: &[(IpAddr, u32)]) -> Option<Strin
     let prefix = match action {
         Action::Throttle => "slow",
         Action::Block => "block",
+        Action::Allow => "allow",
     };
     let mut out = String::new();
     for (family, is_v4) in [("v4", true), ("v6", false)] {
@@ -257,6 +283,7 @@ mod tests {
             block_quic: true,
             container_dns: Some("172.17.0.1:53".parse().unwrap()),
             inspect_sni: true,
+            allow_only: false,
         });
         assert!(r.starts_with("destroy table inet deepwork\n"));
         assert!(r.contains("redirect to :5454"));
@@ -271,11 +298,39 @@ mod tests {
             block_quic: false,
             container_dns: None,
             inspect_sni: false,
+            allow_only: false,
         });
         assert!(!r.contains("udp dport 443"));
         assert!(!r.contains("queue"));
         assert!(!r.contains("dnat"));
         assert!(r.contains("th dport 53 reject"));
+        assert!(!r.contains("!= @allow_v4"));
+    }
+
+    #[test]
+    fn allow_only_slows_unlisted_web_traffic() {
+        let r = render_ruleset(&RulesetParams {
+            dns_port: 5454,
+            block_quic: true,
+            container_dns: None,
+            inspect_sni: true,
+            allow_only: true,
+        });
+        let rule = r
+            .lines()
+            .find(|l| l.contains("!= @allow_v4"))
+            .expect("default-slow rule");
+        assert!(rule.contains("ct direction original"));
+        assert!(rule.contains("tcp dport { 80, 443 }"));
+        assert!(rule.contains("100.64.0.0/10"));
+        assert!(rule.ends_with("ct mark set ct mark and 0xffff0000 or 0x4457"));
+        assert!(r.contains("!= @allow_v6"));
+        // Before the rule that turns the conntrack mark into the packet mark.
+        let last = r
+            .lines()
+            .position(|l| l.contains("meta mark set meta mark and 0xffff0000 or 0x4457"));
+        let default = r.lines().position(|l| l.contains("!= @allow_v6"));
+        assert!(default < last);
     }
 
     #[test]

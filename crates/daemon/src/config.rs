@@ -9,11 +9,11 @@ use std::path::Path;
 
 use anyhow::{Context, Result, bail, ensure};
 use jiff::civil::{Time, Weekday};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 pub const DEFAULT_PATH: &str = "/etc/deepwork/config.toml";
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Config {
     pub dns: DnsConfig,
@@ -25,7 +25,7 @@ pub struct Config {
     pub profiles: BTreeMap<String, Profile>,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ScheduleConfig {
     /// Clients warn this long before a routine starts.
@@ -36,7 +36,7 @@ pub struct ScheduleConfig {
 
 /// Reminders to start a session when none has run for a while, inside active
 /// hours.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NudgeConfig {
     pub enabled: bool,
@@ -51,12 +51,13 @@ pub struct NudgeConfig {
 
 /// Inverted mode: distractions are throttled whenever no session runs, and
 /// completed sessions earn free minutes that lift the throttle for a while.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct InvertedConfig {
     pub enabled: bool,
     /// The profile throttled outside sessions; `default_profile` if unset.
     /// Its `lock_docker` is ignored: outside sessions nothing is locked.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
     /// Free minutes earned per hour of completed focus.
     pub free_mins_per_hour: u32,
@@ -65,7 +66,7 @@ pub struct InvertedConfig {
 }
 
 /// A focus slot that starts a countdown on its own.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Routine {
     pub name: String,
@@ -75,6 +76,7 @@ pub struct Routine {
     pub start: ClockTime,
     pub duration_mins: u32,
     /// The default profile if unset.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<String>,
 }
 
@@ -114,6 +116,12 @@ impl std::fmt::Display for Day {
     }
 }
 
+impl Serialize for Day {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
 /// True if `days` is empty (every day) or contains `day`.
 pub fn on_day(days: &[Day], day: Weekday) -> bool {
     days.is_empty() || days.iter().any(|d| d.0 == day)
@@ -127,6 +135,12 @@ pub struct ClockTime(pub Time);
 impl std::fmt::Display for ClockTime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:02}:{:02}", self.0.hour(), self.0.minute())
+    }
+}
+
+impl Serialize for ClockTime {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
     }
 }
 
@@ -144,7 +158,7 @@ impl TryFrom<String> for ClockTime {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct DnsConfig {
     /// Port the forwarder listens on, on 127.0.0.1 and ::1.
@@ -160,12 +174,13 @@ pub struct DnsConfig {
     /// (port 53, forwarded from docker / br- / virbr interfaces) is sent here
     /// instead, e.g. resolved's `DNSStubListenerExtra=172.17.0.1`. IPv4 only.
     /// Unset: such queries are rejected. Forwarded IPv6 DNS is always rejected.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub container_dns: Option<std::net::SocketAddrV4>,
 }
 
 /// `"9.9.9.9:53"` for plain DNS, or
 /// `{ addr = "9.9.9.9:853", tls_name = "dns.quad9.net" }` for DNS-over-TLS.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Upstream {
     Plain(SocketAddr),
@@ -180,14 +195,14 @@ impl Upstream {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ForwardZone {
     pub suffix: String,
     pub server: SocketAddr,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SessionConfig {
     pub default_profile: String,
@@ -197,9 +212,11 @@ pub struct SessionConfig {
     pub surrender_wait_secs: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Profile {
+    /// How names no rule covers are treated.
+    pub mode: ListMode,
     pub throttle: Throttle,
     /// Drop UDP 443 so browsers fall back from QUIC to TCP.
     pub block_quic: bool,
@@ -209,6 +226,7 @@ pub struct Profile {
     /// Take group access off `/run/docker.sock`, so members of the `docker`
     /// group cannot start privileged containers to get around the session.
     pub lock_docker: bool,
+    /// Sites to slow down, block or let through; see [`judge`].
     pub rules: Vec<Rule>,
     /// Harsher throttles the longer throttled sites are used in a session.
     /// `[]` turns escalation off.
@@ -216,7 +234,7 @@ pub struct Profile {
 }
 
 /// After `after_mins` of distracted time in a session, use `throttle`.
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stage {
     pub after_mins: u32,
@@ -224,6 +242,13 @@ pub struct Stage {
 }
 
 impl Profile {
+    pub fn lists(&self) -> Lists {
+        Lists {
+            mode: self.mode,
+            rules: self.rules.clone(),
+        }
+    }
+
     /// The escalation stage reached after `distracted` time (0 = none) and
     /// the throttle that goes with it.
     pub fn throttle_after(&self, distracted: std::time::Duration) -> (usize, Throttle) {
@@ -239,7 +264,7 @@ impl Profile {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Throttle {
     /// Added round-trip time, split evenly between upload and download.
@@ -250,7 +275,7 @@ pub struct Throttle {
     pub loss_pct: f32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Rule {
     /// Matches this domain and every subdomain of it.
@@ -259,12 +284,97 @@ pub struct Rule {
     pub action: Action,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     #[default]
     Throttle,
     Block,
+    /// Full speed: an exception in a block list, an entry in an allow list.
+    Allow,
+}
+
+impl Action {
+    fn strictness(self) -> u8 {
+        match self {
+            Action::Allow => 0,
+            Action::Throttle => 1,
+            Action::Block => 2,
+        }
+    }
+}
+
+/// How a profile treats names that no rule covers.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ListMode {
+    /// Listed sites are slowed or blocked; everything else is full speed.
+    #[default]
+    BlockList,
+    /// Only `allow` sites are full speed; every other website is slowed.
+    AllowOnly,
+}
+
+/// What happens to traffic for a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Verdict {
+    Pass,
+    Slow,
+    Block,
+}
+
+impl ListMode {
+    /// The verdict for a name whose deciding rule is `action` (see [`judge`]).
+    pub fn verdict(self, action: Option<Action>) -> Verdict {
+        match (action, self) {
+            (Some(Action::Block), _) => Verdict::Block,
+            (Some(Action::Throttle), _) | (None, ListMode::AllowOnly) => Verdict::Slow,
+            (Some(Action::Allow), _) | (None, ListMode::BlockList) => Verdict::Pass,
+        }
+    }
+}
+
+/// The rule action that decides `name`, if any rule covers it. The most
+/// specific `allow` rule wins over throttle / block rules on parent domains
+/// (allow `music.youtube.com` inside a slowed `youtube.com`); among the
+/// throttle / block rules at least as specific as it, the strictest wins.
+/// `name` must be lowercase without a trailing dot.
+pub fn judge(rules: &[Rule], name: &str) -> Option<Action> {
+    let matching = || rules.iter().filter(|r| domain_matches(name, &r.domain));
+    // Every matching domain is a suffix of `name`: longer is more specific.
+    let allow = matching()
+        .filter(|r| r.action == Action::Allow)
+        .map(|r| r.domain.len())
+        .max();
+    matching()
+        .filter(|r| r.action != Action::Allow && allow.is_none_or(|len| r.domain.len() >= len))
+        .map(|r| r.action)
+        .max_by_key(|a| a.strictness())
+        .or(allow.map(|_| Action::Allow))
+}
+
+/// The strictest of several deciding actions (a DNS answer's names).
+pub fn strictest(actions: impl IntoIterator<Item = Action>) -> Option<Action> {
+    actions.into_iter().max_by_key(|a| a.strictness())
+}
+
+/// A profile's site lists, as the resolver and the SNI inspector need them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lists {
+    pub mode: ListMode,
+    pub rules: Vec<Rule>,
+}
+
+impl Lists {
+    /// Domains worth resolving at session start to fill the address sets.
+    /// Allow rules only matter in allow-only mode.
+    pub fn prime_domains(&self) -> Vec<String> {
+        self.rules
+            .iter()
+            .filter(|r| r.action != Action::Allow || self.mode == ListMode::AllowOnly)
+            .map(|r| r.domain.clone())
+            .collect()
+    }
 }
 
 impl Default for Config {
@@ -386,6 +496,7 @@ const DEFAULT_THROTTLED: &[&str] = &[
 impl Default for Profile {
     fn default() -> Self {
         Self {
+            mode: ListMode::BlockList,
             throttle: Throttle::default(),
             block_quic: true,
             inspect_sni: true,
@@ -431,6 +542,17 @@ impl Config {
             .as_ref()
             .unwrap_or(&self.session.default_profile);
         self.profiles.get(name)
+    }
+
+    /// The config as file text, for writing `config.toml` from the app.
+    /// Comments are not kept.
+    pub fn to_toml(&self) -> Result<String> {
+        Ok(format!(
+            "# DeepWork settings. Written by deepworkd when they are changed in the app;\n\
+             # editing by hand works too (`deepwork config reload` afterwards).\n\
+             # Changes that loosen enforcement wait 24 hours.\n\n{}",
+            tidy(&toml::to_string_pretty(self).context("writing config")?)?
+        ))
     }
 
     /// Loads the config at `path`, falling back to defaults if it does not exist.
@@ -504,11 +626,7 @@ impl Config {
         let max_mins = crate::session::MAX_SESSION.as_secs() / 60;
         for (i, r) in self.routines.iter().enumerate() {
             ensure!(
-                !r.name.is_empty()
-                    && r.name.len() <= 64
-                    && r.name
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+                valid_name(&r.name),
                 "routine {:?}: names may only use letters, digits, - and _",
                 r.name
             );
@@ -531,6 +649,10 @@ impl Config {
             }
         }
         for (name, profile) in &self.profiles {
+            ensure!(
+                valid_name(name),
+                "profile {name:?}: names may only use letters, digits, - and _"
+            );
             validate_throttle(&profile.throttle).with_context(|| format!("profile {name}"))?;
             let mut last = 0;
             for stage in &profile.escalation {
@@ -542,12 +664,79 @@ impl Config {
                 validate_throttle(&stage.throttle)
                     .with_context(|| format!("profile {name}, escalation after {last} min"))?;
             }
-            for rule in &profile.rules {
+            for (i, rule) in profile.rules.iter().enumerate() {
                 validate_domain(&rule.domain).with_context(|| format!("profile {name}"))?;
+                ensure!(
+                    profile.rules[..i].iter().all(|o| o.domain != rule.domain),
+                    "profile {name}: {} is listed twice",
+                    rule.domain
+                );
             }
         }
         Ok(())
     }
+}
+
+/// Rewrites lists of small tables (rules, upstreams, escalation stages) as
+/// one-line inline tables, the way the example config writes them.
+fn tidy(text: &str) -> Result<String> {
+    use toml_edit::{Array, DocumentMut, Item, Value};
+
+    fn inline(item: &mut Item) {
+        let array = match std::mem::take(item) {
+            Item::ArrayOfTables(aot) => aot.into_array(),
+            Item::Value(Value::Array(array)) => array,
+            Item::Table(table) => {
+                *item = Item::Value(Value::InlineTable(table.into_inline_table()));
+                return;
+            }
+            other => {
+                *item = other;
+                return;
+            }
+        };
+        let mut out = Array::new();
+        for mut value in array {
+            value.decor_mut().set_prefix("\n    ");
+            value.decor_mut().set_suffix("");
+            out.push_formatted(value);
+        }
+        out.set_trailing("\n");
+        out.set_trailing_comma(true);
+        *item = Item::Value(Value::Array(out));
+    }
+
+    // Removed and inserted again: the key keeps no decor from the table form.
+    fn inline_key(table: &mut toml_edit::Table, key: &str) {
+        if let Some(mut item) = table.remove(key) {
+            inline(&mut item);
+            table.insert(key, item);
+        }
+    }
+
+    let mut doc: DocumentMut = text.parse().context("re-reading written config")?;
+    if let Some(dns) = doc.get_mut("dns").and_then(Item::as_table_mut) {
+        inline_key(dns, "upstreams");
+    }
+    if let Some(profiles) = doc.get_mut("profiles").and_then(Item::as_table_mut) {
+        for (_, profile) in profiles.iter_mut() {
+            if let Some(profile) = profile.as_table_mut() {
+                for key in ["throttle", "rules", "escalation"] {
+                    inline_key(profile, key);
+                }
+            }
+        }
+    }
+    Ok(doc.to_string())
+}
+
+/// Routine and profile names: they show up in TOML keys, the CLI and logs.
+fn valid_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= 64
+        && name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
 fn validate_throttle(t: &Throttle) -> Result<()> {
@@ -756,6 +945,84 @@ mod tests {
             "x;flush ruleset",
         ] {
             assert!(validate_domain(bad).is_err(), "{bad:?} should be rejected");
+        }
+    }
+
+    #[test]
+    fn allow_rules_punch_holes() {
+        let rule = |domain: &str, action| Rule {
+            domain: domain.into(),
+            action,
+        };
+        let rules = [
+            rule("youtube.com", Action::Throttle),
+            rule("music.youtube.com", Action::Allow),
+            rule("ads.music.youtube.com", Action::Block),
+            rule("google.com", Action::Allow),
+            rule("google.com", Action::Block),
+        ];
+        assert_eq!(judge(&rules, "www.youtube.com"), Some(Action::Throttle));
+        assert_eq!(judge(&rules, "music.youtube.com"), Some(Action::Allow));
+        assert_eq!(
+            judge(&rules, "x.ads.music.youtube.com"),
+            Some(Action::Block)
+        );
+        // Same domain both ways: the stricter rule wins.
+        assert_eq!(judge(&rules, "google.com"), Some(Action::Block));
+        assert_eq!(judge(&rules, "example.com"), None);
+        // Without allow rules, the strictest rule wins as before.
+        let plain = [
+            rule("com", Action::Block),
+            rule("reddit.com", Action::Throttle),
+        ];
+        assert_eq!(judge(&plain, "old.reddit.com"), Some(Action::Block));
+
+        assert_eq!(ListMode::BlockList.verdict(None), Verdict::Pass);
+        assert_eq!(ListMode::AllowOnly.verdict(None), Verdict::Slow);
+        assert_eq!(
+            ListMode::AllowOnly.verdict(Some(Action::Allow)),
+            Verdict::Pass
+        );
+    }
+
+    #[test]
+    fn writes_toml_that_reads_back() {
+        let mut config = Config::parse(include_str!("../../../dist/config.example.toml")).unwrap();
+        config.routines.push(Routine {
+            name: "morning".into(),
+            days: vec![Day(Weekday::Monday)],
+            start: ClockTime(Time::constant(9, 30, 0, 0)),
+            duration_mins: 90,
+            profile: None,
+        });
+        config.dns.container_dns = Some("172.17.0.1:53".parse().unwrap());
+        let deep = config.profiles.get_mut("deep").unwrap();
+        deep.mode = ListMode::AllowOnly;
+        deep.rules.push(Rule {
+            domain: "docs.rs".into(),
+            action: Action::Allow,
+        });
+        deep.throttle.loss_pct = 0.1;
+        let text = config.to_toml().unwrap();
+        assert_eq!(Config::parse(&text).unwrap(), config, "{text}");
+        assert_eq!(
+            Config::parse(&Config::default().to_toml().unwrap()).unwrap(),
+            Config::default()
+        );
+        // The app sends JSON; the same types read it.
+        let json = serde_json::to_value(&config).unwrap();
+        assert_eq!(json["routines"][0]["start"], "09:30");
+        assert_eq!(json["profiles"]["deep"]["mode"], "allow_only");
+        assert_eq!(serde_json::from_value::<Config>(json).unwrap(), config);
+    }
+
+    #[test]
+    fn rejects_bad_profiles() {
+        for bad in [
+            "[profiles.\"a b\"]\n[session]\ndefault_profile = \"a b\"",
+            "[profiles.deep]\nrules = [{ domain = \"x.com\" }, { domain = \"x.com\", action = \"allow\" }]",
+        ] {
+            assert!(Config::parse(bad).is_err(), "{bad}");
         }
     }
 

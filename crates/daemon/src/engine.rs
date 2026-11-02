@@ -15,6 +15,7 @@ use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
 use tracing::{error, info, warn};
 
+use crate::backup::{self, Backup, BackupSession};
 use crate::cfgstate::{self, Outcome, Pending};
 use crate::config::{Config, Profile};
 use crate::dns::Resolver;
@@ -200,8 +201,9 @@ impl Core {
     }
 
     fn activate_dns(&self, profile: &Profile) {
-        self.resolver.set_rules(Some(profile.rules.clone()));
-        let domains = profile.rules.iter().map(|r| r.domain.clone()).collect();
+        let lists = profile.lists();
+        let domains = lists.prime_domains();
+        self.resolver.set_rules(Some(lists));
         tokio::spawn(self.resolver.clone().prime(domains));
     }
 
@@ -229,6 +231,18 @@ impl Core {
                 })))
             }
             Request::ReloadConfig => Ok(Response::Config(self.reload())),
+            Request::GetConfig => Ok(Response::ConfigData {
+                config: serde_json::to_value(&self.cfg)
+                    .map_err(|e| format!("could not read the settings: {e}"))?,
+                pending_config: self.pending_config_json()?,
+                pending: self.pending_info(),
+                message: "settings loaded".into(),
+            }),
+            Request::SetConfig { config } => self.set_settings(config).await,
+            Request::Export => Ok(Response::Backup {
+                backup: self.export()?,
+            }),
+            Request::Import { backup } => self.import(backup).await,
             Request::World => Ok(Response::World(Box::new(self.world()?))),
             Request::History { since } => Ok(Response::History {
                 sessions: self.history(since)?,
@@ -328,6 +342,15 @@ impl Core {
             .collect()
     }
 
+    /// Profile names with the default first, so a client that starts a
+    /// session without picking one gets the configured default.
+    fn profile_names(&self) -> Vec<String> {
+        let default = &self.cfg.session.default_profile;
+        let mut names: Vec<String> = self.cfg.profiles.keys().cloned().collect();
+        names.sort_by_key(|n| n != default);
+        names
+    }
+
     fn status(&self) -> Status {
         let now = self.now();
         let upcoming = self.upcoming(&now);
@@ -352,7 +375,7 @@ impl Core {
                 info.escalation_stage = self.stage as u32;
                 info
             }),
-            profiles: self.cfg.profiles.keys().cloned().collect(),
+            profiles: self.profile_names(),
             dry_run: self.dry_run,
             upcoming,
             heads_up_secs: self.cfg.schedule.heads_up_secs,
@@ -566,15 +589,209 @@ impl Core {
         })
     }
 
+    /// The settings a waiting loosening change would apply.
+    fn pending_config_json(&self) -> Result<Option<serde_json::Value>, String> {
+        self.pending_cfg
+            .as_ref()
+            .map(|p| {
+                serde_json::to_value(&p.config)
+                    .map_err(|e| format!("could not read the waiting settings: {e}"))
+            })
+            .transpose()
+    }
+
+    fn pending_info(&self) -> Option<PendingConfig> {
+        self.pending_cfg.as_ref().map(|p| PendingConfig {
+            applies_at: p.applies_at,
+            applies_in_secs: p.applies_at - unix_now(),
+            reasons: p.reasons.clone(),
+        })
+    }
+
     fn config_info(&self, message: String) -> ConfigInfo {
         ConfigInfo {
             message,
-            pending: self.pending_cfg.as_ref().map(|p| PendingConfig {
-                applies_at: p.applies_at,
-                applies_in_secs: p.applies_at - unix_now(),
-                reasons: p.reasons.clone(),
-            }),
+            pending: self.pending_info(),
         }
+    }
+
+    /// Validates settings from the app, writes them to the config file and
+    /// makes them the config in effect (or queues a loosening change).
+    async fn set_settings(&mut self, value: serde_json::Value) -> Result<Response, String> {
+        let cfg: Config =
+            serde_json::from_value(value).map_err(|e| format!("invalid settings: {e}"))?;
+        cfg.validate()
+            .map_err(|e| format!("invalid settings: {e:#}"))?;
+        let text = cfg
+            .to_toml()
+            .map_err(|e| format!("could not write the settings: {e:#}"))?;
+        let message = self.apply_config_text(&text).await?;
+        Ok(Response::ConfigData {
+            config: serde_json::to_value(&self.cfg)
+                .map_err(|e| format!("could not read the settings: {e}"))?,
+            pending_config: self.pending_config_json()?,
+            pending: self.pending_info(),
+            message,
+        })
+    }
+
+    /// Applies config text through the same delay rules as an edited file.
+    /// Returns the message for the user.
+    async fn apply_config_text(&mut self, text: &str) -> Result<String, String> {
+        let before = self.session.as_ref().map(|s| self.profile_for(&s.profile));
+        let (state, outcome) = cfgstate::apply(&self.store, &self.config_path, text, unix_now())
+            .map_err(|e| format!("could not apply the settings: {e:#}"))?;
+        let changed = matches!(outcome, Outcome::Applied);
+        self.set_config(state.config);
+        self.pending_cfg = state.pending;
+        let message = self.log_config_outcome(&outcome);
+        if changed {
+            self.reapply_session(before).await;
+        }
+        self.sync_ambient().await;
+        Ok(message)
+    }
+
+    /// A profile change reaches a running session at once when it tightens
+    /// (or is neutral): the UI must not claim a block list is applied when
+    /// the session still runs the old one.
+    async fn reapply_session(&mut self, before: Option<Profile>) {
+        let Some((id, name)) = self.session.as_ref().map(|s| (s.id, s.profile.clone())) else {
+            return;
+        };
+        let profile = self.profile_for(&name);
+        if before.as_ref() == Some(&profile) {
+            return;
+        }
+        match self.enforcer.engage(profile.clone(), Mode::Session).await {
+            Ok(()) => {
+                self.activate_dns(&profile);
+                self.reset_escalation();
+                info!("re-applied profile {name} to session {id}");
+            }
+            Err(e) => {
+                error!("could not apply the changed profile to session {id}: {e:#}");
+                self.log(
+                    Some(id),
+                    EventKind::EnforceError,
+                    &format!("settings: {e:#}"),
+                );
+            }
+        }
+    }
+
+    /// Settings and progress in one bundle, for a backup.
+    fn export(&self) -> Result<serde_json::Value, String> {
+        let mut b = Backup::new(
+            self.cfg
+                .to_toml()
+                .map_err(|e| format!("could not write the settings: {e:#}"))?,
+        );
+        b.exported_at = unix_now();
+        b.sessions = self
+            .store
+            .all_finished()
+            .map_err(|e| format!("could not read past sessions: {e:#}"))?
+            .into_iter()
+            .map(|(s, ended_at)| BackupSession {
+                id: s.id,
+                kind: s.kind,
+                profile: s.profile,
+                routine: s.routine,
+                state: s.state,
+                started_at: s.started_at,
+                elapsed_secs: s.elapsed.as_secs(),
+                ended_at,
+            })
+            .collect();
+        b.events = self
+            .store
+            .penalty_events()
+            .map_err(|e| format!("could not read the ledger: {e:#}"))?;
+        b.routine_runs = self
+            .store
+            .all_runs()
+            .map_err(|e| format!("could not read routine runs: {e:#}"))?;
+        b.free_bank = self
+            .store
+            .get(BANK_KEY)
+            .map_err(|e| format!("could not read the free-minute bank: {e:#}"))?
+            .and_then(|text| serde_json::from_str(&text).ok());
+        serde_json::to_value(&b).map_err(|e| format!("could not write the backup: {e}"))
+    }
+
+    /// Merges a backup: settings and progress. Refused during a session so
+    /// the world cannot change under a construction site.
+    async fn import(&mut self, value: serde_json::Value) -> Result<Response, String> {
+        if self.session.is_some() {
+            return Err("end the session before importing a backup".into());
+        }
+        let b: Backup =
+            serde_json::from_value(value).map_err(|e| format!("not a DeepWork backup: {e}"))?;
+        if b.format != backup::FORMAT {
+            return Err(format!(
+                "not a DeepWork backup: unknown format {:?}",
+                b.format
+            ));
+        }
+        if b.version > backup::VERSION {
+            return Err(format!(
+                "this backup is from a newer DeepWork (format {}); update first",
+                b.version
+            ));
+        }
+        Config::parse(&b.config)
+            .map_err(|e| format!("the backup's settings are invalid: {e:#}"))?;
+        let message = self.apply_config_text(&b.config).await?;
+        let sessions = self
+            .store
+            .import_backup(&b)
+            .map_err(|e| format!("could not import the progress: {e:#}"))?;
+        // Refresh what the daemon mirrors in memory.
+        let since = Timestamp::now()
+            .to_zoned(self.tz.clone())
+            .date()
+            .checked_sub(3.days())
+            .map(|d| d.to_string())
+            .unwrap_or_default();
+        self.runs = self
+            .store
+            .runs_since(&since)
+            .map_err(|e| format!("could not reload routine runs: {e:#}"))?
+            .into_iter()
+            .collect();
+        self.last = self
+            .store
+            .last_finished()
+            .map_err(|e| format!("could not reload past sessions: {e:#}"))?;
+        let current_balance = self.bank.balance_ms;
+        let mut bank: free::Bank = match self
+            .store
+            .get(BANK_KEY)
+            .map_err(|e| format!("could not read the free-minute bank: {e:#}"))?
+        {
+            Some(text) => serde_json::from_str(&text).unwrap_or_default(),
+            None => free::Bank::default(),
+        };
+        // Merging progress never takes earned time away: an older backup
+        // cannot shrink a newer bank. A backup restores the balance, never an
+        // active spend.
+        bank.stop();
+        bank.balance_ms = bank.balance_ms.max(current_balance);
+        self.bank = bank;
+        self.save_bank();
+        self.log(
+            None,
+            EventKind::ConfigApplied,
+            &format!("backup imported: {sessions} new sessions"),
+        );
+        info!("backup imported: {sessions} new sessions");
+        self.sync_ambient().await;
+        Ok(Response::Imported {
+            sessions,
+            message,
+            pending: self.pending_info(),
+        })
     }
 
     /// Re-reads the config file (request or SIGHUP).

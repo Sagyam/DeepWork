@@ -14,7 +14,9 @@ use tracing::debug;
 
 use crate::engine::Core;
 
-const MAX_LINE: u64 = 64 * 1024;
+/// Backups can carry thousands of sessions, so a request line may be large.
+/// 8 MiB is far past the ~2 MB a decade of sessions takes.
+const MAX_LINE: u64 = 8 * 1024 * 1024;
 
 /// Binds the socket. Separate from [`serve`] so the daemon can report itself
 /// ready to systemd only once clients can connect.

@@ -7,8 +7,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use clap::{Parser, Subcommand};
 use deepwork_proto::{
-    FreeInfo, Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind, SessionState, Status,
-    Upcoming,
+    FreeInfo, PendingConfig, Request, Response, SURRENDER_PHRASE, SessionInfo, SessionKind,
+    SessionState, Status, Upcoming,
 };
 
 #[derive(Parser)]
@@ -67,8 +67,8 @@ enum Command {
     },
     /// Print one line of Waybar-style JSON, for a bar module.
     Bar,
-    /// Show the config change waiting behind the 24h loosening delay, or
-    /// `reload` after editing /etc/deepwork/config.toml.
+    /// Show the config change waiting behind the 24h loosening delay, reload
+    /// the file after editing it, or back up / restore settings and progress.
     Config {
         #[command(subcommand)]
         action: Option<ConfigAction>,
@@ -79,6 +79,10 @@ enum Command {
 enum ConfigAction {
     /// Re-read the config file. Stricter changes apply now, looser ones in 24h.
     Reload,
+    /// Write settings and progress to a JSON backup (`-` or no file: stdout).
+    Export { file: Option<PathBuf> },
+    /// Merge a backup made by `config export` into this machine.
+    Import { file: PathBuf },
 }
 
 fn main() -> Result<()> {
@@ -247,25 +251,53 @@ fn main() -> Result<()> {
                 describe(&upcoming)
             );
         }
-        Command::Config { action } => {
-            let req = match action {
-                Some(ConfigAction::Reload) => Request::ReloadConfig,
-                None => Request::ConfigStatus,
-            };
-            let Response::Config(info) = expect_ok(request(&cli.socket, &req)?)? else {
-                bail!("unexpected reply")
-            };
-            println!("{}", info.message);
-            if let Some(p) = info.pending {
-                println!(
-                    "Waiting change applies in {}:",
-                    fmt_secs(p.applies_in_secs.max(0) as u64)
-                );
-                for reason in p.reasons {
-                    println!("  - {reason}");
+        Command::Config { action } => match action {
+            Some(ConfigAction::Export { file }) => {
+                let Response::Backup { backup } =
+                    expect_ok(request(&cli.socket, &Request::Export)?)?
+                else {
+                    bail!("unexpected reply")
+                };
+                let text = serde_json::to_string_pretty(&backup)?;
+                match file {
+                    Some(path) if path != Path::new("-") => {
+                        std::fs::write(&path, format!("{text}\n"))
+                            .with_context(|| format!("writing {}", path.display()))?;
+                        println!("Wrote {}", path.display());
+                    }
+                    _ => println!("{text}"),
                 }
             }
-        }
+            Some(ConfigAction::Import { file }) => {
+                let text = std::fs::read_to_string(&file)
+                    .with_context(|| format!("reading {}", file.display()))?;
+                let backup: serde_json::Value = serde_json::from_str(&text)
+                    .with_context(|| format!("{} is not a DeepWork backup", file.display()))?;
+                let Response::Imported {
+                    sessions,
+                    message,
+                    pending,
+                } = expect_ok(request(&cli.socket, &Request::Import { backup })?)?
+                else {
+                    bail!("unexpected reply")
+                };
+                println!("{message}");
+                println!("Imported {sessions} new session{}.", plural(sessions));
+                describe_pending(pending);
+            }
+            action => {
+                let req = match action {
+                    Some(ConfigAction::Reload) => Request::ReloadConfig,
+                    None => Request::ConfigStatus,
+                    _ => unreachable!(),
+                };
+                let Response::Config(info) = expect_ok(request(&cli.socket, &req)?)? else {
+                    bail!("unexpected reply")
+                };
+                println!("{}", info.message);
+                describe_pending(info.pending);
+            }
+        },
         Command::World { json } => {
             let resp = expect_ok(request(&cli.socket, &Request::World)?)?;
             if json {
@@ -459,6 +491,22 @@ fn fmt_ago(secs: u64) -> String {
         0..3600 => format!("{} min", secs / 60),
         3600..86400 => format!("{} h", secs / 3600),
         _ => format!("{} d", secs / 86400),
+    }
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
+fn describe_pending(p: Option<PendingConfig>) {
+    if let Some(p) = p {
+        println!(
+            "Waiting change applies in {}:",
+            fmt_secs(p.applies_in_secs.max(0) as u64)
+        );
+        for reason in p.reasons {
+            println!("  - {reason}");
+        }
     }
 }
 
