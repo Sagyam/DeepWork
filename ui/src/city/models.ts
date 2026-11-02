@@ -1,14 +1,19 @@
-// City theme, step 2: procedural 3D models for the plan's specs. Every
-// building is built from boxes, prisms and cylinders; small details are
-// merged per material to keep draw calls low.
+// City theme, step 2: 3D models for the plan's specs. Buildings and trees
+// are stacked from the Blender kit (kit.ts) with materials picked per
+// building and damage; lots, wreckage, rubble and the construction site are
+// built here from boxes. Geometry is merged per material to keep draw calls low.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
+import { NOMINAL, piece } from "./kit";
 import { LOT, rng, type SiteSpec, type Spec } from "./plan";
-import { CELLS, facades, type Facade } from "./textures";
+import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
 export const GLASS = [0x7f9bb3, 0x6d8a99, 0x8fa3b8, 0x5d7488, 0x9ab0a8, 0x7a8aa8, 0x8a98b0, 0x6f8c9c];
 export const ACCENTS = [0xb5483a, 0x3a6fb5, 0x3a9a6a, 0xc9902a, 0x7a4ab5, 0x2f3a4a];
+/** Cottage roofs, by accent: terracotta, slate, moss, clay, plum, charcoal. */
+const ROOFS = [0xa8503c, 0x56606e, 0x5e6e4a, 0xb8764a, 0x6e4a5a, 0x3e4044];
+const LEAVES = [0x4f7a3a, 0x5d8a42, 0x3f6a34, 0x6a8f3e, 0x48703f];
 
 /** Things the scene animates on a model. Positions are model-local. */
 export interface ModelInfo {
@@ -44,12 +49,16 @@ export class Parts {
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
 
-  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0) {
+  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, cells?: [number, number]) {
     this.q.setFromEuler(this.e.set(rx, ry, rz));
-    this.m.compose(new THREE.Vector3(x, y, z), this.q, new THREE.Vector3(1, 1, 1));
+    this.m.compose(new THREE.Vector3(x, y, z), this.q, scale ?? new THREE.Vector3(1, 1, 1));
     const geo = g.index ? g.toNonIndexed() : g.clone();
     geo.applyMatrix4(this.m);
-    for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv"].includes(k)) geo.deleteAttribute(k);
+    for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv", "color"].includes(k)) geo.deleteAttribute(k);
+    if (cells) {
+      const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + cells[0] / ATLAS, uv.getY(i) + cells[1] / ATLAS);
+    }
     const list = this.byMat.get(material) ?? [];
     list.push(geo);
     this.byMat.set(material, list);
@@ -78,49 +87,194 @@ function shade(color: number, damage: number): THREE.Color {
   return new THREE.Color(color).multiplyScalar([1, 0.78, 0.5][Math.min(2, damage)]);
 }
 
-/** A box body whose four sides carry a window facade. */
-function body(
-  g: THREE.Group,
-  info: ModelInfo,
-  kind: Facade,
-  s: { w: number; d: number; h: number; y: number; floors: number; color: number; seed: number; damage: number },
-  glass = false,
-) {
-  const r = rng(s.seed);
-  const set = facades(kind)[Math.floor(r() * 3)];
-  const broken = s.damage >= 2;
-  const cols = Math.max(1, Math.round(s.w / (kind === "house" ? 2.6 : kind === "glass" ? 1.6 : 2.4)));
-  const colsD = Math.max(1, Math.round(s.d / (kind === "house" ? 2.6 : kind === "glass" ? 1.6 : 2.4)));
-  const ox = Math.floor(r() * CELLS) / CELLS;
-  const oy = Math.floor(r() * CELLS) / CELLS;
-  const side = (c: number) => {
-    const map = (broken ? set.brokenMap : set.map).clone();
-    const em = (broken ? set.brokenEmissive : set.emissive).clone();
-    for (const t of [map, em]) {
-      t.repeat.set(c / CELLS, s.floors / CELLS);
-      t.offset.set(ox, oy);
+// ---- kit materials -----------------------------------------------------------
+
+interface RoleLook {
+  color: number;
+  rough?: number;
+  metal?: number;
+  emissive?: number;
+  night?: number;
+  double?: boolean;
+}
+
+/** Roles whose look does not depend on the building. */
+const ROLES: Record<string, RoleLook> = {
+  trim: { color: 0xe6dfd2, rough: 0.75 },
+  stone: { color: 0xa9a094, rough: 0.9 },
+  frame: { color: 0xf3f0ea, rough: 0.6 },
+  deck: { color: 0x505256, rough: 0.95 },
+  canvas: { color: 0xf2ede0, rough: 0.9, double: true },
+  board: { color: 0x1d2024, rough: 0.6 },
+  shopfront: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xffd9a0, night: 0.9 },
+  lobby: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xfff0d8, night: 1 },
+  crownlight: { color: 0x8a6a3a, rough: 0.3, metal: 0.3, emissive: 0xffc870, night: 1.6 },
+  door: { color: 0x4a2f20, rough: 0.6 },
+  metal: { color: 0x8c9298, rough: 0.4, metal: 0.6 },
+  dark: { color: 0x2e2c2a, rough: 0.9 },
+  gold: { color: 0xd9a441, rough: 0.3, metal: 0.85, emissive: 0xffb84a, night: 0.9 },
+  brick: { color: 0x8a4e3c, rough: 0.9 },
+  wood: { color: 0x6e4a32, rough: 0.85 },
+  bark: { color: 0x5a4030, rough: 1 },
+  paint: { color: 0xf0e8d0, rough: 0.7 },
+  railglass: { color: 0x5a7080, rough: 0.15, metal: 0.4 },
+};
+
+const kitShared = new Map<string, THREE.MeshStandardMaterial>();
+
+/** A kit material: lit by the baked occlusion in the vertex colours. */
+function kitMat(look: RoleLook, damage: number): THREE.MeshStandardMaterial {
+  const key = `${JSON.stringify(look)}:${damage}`;
+  let m = kitShared.get(key);
+  if (!m) {
+    m = new THREE.MeshStandardMaterial({
+      color: shade(look.color, damage),
+      roughness: look.rough ?? 0.8,
+      metalness: look.metal ?? 0,
+      vertexColors: true,
+      side: look.double ? THREE.DoubleSide : THREE.FrontSide,
+    });
+    // Burnt-out shops and lobbies stay dark.
+    if (look.emissive !== undefined && damage < 2) {
+      m.emissive.setHex(look.emissive);
+      m.emissiveIntensity = 0;
+      m.userData.night = look.night;
     }
-    const m = new THREE.MeshStandardMaterial({
-      map,
-      emissiveMap: em,
+    kitShared.set(key, m);
+  }
+  return m;
+}
+
+/** Window panes: one atlas cell each, lit at night, smashed when broken. */
+function paneMat(kind: Pane, color: number, damage: number): THREE.MeshStandardMaterial {
+  const key = `pane:${kind}:${color}:${damage}`;
+  let m = kitShared.get(key);
+  if (!m) {
+    const set = panes(kind);
+    const broken = damage >= 2;
+    const glass = kind === "glass";
+    m = new THREE.MeshStandardMaterial({
+      map: broken ? set.brokenMap : set.map,
+      emissiveMap: broken ? set.brokenEmissive : set.emissive,
       emissive: 0xffffff,
       emissiveIntensity: 0,
-      color: shade(s.color, s.damage),
-      roughness: glass ? 0.18 : 0.85,
-      metalness: glass ? 0.55 : 0,
-      envMapIntensity: glass ? 1.4 : 0.5,
+      color: shade(color, damage),
+      roughness: glass ? 0.12 : 0.25,
+      metalness: glass ? 0.6 : 0.2,
+      envMapIntensity: glass ? 1.4 : 1,
+      vertexColors: true,
     });
-    m.userData.night = s.damage === 1 ? 0.35 : 0.55;
-    info.night.push(m);
+    m.userData.night = damage === 1 ? 0.35 : 0.6;
+    kitShared.set(key, m);
+  }
+  return m;
+}
+
+type Look = (role: string) => THREE.MeshStandardMaterial;
+
+/** Materials for a building's roles; night-lit ones are collected in info. */
+function looks(s: Spec, info: ModelInfo): Look {
+  const office = s.kind === "office";
+  const wall = office ? new THREE.Color(GLASS[s.wall]).lerp(new THREE.Color(0xe0e0dc), 0.7).getHex() : WALLS[s.wall];
+  const byRole: Record<string, RoleLook> = {
+    wall: { color: wall, rough: 0.85 },
+    roof: { color: ROOFS[s.accent], rough: 0.8 },
+    accent: { color: ACCENTS[s.accent], rough: 0.7, double: true },
+    sign: { color: ACCENTS[s.accent], emissive: new THREE.Color(ACCENTS[s.accent]).lerp(new THREE.Color(0xffffff), 0.35).getHex(), night: 1.8 },
+    spandrel: { color: new THREE.Color(office ? GLASS[s.wall] : 0x4a4e58).multiplyScalar(0.45).getHex(), rough: 0.3, metal: 0.5 },
+    leaf: { color: LEAVES[s.seed % LEAVES.length], rough: 0.9 },
+  };
+  const glass = office ? GLASS[s.wall] : s.kind === "landmark" ? 0xb4c0cc : 0xa8bccc;
+  const seen = new Set<THREE.MeshStandardMaterial>();
+  return (role) => {
+    const m =
+      role === "window" ? paneMat("window", 0xffffff, s.damage)
+      : role === "glass" ? paneMat("glass", glass, s.damage)
+      : kitMat(byRole[role] ?? ROLES[role] ?? { color: 0xff00ff }, s.damage);
+    if (m.userData.night && !seen.has(m)) {
+      seen.add(m);
+      info.night.push(m);
+    }
     return m;
   };
-  const roof = mat(0x6b6d70, { roughness: 0.9 });
-  const sw = side(cols);
-  const sd = side(colsD);
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(s.w, s.h, s.d), [sd, sd, roof, roof, sw, sw]);
-  mesh.position.y = s.y + s.h / 2;
-  mesh.castShadow = mesh.receiveShadow = true;
-  g.add(mesh);
+}
+
+/** Puts a kit piece on the stack at height y, scaled to the footprint. */
+function put(p: Parts, name: string, y: number, sx: number, sz: number, look: Look, r: () => number) {
+  const cells: [number, number] = [Math.floor(r() * ATLAS), Math.floor(r() * ATLAS)];
+  const scale = new THREE.Vector3(sx, 1, sz);
+  for (const { role, geo } of piece(name).parts) {
+    p.add(look(role), geo, 0, y, 0, 0, 0, 0, scale, role === "window" || role === "glass" ? cells : undefined);
+  }
+  return piece(name).anchors;
+}
+
+/**
+ * Stacks the first `floors` storeys of a building from the kit, and its roof
+ * if `roof`. Returns the height reached, the footprint there, and anchors
+ * (piece-local, already moved onto the stack).
+ */
+function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
+  const r = rng(s.seed * 13 + 7);
+  const variant = (n: number) => "abc"[Math.floor(r() * n)];
+  const [W0, D0] = NOMINAL[s.kind];
+  const sx = s.w / W0;
+  const sz = s.d / D0;
+  const fh = s.floorH;
+  const anchors: Record<string, THREE.Vector3> = {};
+  let k = 1;
+  const place = (name: string, y: number) => {
+    for (const [key, a] of Object.entries(put(p, name, y, sx * k, sz * k, look, r))) {
+      anchors[key] = new THREE.Vector3(a.x * sx * k, a.y + y, a.z * sz * k);
+    }
+  };
+  switch (s.kind) {
+    case "cottage": {
+      const v = variant(3);
+      if (floors > 0) place(`cottage_body_${v}`, 0);
+      if (roof) place(`cottage_roof_${v}`, fh);
+      break;
+    }
+    case "shop":
+    case "apartment": {
+      const pre = s.kind === "shop" ? "shop" : "apt";
+      const fv = variant(2);
+      const rv = variant(2);
+      for (let f = 0; f < floors; f++) place(f === 0 ? `${pre}_ground${s.kind === "shop" ? `_${fv}` : ""}` : `${pre}_floor_${fv}`, f * fh);
+      if (roof) place(`${pre}_roof_${rv}`, floors * fh);
+      break;
+    }
+    case "office": {
+      const fv = variant(2);
+      const rv = variant(2);
+      const lower = Math.max(1, Math.round(s.floors * 0.68));
+      for (let f = 0; f < floors; f++) {
+        if (f === lower) {
+          place("office_setback", f * fh);
+          k = 0.78;
+        }
+        place(f === 0 ? "office_ground" : `office_floor_${fv}`, f * fh);
+      }
+      if (roof) place(`office_roof_${rv}`, floors * fh);
+      break;
+    }
+    case "landmark": {
+      const e1 = Math.round(s.floors * 0.5);
+      const e2 = Math.round(s.floors * 0.8);
+      let tier = 1;
+      for (let f = 0; f < floors; f++) {
+        const t = f < e1 ? 1 : f < e2 ? 2 : 3;
+        if (t !== tier) place(`lm_ledge_${tier}`, f * fh);
+        tier = t;
+        place(f === 0 ? "lm_ground" : `lm_floor_${t}`, f * fh);
+      }
+      if (roof) place("lm_crown", floors * fh);
+      // Landmark tiers are modelled at their own sizes; k is only the top's.
+      k = [1, 0.78, 0.56][tier - 1];
+      break;
+    }
+  }
+  return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
 }
 
 /** Broken-off top: jagged chunks and bent rebar on a cut body. */
@@ -138,14 +292,16 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
   }
 }
 
+const TREES = ["tree_a", "tree_a", "tree_b", "tree_c", "tree_d", "tree_d", "tree_b"];
+
 export function tree(p: Parts, x: number, z: number, s: number, seed: number) {
   const r = rng(seed);
-  p.cyl(mat(0x5a4030), 0.12 * s, 0.18 * s, 1.4 * s, x, 0, z, 5);
-  const leaf = mat([0x4f7a3a, 0x5d8a42, 0x3f6a34, 0x6a8f3e][Math.floor(r() * 4)], { flatShading: true });
-  const blobs = 2 + Math.floor(r() * 2);
-  for (let i = 0; i < blobs; i++) {
-    p.add(leaf, new THREE.IcosahedronGeometry((0.9 + r() * 0.5) * s, 0), x + (r() - 0.5) * s, (1.8 + i * 0.7) * s, z + (r() - 0.5) * s, r(), r(), r());
-  }
+  const name = TREES[Math.floor(r() * TREES.length)];
+  const leaf = kitMat({ color: LEAVES[Math.floor(r() * LEAVES.length)], rough: 0.9 }, 0);
+  const bark = kitMat(ROLES.bark, 0);
+  const scale = new THREE.Vector3(s, s * (0.85 + r() * 0.3), s);
+  const ry = r() * Math.PI * 2;
+  for (const { role, geo } of piece(name).parts) p.add(role === "leaf" ? leaf : bark, geo, x, 0, z, 0, ry, 0, scale);
 }
 
 export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
@@ -153,150 +309,31 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const p = new Parts();
   const r = rng(s.seed * 31 + 5);
   const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: WALLS[s.wall] };
-  const wall = s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall];
-  const accent = ACCENTS[s.accent];
+  const look = looks(s, info);
   const broken = s.damage >= 2;
-  // Heavy damage takes the top quarter off.
-  const cut = broken ? 0.72 + r() * 0.1 : 1;
-  const trim = mat(0xd8d2c8, { roughness: 0.7 });
-  const dark = mat(0x3a3430, { roughness: 0.9 });
 
   // Lot: lawn and a path to the front door.
   p.box(mat(0x6f9a4f), LOT - 1.2, 0.08, LOT - 1.2, 0, 0, 0);
   p.box(mat(0xbab4a8), 1.4, 0.1, LOT / 2 - s.d / 2, 0, 0, s.d / 2 + (LOT / 2 - s.d / 2) / 2);
-
-  switch (s.kind) {
-    case "cottage": {
-      const h = s.height;
-      body(g, info, "house", { w: s.w, d: s.d, h, y: 0, floors: 1, color: wall, seed: s.seed, damage: s.damage });
-      const roofH = 2.6;
-      if (!broken) {
-        const tri = new THREE.Shape([new THREE.Vector2(-s.d / 2 - 0.4, 0), new THREE.Vector2(s.d / 2 + 0.4, 0), new THREE.Vector2(0, roofH)]);
-        const prism = new THREE.ExtrudeGeometry(tri, { depth: s.w + 0.6, bevelEnabled: false });
-        prism.translate(0, 0, -(s.w + 0.6) / 2);
-        p.add(mat(shade(accent, s.damage).getHex(), { roughness: 0.75, flatShading: true }), prism, 0, h, 0, 0, Math.PI / 2, 0);
-        p.box(mat(0x8a5a4a), 0.7, 1.8, 0.7, s.w * 0.25, h + 0.8, -s.d * 0.15);
-        info.emitters.push({ pos: new THREE.Vector3(s.w * 0.25, h + 2.7, -s.d * 0.15), kind: "smoke", rate: s.damage ? 0 : 0.25 });
-      } else {
-        wreckTop(p, s.w, s.d, h, wall, r);
-      }
-      p.box(mat(0x5a3a28), 1.1, 2.1, 0.12, 0, 0, s.d / 2);
-      p.box(trim, 1.5, 0.12, 0.6, 0, 2.15, s.d / 2 + 0.25);
-      // Hedge and a garden tree.
-      p.box(mat(0x3f6a34, { flatShading: true }), LOT - 2, 0.7, 0.6, 0, 0, LOT / 2 - 1.2);
-      tree(p, (r() < 0.5 ? -1 : 1) * (s.w / 2 + 1.6), s.d / 2 + 1.6, 0.9, s.seed + 1);
-      break;
-    }
-    case "shop": {
-      const h = s.height * cut;
-      body(g, info, "residential", { w: s.w, d: s.d, h: h - 3.4, y: 3.4, floors: s.floors - 1, color: wall, seed: s.seed, damage: s.damage });
-      // Ground floor: shop window, glowing at night.
-      p.box(mat(shade(wall, s.damage).getHex()), s.w, 3.4, s.d, 0, 0, 0);
-      const front = new THREE.MeshStandardMaterial({ color: 0x223040, emissive: broken ? 0x000000 : 0xffd9a0, emissiveIntensity: 0, roughness: 0.2, metalness: 0.4 });
-      front.userData.night = 0.9;
-      info.night.push(front);
-      p.box(front, s.w * 0.8, 2.4, 0.1, 0, 0.3, s.d / 2 + 0.01);
-      // Awning and a lit sign.
-      p.box(mat(shade(accent, s.damage).getHex(), { roughness: 0.6 }), s.w * 0.9, 0.15, 1.6, 0, 2.9, s.d / 2 + 0.75, 0, 0.25);
-      if (!broken) {
-        const sign = mat(accent, { emissive: accent, emissiveIntensity: 0, night: 1.6 });
-        info.night.push(sign);
-        p.box(sign, s.w * 0.5, 0.7, 0.2, 0, 3.5, s.d / 2 + 0.1);
-        for (const [dx, dz] of [[0, s.d / 2], [0, -s.d / 2], [s.w / 2, 0], [-s.w / 2, 0]]) {
-          p.box(trim, dx ? 0.3 : s.w + 0.3, 0.6, dz ? 0.3 : s.d, dx, h, dz);
-        }
-        p.box(mat(0x9aa0a6, { metalness: 0.4 }), 1.4, 0.9, 1.1, -s.w * 0.2, h, -s.d * 0.2);
-      } else wreckTop(p, s.w, s.d, h, wall, r);
-      break;
-    }
-    case "apartment": {
-      const h = s.height * cut;
-      const floors = Math.max(1, Math.round(s.floors * cut));
-      body(g, info, "residential", { w: s.w, d: s.d, h, y: 0, floors, color: wall, seed: s.seed, damage: s.damage });
-      // Balconies on the front.
-      const slab = mat(0xcfc9be);
-      const rail = mat(0x30343a, { metalness: 0.5, roughness: 0.5 });
-      for (let f = 1; f < floors; f++) {
-        for (const bx of [-s.w * 0.28, s.w * 0.28]) {
-          const y = f * s.floorH;
-          p.box(slab, 2.2, 0.18, 1.1, bx, y, s.d / 2 + 0.55);
-          p.box(rail, 2.2, 0.9, 0.06, bx, y + 0.18, s.d / 2 + 1.07);
-        }
-      }
-      p.box(trim, s.w + 0.4, 0.5, s.d + 0.4, 0, h - 0.25, 0);
-      if (!broken) {
-        // Water tank on legs.
-        const tank = mat(0x7a5a44, { roughness: 0.9 });
-        p.cyl(tank, 1.1, 1.1, 1.8, s.w * 0.2, h + 1.2, -s.d * 0.15, 10);
-        p.add(tank, new THREE.ConeGeometry(1.2, 0.7, 10), s.w * 0.2, h + 3.35, -s.d * 0.15);
-        for (const [lx, lz] of [[-0.7, -0.7], [0.7, -0.7], [-0.7, 0.7], [0.7, 0.7]]) {
-          p.box(dark, 0.12, 1.2, 0.12, s.w * 0.2 + lx, h, -s.d * 0.15 + lz);
-        }
-        p.box(mat(0x8a8e94), 1.6, 2.2, 1.6, -s.w * 0.25, h, s.d * 0.15);
-      } else wreckTop(p, s.w, s.d, h, wall, r);
-      break;
-    }
-    case "office": {
-      const h = s.height * cut;
-      const lower = Math.min(h, s.height * 0.68);
-      const fl = (y: number) => Math.max(1, Math.round(y / s.floorH));
-      body(g, info, "glass", { w: s.w, d: s.d, h: lower, y: 0, floors: fl(lower), color: wall, seed: s.seed, damage: s.damage }, true);
-      p.box(mat(0xb8bcc2, { metalness: 0.6, roughness: 0.35 }), s.w + 0.3, 0.5, s.d + 0.3, 0, lower - 0.25, 0);
-      if (h > lower) {
-        const w2 = s.w * 0.78;
-        const d2 = s.d * 0.78;
-        body(g, info, "glass", { w: w2, d: d2, h: h - lower, y: lower, floors: fl(h - lower), color: wall, seed: s.seed + 3, damage: s.damage }, true);
-        if (!broken) {
-          p.box(mat(0x8a8e94), w2 * 0.6, 2.4, d2 * 0.6, 0, h, 0);
-          p.cyl(mat(0xc0c4ca, { metalness: 0.7, roughness: 0.3 }), 0.08, 0.15, 9, w2 * 0.2, h + 2.4, 0, 6);
-          info.beacons.push(new THREE.Vector3(w2 * 0.2, h + 11.5, 0));
-        } else wreckTop(p, w2, d2, h, wall, r);
-      } else if (broken) wreckTop(p, s.w, s.d, h, wall, r);
-      // Entrance canopy.
-      p.box(mat(0x30343a, { metalness: 0.6 }), 4, 0.25, 2, 0, 3.2, s.d / 2 + 1);
-      break;
-    }
-    case "landmark": {
-      const h = s.height * cut;
-      const gold = mat(0xd9a441, { metalness: 0.85, roughness: 0.3, emissive: 0xffb84a, emissiveIntensity: 0, night: 0.9 });
-      info.night.push(gold);
-      const tiers: [number, number, number][] = [
-        [0, 0.5, 1],
-        [0.5, 0.8, 0.78],
-        [0.8, 1, 0.56],
-      ];
-      let top = 0;
-      for (const [a, b, k] of tiers) {
-        const y0 = s.height * a;
-        const y1 = Math.min(h, s.height * b);
-        if (y1 <= y0) break;
-        const fl = Math.max(1, Math.round((y1 - y0) / s.floorH));
-        body(g, info, "office", { w: s.w * k, d: s.d * k, h: y1 - y0, y: y0, floors: fl, color: wall, seed: s.seed + y0, damage: s.damage });
-        p.box(gold, s.w * k + 0.5, 0.45, s.d * k + 0.5, 0, y1 - 0.2, 0);
-        // Corner piers make the tiers read as stone.
-        for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-          p.box(trim, 0.7, y1 - y0, 0.7, (cx * s.w * k) / 2, y0, (cz * s.d * k) / 2);
-        }
-        top = y1;
-      }
-      if (!broken) {
-        const cw = s.w * 0.56;
-        p.add(gold, new THREE.ConeGeometry(cw * 0.72, 9, 4), 0, top + 4.5, 0, 0, Math.PI / 4, 0);
-        p.cyl(mat(0xd0d4da, { metalness: 0.8, roughness: 0.25 }), 0.1, 0.35, 14, 0, top + 8, 0, 8);
-        info.beacons.push(new THREE.Vector3(0, top + 22.2, 0));
-      } else wreckTop(p, s.w * 0.56, s.d * 0.56, top, wall, r);
-      // Plaza with a fountain-ish disc.
-      p.box(mat(0xc8c0b0), LOT - 1.4, 0.15, 1.2, 0, 0, s.d / 2 + 0.6);
-      break;
-    }
+  if (s.kind === "cottage") {
+    p.box(mat(0x3f6a34, { flatShading: true }), LOT - 2, 0.7, 0.6, 0, 0, LOT / 2 - 1.2);
+    tree(p, (r() < 0.5 ? -1 : 1) * (s.w / 2 + 1.6), s.d / 2 + 1.6, 0.7, s.seed + 1);
   }
+  if (s.kind === "landmark") p.box(mat(0xc8c0b0), LOT - 1.4, 0.15, 1.2, 0, 0, s.d / 2 + 0.6);
+
+  // Heavy damage takes the top quarter off, roof and all.
+  const floors = broken ? Math.max(1, Math.round(s.floors * (0.72 + r() * 0.1))) : s.floors;
+  const top = stack(p, s, look, floors, !broken);
+  if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : 0.25 });
+  if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
+  if (broken) wreckTop(p, top.w, top.d, top.top, s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall], r);
 
   if (s.damage >= 1) {
-    const top = s.height * cut;
-    info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * s.w * 0.5, top + 0.5, (r() - 0.5) * s.d * 0.5), kind: "smoke", rate: broken ? 7 : 2.2 });
+    const h = top.top;
+    info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * top.w * 0.5, h + 0.5, (r() - 0.5) * top.d * 0.5), kind: "smoke", rate: broken ? 7 : 2.2 });
     if (broken) {
-      info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * s.w * 0.4, top, (r() - 0.5) * s.d * 0.4), kind: "fire", rate: 14 });
-      info.emitters.push({ pos: new THREE.Vector3(s.w * 0.51, top * (0.3 + r() * 0.4), 0), kind: "fire", rate: 5 });
+      info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * top.w * 0.4, h, (r() - 0.5) * top.d * 0.4), kind: "fire", rate: 14 });
+      info.emitters.push({ pos: new THREE.Vector3(s.w * 0.51, h * (0.3 + r() * 0.4), 0), kind: "fire", rate: 5 });
     }
     // Scorch on the lawn.
     p.add(mat(0x1e1a18, { transparent: true, opacity: 0.6, depthWrite: false }), new THREE.CircleGeometry(s.w * 0.7, 12), 0, 0.1, 0, -Math.PI / 2);
@@ -352,9 +389,9 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
     p.box(col, 0.45, builtH, 0.45, (cx * (s.w - 0.5)) / 2, 0, (cz * (s.d - 0.5)) / 2);
   }
-  // Lower floors already clad.
+  // Lower floors already finished: the real building, rising floor by floor.
   const clad = Math.max(0, built - 2);
-  if (clad > 0) p.box(mat(0x9fa4aa, { roughness: 0.6 }), s.w - 0.1, clad * s.floorH, s.d - 0.1, 0, 0, 0);
+  if (clad > 0) stack(p, s, looks(s, info), clad, false);
 
   // Scaffolding one floor above the work.
   const scaff = mat(s.surrendering ? 0xc0392b : 0xd08a2a, { metalness: 0.4, roughness: 0.5 });

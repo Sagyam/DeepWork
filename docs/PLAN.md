@@ -281,7 +281,8 @@ Rules, mapped onto the skyline:
 - The settlement grows in tiers (hamlet → town → city → metropolis) as the
   total of focused hours grows. Streaks speed up repairs.
 
-Keep assets minimal (procedural shapes) until the rules feel right.
+Assets are generated, not hand-made: buildings and trees come from a Blender
+script (see "The app"), so they can be tuned like code.
 
 ### World model (phase 3, built)
 
@@ -320,7 +321,7 @@ TypeScript + three.js frontend, built with bun.
   (`Gate` refused). No state, no policy: the daemon decides, as for the CLI.
 - The frontend polls `Status` every second and `World` every 5s (and at once
   when the session changes). `ui/src/proto.ts` mirrors `crates/proto` by hand.
-- City theme in 3D (three.js, procedural: no asset files). The 2D Pixi
+- City theme in 3D (three.js, with a kit generated in Blender). The 2D Pixi
   skyline was the first try; the user found it flat ("nothing to be proud
   of, nothing to lose"), so it was replaced on the same day.
   - `city/plan.ts` (pure, unit tested with `bun test`): the `World` as a city
@@ -331,14 +332,32 @@ TypeScript + three.js frontend, built with bun.
     (balconies, water tank), office tower (glass, setback, antenna),
     landmark (three tiers, gold trim and crown, spire, beacon). Empty lots
     of a block are staked out with tape; countryside trees grow with the tier.
-  - `city/models.ts`: meshes from boxes / prisms / cylinders, details merged
-    per material. Facades are canvas textures (`city/textures.ts`): window
-    grids with a lit-window emissive map that follows the night. Damage 1
-    darkens and smokes; damage 2 has smashed, scorched, partly burning
-    windows, the top quarter broken off with rebar, fire and heavy smoke.
+  - Kit (`ui/blender/city_kit.py`, run with `bun run kit`; made with
+    Blender 5.2): writes `ui/public/city-kit.glb` (34 pieces, ~1.7 MB). Modular
+    pieces per kind: ground storey, floor storeys, roof (cottages: body +
+    roof, three variants; landmarks: three tiers, setback ledges with gold
+    finials, a lit stepped crown with sunburst chevrons and spire), plus four
+    trees. Bevelled trim, recessed windows with sills, cornices with brackets,
+    quoins, striped awnings and glowing shop lettering, balconies, water
+    tanks, roof gardens, curtain walls, a helipad. Ambient occlusion is baked
+    per corner into vertex colours (BVH ray casts, ground plane for ground
+    pieces). Materials are named by role (`wall`, `trim`, `window`, ...);
+    window panes map to one cell each of a 32 x 32 atlas. Anchors (chimney
+    smoke, beacons) are glTF extras. Generated `.glb` is committed; rerun the
+    script after editing it. `--preview out.png` renders Cycles views.
+  - `city/kit.ts` loads the kit before the scene starts (`City.create`).
+    `city/models.ts` stacks pieces to the plan's floor count, scaled in x / z
+    to the lot (offices step in to 78% above 68% of their floors), and picks
+    materials per role from the building's palette and damage. The window
+    atlas (`city/textures.ts`) is drawn on canvases: glass, curtains and blinds
+    by day, warm lit rooms at night, smashed and burning windows when broken;
+    cells shift per storey so lit windows differ. Damage 1 darkens and smokes;
+    damage 2 stacks only the lower ~3/4 with no roof, smashed windows, rubble
+    chunks and rebar on top, fire and heavy smoke.
     Rubble is a heap of concrete, wall and burnt chunks with bent beams,
     bigger for a bigger building. The site: concrete floors up to its
-    progress, columns, scaffolding a floor above the work, a translucent
+    progress, the finished lower storeys from the kit, columns, scaffolding a
+    floor above the work, a translucent
     blueprint of the finished building (red while surrendering, when the
     site also trembles), and a tower crane that swings.
   - `city/scene.ts`: Sky shader with the sun by local time, stars and
@@ -355,7 +374,7 @@ TypeScript + three.js frontend, built with bun.
     is watched, not just counted.
   - Performance on the host's Radeon 610M: 60 fps (vsync) in the app for the
     real hamlet; the 120-plot metropolis at night ~100 fps uncapped in
-    GPU Chromium. `VITE_FPS=1 bun run build` adds a frame-rate readout.
+    GPU Chromium with the old box models, ~90 with the Blender kit (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
   phrase typed by hand: paste and drop are refused); idle card (nudge, next
@@ -379,7 +398,7 @@ TypeScript + three.js frontend, built with bun.
 | Docker during sessions | Not locked. The user doesn't need Docker now and won't go that far to bypass. Optional lock moved to phase 4 |
 | VMs (libvirt) | Not used; ignore |
 | Throttle vs block | Throttle by default ("painfully slow"), block per domain |
-| Theme | City, in 3D (three.js, procedural). World model stays theme-agnostic |
+| Theme | City, in 3D (three.js, kit generated by a Blender script). World model stays theme-agnostic |
 | UI order | CLI + bar module first, Tauri UI in phase 3 |
 | Bar | The user's bar is the Omarchy shell (quickshell), not Waybar. `deepwork bar` serves both |
 
@@ -470,7 +489,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 ### Phase 3: The world
 
 - [x] Ledger → theme-agnostic world model in the daemon (`world.rs`, `Request::World`, `deepwork world`)
-- [x] Tauri 2 app with a procedural 3D city (three.js) renderer (`ui/`), animated losses and builds
+- [x] Tauri 2 app with a 3D city (three.js) renderer (`ui/`), animated losses and builds
+- [x] Building and tree kit generated in Blender (`ui/blender/city_kit.py`): modular storeys, baked AO, window atlas
 - [ ] Timer, routines and stats screens (timer, start / stop / surrender are in the session card)
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 

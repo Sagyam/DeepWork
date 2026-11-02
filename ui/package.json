@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "test": "bun test",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "kit": "blender -b --factory-startup -P blender/city_kit.py -- public/city-kit.glb"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

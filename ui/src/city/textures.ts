@@ -1,19 +1,22 @@
-// Facade textures drawn on canvases at startup: an 8 x 8 grid of window
-// cells per texture. The colour map is greyscale (tinted by the material);
-// the emissive map holds the lit windows, scaled by the time of day.
+// Window atlas drawn on canvases at startup. Every pane of the Blender kit
+// maps to one cell of an ATLAS x ATLAS grid, and buildings shift cells per
+// floor, so each window gets its own look: the colour map holds glass,
+// curtains and blinds by day, the emissive map the lit rooms at night.
 import * as THREE from "three";
 import { rng } from "./plan";
 
-export const CELLS = 8;
-const PX = 32;
-const SIZE = CELLS * PX;
+/** Cells per side; must match CELLS in city_kit.py. */
+export const ATLAS = 32;
+const PX = 16;
+const SIZE = ATLAS * PX;
 
-export type Facade = "house" | "residential" | "office" | "glass";
+/** Residential sash windows, or office glazing. */
+export type Pane = "window" | "glass";
 
-export interface FacadeSet {
+export interface PaneSet {
   map: THREE.Texture;
   emissive: THREE.Texture;
-  /** The same facade with smashed and burnt-out windows. */
+  /** Smashed, scorched and partly burning. */
   brokenMap: THREE.Texture;
   brokenEmissive: THREE.Texture;
 }
@@ -24,99 +27,118 @@ function canvas(): [HTMLCanvasElement, CanvasRenderingContext2D] {
   return [c, c.getContext("2d")!];
 }
 
-function texture(c: HTMLCanvasElement, color: boolean): THREE.Texture {
+function texture(c: HTMLCanvasElement): THREE.Texture {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.colorSpace = color ? THREE.SRGBColorSpace : THREE.NoColorSpace;
+  t.colorSpace = THREE.SRGBColorSpace;
+  // glTF UVs run top-down.
+  t.flipY = false;
   t.anisotropy = 4;
   return t;
 }
 
-const WARM = ["#ffd38a", "#ffc46b", "#ffe2b0", "#fff0d0", "#ffb35c", "#cfe4ff"];
+const WARM = ["#ffd38a", "#ffc46b", "#ffe2b0", "#fff0d0", "#ffb35c", "#ffcf9a"];
+const COOL = ["#fff1d8", "#ffe6c0", "#f2f0ea", "#ffd9a8", "#e8eefc"];
+const CURTAINS = ["#e8e0cc", "#d9c7a8", "#b8483a", "#4a6a8a", "#c9b07a", "#f0ece4", "#7a8a5a"];
 
-function draw(kind: Facade, seed: number, broken: boolean): [HTMLCanvasElement, HTMLCanvasElement] {
+function draw(kind: Pane, seed: number, broken: boolean): [HTMLCanvasElement, HTMLCanvasElement] {
   const r = rng(seed);
   const [mc, m] = canvas();
   const [ec, e] = canvas();
-  m.fillStyle = "#fff";
-  m.fillRect(0, 0, SIZE, SIZE);
   e.fillStyle = "#000";
   e.fillRect(0, 0, SIZE, SIZE);
-  // Slight grime so walls are not flat.
-  for (let i = 0; i < 900; i++) {
-    m.fillStyle = `rgba(0,0,0,${r() * 0.05})`;
-    m.fillRect(r() * SIZE, r() * SIZE, 2 + r() * 6, 2 + r() * 6);
-  }
-  for (let row = 0; row < CELLS; row++) {
-    for (let col = 0; col < CELLS; col++) {
+  for (let row = 0; row < ATLAS; row++) {
+    for (let col = 0; col < ATLAS; col++) {
       const x = col * PX;
       const y = row * PX;
-      let wx: number, wy: number, ww: number, wh: number;
-      switch (kind) {
-        case "house":
-          [wx, wy, ww, wh] = [x + 9, y + 8, 14, 15];
-          break;
-        case "residential":
-          [wx, wy, ww, wh] = [x + 7, y + 7, 18, 17];
-          break;
-        case "office":
-          [wx, wy, ww, wh] = [x + 2, y + 6, 28, 20];
-          break;
-        case "glass":
-          [wx, wy, ww, wh] = [x + 1, y + 2, 30, 28];
-          break;
-      }
       const smashed = broken && r() < 0.55;
-      // Frame / sill.
-      if (kind !== "glass") {
-        m.fillStyle = "#c9c4bc";
-        m.fillRect(wx - 2, wy - 2, ww + 4, wh + 4);
-        m.fillStyle = "#9a958e";
-        m.fillRect(wx - 3, wy + wh + 1, ww + 6, 3);
-      }
-      const glass = 40 + r() * 30;
-      m.fillStyle = smashed ? "#0a0808" : `rgb(${glass * 0.7},${glass * 0.85},${glass + 25})`;
-      m.fillRect(wx, wy, ww, wh);
+      // Glass: dark, with a sky reflection that fades down the pane.
+      const base = kind === "glass" ? 150 + r() * 60 : 34 + r() * 26;
+      m.fillStyle = smashed ? "#0b0908" : kind === "glass" ? `rgb(${base},${base},${base})` : `rgb(${base * 0.75},${base * 0.9},${base + 22})`;
+      m.fillRect(x, y, PX, PX);
       if (!smashed) {
-        // Sky reflection in the upper half.
-        const g = m.createLinearGradient(wx, wy, wx + ww, wy + wh);
-        g.addColorStop(0, "rgba(255,255,255,0.28)");
-        g.addColorStop(0.5, "rgba(255,255,255,0.04)");
-        g.addColorStop(1, "rgba(255,255,255,0.12)");
+        const g = m.createLinearGradient(x, y, x + PX * 0.6, y + PX);
+        g.addColorStop(0, `rgba(255,255,255,${kind === "glass" ? 0.35 : 0.22})`);
+        g.addColorStop(0.55, "rgba(255,255,255,0)");
+        g.addColorStop(1, "rgba(0,0,0,0.12)");
         m.fillStyle = g;
-        m.fillRect(wx, wy, ww, wh);
-      }
-      // Mullions.
-      m.fillStyle = kind === "glass" ? "#5a6470" : "#d8d3cb";
-      if (kind === "house" || kind === "residential") {
-        m.fillRect(wx + ww / 2 - 1, wy, 2, wh);
-        m.fillRect(wx, wy + wh / 2 - 1, ww, 2);
-      } else {
-        m.fillRect(wx + ww / 2 - 0.5, wy, 1, wh);
+        m.fillRect(x, y, PX, PX);
       }
       if (smashed) {
-        // Scorch above the opening.
-        const s = m.createRadialGradient(wx + ww / 2, wy, 1, wx + ww / 2, wy - 4, PX * 0.7);
-        s.addColorStop(0, "rgba(10,8,8,0.85)");
-        s.addColorStop(1, "rgba(10,8,8,0)");
-        m.fillStyle = s;
-        m.fillRect(x, y - PX / 2, PX, PX);
-        // A few still burn.
-        if (r() < 0.25) {
-          e.fillStyle = "#ff6a1a";
-          e.fillRect(wx, wy + wh * 0.3, ww, wh * 0.7);
+        // Jagged shards and soot.
+        m.fillStyle = "rgba(90,90,96,0.6)";
+        for (let i = 0; i < 3; i++) {
+          m.beginPath();
+          const sx = x + r() * PX;
+          m.moveTo(sx, y);
+          m.lineTo(sx + (r() - 0.5) * 6, y + 3 + r() * 5);
+          m.lineTo(sx + 3, y);
+          m.fill();
+        }
+        if (r() < 0.3) {
+          e.fillStyle = r() < 0.5 ? "#ff5a10" : "#ff8a20";
+          e.fillRect(x, y + PX * (0.25 + r() * 0.3), PX, PX);
+          e.fillStyle = "#ffc040";
+          e.fillRect(x + 3, y + PX * 0.7, PX - 6, PX * 0.3);
         }
         continue;
       }
-      const lit = r() < (broken ? 0.12 : 0.62);
-      if (lit) {
-        const warm = WARM[Math.floor(r() * WARM.length)];
-        e.fillStyle = warm;
-        e.fillRect(wx, wy, ww, wh);
-        // Curtains / blinds.
-        if (r() < 0.4) {
-          e.fillStyle = "rgba(0,0,0,0.55)";
-          e.fillRect(wx, wy, ww * (0.2 + r() * 0.3), wh);
+      const lit = r() < (broken ? 0.12 : kind === "glass" ? 0.5 : 0.58);
+      if (kind === "window") {
+        // Curtains or blinds by day, muntins on top.
+        const dressing = r();
+        const cur = CURTAINS[Math.floor(r() * CURTAINS.length)];
+        if (dressing < 0.45) {
+          const w = PX * (0.18 + r() * 0.2);
+          m.fillStyle = cur;
+          m.fillRect(x, y, w, PX);
+          m.fillRect(x + PX - w, y, w, PX);
+        } else if (dressing < 0.65) {
+          m.fillStyle = "#ddd6c8";
+          m.fillRect(x, y, PX, PX * (0.2 + r() * 0.6));
+          m.fillStyle = "rgba(0,0,0,0.15)";
+          for (let ly = y + 2; ly < y + PX; ly += 2) m.fillRect(x, ly, PX, 0.6);
+        }
+        if (lit) {
+          const warm = r() < 0.08 ? "#9ec4ff" : WARM[Math.floor(r() * WARM.length)];
+          const g = e.createRadialGradient(x + PX / 2, y + PX * 0.35, 1, x + PX / 2, y + PX / 2, PX * 0.75);
+          g.addColorStop(0, warm);
+          g.addColorStop(1, "rgba(120,70,20,0.85)");
+          e.fillStyle = g;
+          e.fillRect(x, y, PX, PX);
+          if (dressing < 0.45) {
+            e.fillStyle = "rgba(0,0,0,0.55)";
+            const w = PX * (0.2 + r() * 0.15);
+            e.fillRect(x, y, w, PX);
+            e.fillRect(x + PX - w, y, w, PX);
+          }
+        }
+        m.fillStyle = "#e8e4dc";
+        m.fillRect(x + PX / 2 - 0.5, y, 1, PX);
+        m.fillRect(x, y + PX * 0.45, PX, 1);
+        e.fillStyle = "#000";
+        e.fillRect(x + PX / 2 - 0.5, y, 1, PX);
+        e.fillRect(x, y + PX * 0.45, PX, 1);
+      } else {
+        // Offices: a ceiling-light band and desks; some floors half lit.
+        m.fillStyle = "rgba(0,0,0,0.18)";
+        m.fillRect(x, y + PX * 0.82, PX, PX * 0.18);
+        if (lit) {
+          const c = COOL[Math.floor(r() * COOL.length)];
+          const g = e.createLinearGradient(x, y, x, y + PX);
+          g.addColorStop(0, c);
+          g.addColorStop(1, "rgba(90,60,30,0.9)");
+          e.fillStyle = g;
+          e.globalAlpha = 0.45 + r() * 0.45;
+          e.fillRect(x, y, PX, PX);
+          e.globalAlpha = 1;
+          e.fillStyle = c;
+          e.fillRect(x, y + 1, PX, 1.5);
+          e.fillStyle = "rgba(0,0,0,0.5)";
+          for (let i = 0; i < 2; i++) e.fillRect(x + 1 + r() * (PX - 6), y + PX * 0.62, 3 + r() * 3, PX * 0.38);
+        } else if (r() < 0.2) {
+          e.fillStyle = "#1a2a40";
+          e.fillRect(x, y, PX, PX);
         }
       }
     }
@@ -124,21 +146,18 @@ function draw(kind: Facade, seed: number, broken: boolean): [HTMLCanvasElement, 
   return [mc, ec];
 }
 
-const cache = new Map<string, FacadeSet[]>();
+const cache = new Map<Pane, PaneSet>();
 
-/** A few variants per facade kind, so neighbours differ. */
-export function facades(kind: Facade): FacadeSet[] {
-  let sets = cache.get(kind);
-  if (!sets) {
-    sets = [0, 1, 2].map((v) => {
-      const seed = kind.length * 977 + v * 7919;
-      const [m, e] = draw(kind, seed, false);
-      const [bm, be] = draw(kind, seed + 1, true);
-      return { map: texture(m, true), emissive: texture(e, true), brokenMap: texture(bm, true), brokenEmissive: texture(be, true) };
-    });
-    cache.set(kind, sets);
+export function panes(kind: Pane): PaneSet {
+  let set = cache.get(kind);
+  if (!set) {
+    const seed = kind === "glass" ? 7919 : 977;
+    const [m, e] = draw(kind, seed, false);
+    const [bm, be] = draw(kind, seed + 1, true);
+    set = { map: texture(m), emissive: texture(e), brokenMap: texture(bm), brokenEmissive: texture(be) };
+    cache.set(kind, set);
   }
-  return sets;
+  return set;
 }
 
 /** A soft round sprite for particles. */

@@ -13,6 +13,7 @@ import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
+import { loadKit } from "./kit";
 import { building, mat, Parts, rubble, site, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
@@ -156,6 +157,7 @@ export class City {
   }
 
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {
+    await loadKit();
     return new City(el, story);
   }
 
