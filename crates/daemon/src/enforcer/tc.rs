@@ -9,7 +9,7 @@
 
 use std::fmt::Write;
 
-use super::nft::{MARK_MASK, THROTTLE_MARK};
+use super::nft::{MARK_MASK, SNI_SLOW, THROTTLE_MARK};
 use crate::config::Throttle;
 
 const IFB_PREFIX: &str = "dwifb";
@@ -60,6 +60,12 @@ fn shape_egress(out: &mut String, dev: &str, t: &Throttle) {
     let _ = writeln!(
         out,
         "filter replace dev {dev} parent d000: protocol all prio 1 handle 0x{THROTTLE_MARK:x}/0x{MARK_MASK:x} fw flowid d000:2"
+    );
+    // Egress packets of SNI-throttled connections carry the throttle mark,
+    // but the IFB sees the conntrack mark as it is.
+    let _ = writeln!(
+        out,
+        "filter replace dev {dev} parent d000: protocol all prio 2 handle 0x{SNI_SLOW:x}/0x{MARK_MASK:x} fw flowid d000:2"
     );
 }
 
@@ -171,6 +177,9 @@ mod tests {
         assert!(s.contains("qdisc replace dev wlp7s0 root handle d000: prio"));
         assert!(s.contains("qdisc replace dev dwifb3 parent d000:2 handle d002: netem"));
         assert!(s.contains("handle 0x4457/0xffff fw flowid d000:2"));
+        assert!(s.contains(
+            "filter replace dev dwifb3 parent d000: protocol all prio 2 handle 0x445b/0xffff fw"
+        ));
         assert!(s.contains("action connmark action mirred egress redirect dev dwifb3"));
     }
 }

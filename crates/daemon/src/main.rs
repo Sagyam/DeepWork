@@ -5,9 +5,11 @@ mod dot;
 mod enforcer;
 mod engine;
 mod loosen;
+mod nfqueue;
 mod schedule;
 mod server;
 mod session;
+mod sni;
 mod store;
 mod world;
 
@@ -116,6 +118,7 @@ fn print_rules(cfg: &Config, profile: Option<&str>) -> Result<()> {
         enforcer::nft::render_ruleset(&enforcer::nft::RulesetParams {
             dns_port: cfg.dns.port,
             block_quic: profile.block_quic,
+            inspect_sni: profile.inspect_sni,
             container_dns: cfg.dns.container_dns,
         })
     );
@@ -166,6 +169,10 @@ async fn main() -> Result<()> {
 
     let enforcer = EnforcerHandle::spawn(args.dry_run, &cfg.dns);
     let resolver = Resolver::new(cfg.dns.clone(), args.dry_run, enforcer.clone())?;
+    if !args.dry_run {
+        let resolver = resolver.clone();
+        nfqueue::spawn(Arc::new(move || resolver.rules()));
+    }
     let core = Arc::new(Mutex::new(
         Core::new(
             (cfg_state, outcome),

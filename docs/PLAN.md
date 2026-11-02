@@ -49,7 +49,8 @@ design goal is:
 | `docker run --privileged` (user is in `docker` group) | Accepted risk for now (user does not expect to go that far). Optional `docker.sock` lock later | 4 |
 | Tailscale exit node | nft output hook sees packets before WireGuard; still matched | 1 |
 | Browser's own DoH (Zen had strict mode 3) | Locked managed policy turns DoH off; browser DoH endpoint IPs blocked | 1 |
-| Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 |
+| Shared CDN IPs (YouTube vs Google Docs) | SNI inspection of new TLS connections via NFQUEUE | 4 (done) |
+| Hardcoded IP / stale DNS cache for a rule site | SNI inspection judges the connection by name, whatever the address | 4 (done) |
 | SSH SOCKS tunnel / personal VPN | Heuristic detection + penalty only | 4 |
 | Live USB, GRUB cmdline, TTY root login | Out of scope. TTY root is the intended emergency exit | n/a |
 
@@ -180,6 +181,35 @@ rules (stopwatch minimum, surrender).
    they are covered too. During a session, forwarded port 53 to any other
    server (Docker's `1.1.1.1` fallback, `--dns`) is DNAT'd to
    `dns.container_dns` (`172.17.0.1:53` here) or refused if that is unset.
+
+SNI inspection (phase 4, profile `inspect_sni`, on by default): chains
+`sni_output` / `sni_forward` (priority filter - 1) queue packets of
+established TCP connections to port 443 whose conntrack mark is still unjudged
+(0 or the address throttle) to NFQUEUE 17495 with `bypass`. The daemon
+(`nfqueue.rs`, raw netlink, no crate; `sni.rs`, pure) reads the ClientHello,
+reassembling it over segments (Chrome's post-quantum hello takes two) and
+records, and answers with the judgement as the packet mark; `enforce` copies
+it into the conntrack mark so the connection is never queued again:
+
+- rule match → `0x445b` slow (tc has a second `fw` filter for it on the IFB)
+  or `0x445a` block (`ct direction original` reset; without the direction
+  check the RST it sends was rejected too and the connection hung);
+- a name no rule matches → `0x4459` pass, full speed even on an address in
+  `slow_*` (the shared CDN case);
+- no name, an encrypted ClientHello (ECH outer name only), mid-stream data of a
+  connection opened before the session, or nothing after 3 empty packets →
+  "keep": slow if the address sets say so, pass otherwise.
+
+Fail-open by design: if nobody reads the queue (daemon killed, module
+missing), `bypass` lets packets through unjudged and the address sets apply as
+before. Known gap: HTTP/2 connection coalescing could carry a rule site over a
+passed connection whose certificate also covers it (same IP required); not
+seen yet, watch for it on Google properties.
+Verified in `unshare -rnm` with the real daemon, a veth to a second namespace
+and `openssl s_server` (100 KB, default throttle): YouTube SNI on an unknown
+address 4.3 s; Docs 0.2 s; Reddit reset at once; with the server address in
+`slow_v4/v6` Docs 0.4 s and YouTube 4.7 s over v4 and v6; no SNI 4.7 s; after
+`kill -9` of the daemon the address sets still throttle; no false tamper.
 
 Tamper watch (phase 2): `nft monitor ruleset`, `tc monitor` and
 `ip monitor link` run for the life of the daemon. A matching line queues one
@@ -441,9 +471,16 @@ Phase 3 (2026-11-02): world model, penalties and the Tauri app with the
 3D city are in (see "World model" and "The app" above), and so are the
 Routines and Stats panels (2026-11-02, checked with the mock and against a
 dry-run daemon; the installed daemon needs `./dist/install.sh` to answer the
-new `history` / `routines` requests). Phase 3 code is complete. Next: tune the
-city on real use (sizes, damage looks, replay pacing); ideas: sound for
-collapse / completion, weather. Then phase 4.
+new `history` / `routines` requests). Phase 3 code is complete. Still to do on real
+use: tune the city (sizes, damage looks, replay pacing); ideas: sound for
+collapse / completion, weather.
+
+Phase 4 (2026-11-02): SNI inspection is in (see "Network enforcement"),
+tested in namespaces only. Host check after `./dist/install.sh`: start a
+session, `journalctl -u deepworkd` shows "SNI inspection reading queue";
+`RUST_LOG=deepworkd=debug` shows `sni <name>: Slow / Pass`; YouTube still
+throttled, Google Docs / Gmail now at full speed. Next in phase 4: tunnel /
+VPN heuristics.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -530,7 +567,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 
 ### Phase 4: Deeper enforcement
 
-- [ ] NFQUEUE SNI inspection for new TLS connections
+- [x] NFQUEUE SNI inspection for new TLS connections (`sni.rs`, `nfqueue.rs`; profile `inspect_sni`)
 - [ ] Tunnel / VPN heuristics
 - [ ] Optional docker.sock lock during sessions
 - [ ] Inverted mode: distractions throttled always, free minutes earned by focus

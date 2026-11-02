@@ -187,6 +187,9 @@ pub struct Profile {
     pub throttle: Throttle,
     /// Drop UDP 443 so browsers fall back from QUIC to TCP.
     pub block_quic: bool,
+    /// Judge new TLS connections by the server name in their ClientHello
+    /// (NFQUEUE), on top of the addresses learned from DNS.
+    pub inspect_sni: bool,
     pub rules: Vec<Rule>,
     /// Harsher throttles the longer throttled sites are used in a session.
     /// `[]` turns escalation off.
@@ -354,6 +357,7 @@ impl Default for Profile {
         Self {
             throttle: Throttle::default(),
             block_quic: true,
+            inspect_sni: true,
             rules: DEFAULT_THROTTLED
                 .iter()
                 .map(|d| Rule {

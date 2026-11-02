@@ -14,6 +14,18 @@ pub const THROTTLE_MARK: u32 = 0x4457;
 pub const EXEMPT_MARK: u32 = 0x4458;
 pub const MARK_MASK: u32 = 0xffff;
 
+/// SNI judgements (`sni.rs`). The daemon hands a queued packet back with one
+/// of these as its mark, and the ruleset stores it in the conntrack mark so
+/// the connection is not queued again. `SNI_KEEP` becomes `SNI_SLOW` on a
+/// connection the address sets already throttle, `SNI_PASS` otherwise.
+pub const SNI_PASS: u32 = 0x4459;
+pub const SNI_BLOCK: u32 = 0x445a;
+/// Throttled after inspection. tc treats it like [`THROTTLE_MARK`].
+pub const SNI_SLOW: u32 = 0x445b;
+pub const SNI_KEEP: u32 = 0x445c;
+/// NFQUEUE number the inspector reads.
+pub const SNI_QUEUE: u16 = 0x4457;
+
 /// Well-known DNS-over-HTTPS resolvers. Port 443 to these is rejected during a
 /// session so browsers cannot resolve around us.
 #[rustfmt::skip]
@@ -53,6 +65,7 @@ pub struct RulesetParams {
     pub dns_port: u16,
     pub block_quic: bool,
     pub container_dns: Option<std::net::SocketAddrV4>,
+    pub inspect_sni: bool,
 }
 
 /// Bridges that containers and VMs sit behind.
@@ -69,6 +82,32 @@ pub fn render_ruleset(p: &RulesetParams) -> String {
     } else {
         ""
     };
+    // Queued packets nobody reads (daemon down) pass unjudged (`bypass`), so
+    // the address sets still apply.
+    let sni = if p.inspect_sni {
+        let queue = format!(
+            "\t\ttcp dport 443 ct state established ct mark and {mask} {{ 0x0, {throttle} }} queue flags bypass to {SNI_QUEUE}\n"
+        );
+        format!(
+            "
+\tchain sni_output {{
+\t\ttype filter hook output priority filter - 1; policy accept;
+{queue}\t}}
+
+\tchain sni_forward {{
+\t\ttype filter hook forward priority filter - 1; policy accept;
+{queue}\t}}
+"
+        )
+    } else {
+        String::new()
+    };
+    let (pass, block, slow, keep_v) = (
+        format!("0x{SNI_PASS:x}"),
+        format!("0x{SNI_BLOCK:x}"),
+        format!("0x{SNI_SLOW:x}"),
+        format!("0x{SNI_KEEP:x}"),
+    );
     let guest_dns = match p.container_dns {
         Some(to) => format!(
             "\t\tiifname {GUEST_IFACES} meta nfproto ipv4 meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {to}\n"
@@ -96,7 +135,7 @@ table {TABLE} {{
 \t\ttype nat hook prerouting priority -100; policy accept;
 \t\tfib daddr type local return
 {guest_dns}\t}}
-
+{sni}
 \tchain output {{
 \t\ttype filter hook output priority filter; policy accept;
 \t\tmeta mark and {mask} == {exempt} accept
@@ -118,9 +157,18 @@ table {TABLE} {{
 \t\tudp dport 853 drop
 \t\tip daddr @doh_v4 tcp dport 443 reject with tcp reset
 \t\tip6 daddr @doh_v6 tcp dport 443 reject with tcp reset
-{quic}\t\tip daddr @slow_v4 ct mark set ct mark and {keep} or {throttle}
-\t\tip6 daddr @slow_v6 ct mark set ct mark and {keep} or {throttle}
-\t\tct mark and {mask} == {throttle} meta mark set meta mark and {keep} or {throttle}
+{quic}\t\tmeta mark and {mask} == {keep_v} ct mark and {mask} == {throttle} meta mark set meta mark and {keep} or {slow}
+\t\tmeta mark and {mask} == {keep_v} ip daddr @slow_v4 meta mark set meta mark and {keep} or {slow}
+\t\tmeta mark and {mask} == {keep_v} ip6 daddr @slow_v6 meta mark set meta mark and {keep} or {slow}
+\t\tmeta mark and {mask} == {keep_v} meta mark set meta mark and {keep} or {pass}
+\t\tmeta mark and {mask} == {pass} ct mark set ct mark and {keep} or {pass}
+\t\tmeta mark and {mask} == {block} ct mark set ct mark and {keep} or {block}
+\t\tmeta mark and {mask} == {slow} ct mark set ct mark and {keep} or {slow}
+\t\tct direction original ct mark and {mask} == {block} reject with tcp reset
+\t\tct mark and {mask} == {pass} meta mark set meta mark and {keep} return
+\t\tip daddr @slow_v4 ct mark and {mask} == 0x0 ct mark set ct mark and {keep} or {throttle}
+\t\tip6 daddr @slow_v6 ct mark and {mask} == 0x0 ct mark set ct mark and {keep} or {throttle}
+\t\tct mark and {mask} {{ {throttle}, {slow} }} meta mark set meta mark and {keep} or {throttle}
 \t}}
 }}
 ",
@@ -208,11 +256,13 @@ mod tests {
             dns_port: 5454,
             block_quic: true,
             container_dns: Some("172.17.0.1:53".parse().unwrap()),
+            inspect_sni: true,
         });
         assert!(r.starts_with("destroy table inet deepwork\n"));
         assert!(r.contains("redirect to :5454"));
         assert!(r.contains("udp dport 443 reject"));
         assert!(r.contains("ct mark set ct mark and 0xffff0000 or 0x4457"));
+        assert!(r.contains("queue flags bypass to 17495"));
 
         assert!(r.contains("th dport 53 dnat ip to 172.17.0.1:53"));
 
@@ -220,8 +270,10 @@ mod tests {
             dns_port: 5454,
             block_quic: false,
             container_dns: None,
+            inspect_sni: false,
         });
         assert!(!r.contains("udp dport 443"));
+        assert!(!r.contains("queue"));
         assert!(!r.contains("dnat"));
         assert!(r.contains("th dport 53 reject"));
     }

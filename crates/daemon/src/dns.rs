@@ -71,6 +71,11 @@ impl Resolver {
         *self.rules.write().unwrap() = rules.map(Arc::new);
     }
 
+    /// The rules of the running session, also used by the SNI inspector.
+    pub fn rules(&self) -> Option<Arc<Vec<Rule>>> {
+        self.rules.read().unwrap().clone()
+    }
+
     pub async fn serve(self: Arc<Self>) -> Result<()> {
         let mut tasks = JoinSet::new();
         let mut bound = 0;
@@ -250,7 +255,7 @@ impl Resolver {
 
     /// Hands addresses from a matching answer to the enforcer.
     fn record(&self, resp: &[u8]) {
-        let Some(rules) = self.rules.read().unwrap().clone() else {
+        let Some(rules) = self.rules() else {
             return;
         };
         let Ok(msg) = Message::from_vec(resp) else {

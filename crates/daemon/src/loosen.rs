@@ -103,6 +103,9 @@ fn profile(name: &str, old: &Profile, new: &Profile, out: &mut Vec<String>) {
     if old.block_quic && !new.block_quic {
         out.push(format!("profile {name}: QUIC allowed"));
     }
+    if old.inspect_sni && !new.inspect_sni {
+        out.push(format!("profile {name}: SNI inspection off"));
+    }
     if gentler(&new.throttle, &old.throttle) {
         out.push(format!("profile {name}: gentler throttle"));
     }
@@ -238,6 +241,11 @@ mod tests {
                 "[profiles.deep]",
                 "[profiles.deep]\nblock_quic = false",
                 "profile deep: QUIC allowed",
+            ),
+            (
+                "[profiles.deep]",
+                "[profiles.deep]\ninspect_sni = false",
+                "profile deep: SNI inspection off",
             ),
             (
                 r#"days = ["mon", "tue", "wed", "thu", "fri"]"#,

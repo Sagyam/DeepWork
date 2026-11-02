@@ -117,6 +117,7 @@ impl Enforcer {
         let script = nft::render_ruleset(&nft::RulesetParams {
             dns_port: self.dns_port,
             block_quic: profile.block_quic,
+            inspect_sni: profile.inspect_sni,
             container_dns: self.container_dns,
         });
         self.run("nft", &["-f", "-"], Some(&script)).map(drop)
