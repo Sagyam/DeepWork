@@ -31,26 +31,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The image ships a stale keyring, and makepkg needs git.
+      # The image ships a stale keyring, and makepkg needs git. makepkg refuses
+      # to run as root, so everything below runs as `builder`.
       - name: Prepare the container
         run: |
           pacman -Sy --noconfirm archlinux-keyring
           pacman -Syu --noconfirm
           pacman -S --noconfirm --needed git sudo
-
-      # makepkg refuses to run as root; the runner is root inside the container.
-      - name: Build
-        run: |
           useradd --create-home builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
-          sudo -u builder env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
-            bash -lc 'cd "$GITHUB_WORKSPACE/dist" && makepkg --syncdeps --noconfirm --force'
 
       # Catch a PKGBUILD edited without regenerating dist/.SRCINFO.
       - name: Check .SRCINFO is current
-        working-directory: dist
-        run: makepkg --printsrcinfo | diff -u .SRCINFO -
+        run: |
+          sudo -u builder env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -c 'cd "$GITHUB_WORKSPACE/dist" && makepkg --printsrcinfo | diff -u .SRCINFO -'
+
+      - name: Build
+        run: |
+          sudo -u builder env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -c 'cd "$GITHUB_WORKSPACE/dist" && makepkg --syncdeps --noconfirm --force'
 
       - name: Upload the package
         uses: actions/upload-artifact@v4
