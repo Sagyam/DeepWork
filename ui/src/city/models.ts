@@ -5,7 +5,7 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
-import { LOT, rng, type SiteSpec, type Spec } from "./plan";
+import { BLOCK_X, BLOCK_Z, LOT, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -31,7 +31,14 @@ export interface ModelInfo {
   jibBeacons?: THREE.Vector3[];
 }
 
+const UP = new THREE.Vector3(0, 1, 0);
+/** Lots, pavements and park lawns sit at kerb height. */
+export const KERB = 0.2;
+const CAR_PAINT = [0xa8acb0, 0x2a2e36, 0xa83a32, 0x2f5a8a, 0xbcb8b0, 0x5a6a4a, 0x8a6a3a, 0x3a3e44];
+
 const shared = new Map<string, THREE.MeshStandardMaterial>();
+/** The one material of every yard (see Parts' tint). */
+const YARD = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85 });
 
 /** Shared plain materials. Night-lit ones carry `userData.night`. */
 export function mat(color: number, opts: THREE.MeshStandardMaterialParameters & { night?: number } = {}): THREE.MeshStandardMaterial {
@@ -53,12 +60,32 @@ export class Parts {
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
 
+  /**
+   * With `tint`, every material's colour is baked into the vertex colours
+   * (times any baked occlusion) and all geometry shares `tint`: one draw
+   * for a whole yard of props, at the cost of their gloss.
+   */
+  constructor(private tint?: THREE.Material) {}
+
   add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, cells?: [number, number]) {
     this.q.setFromEuler(this.e.set(rx, ry, rz));
     this.m.compose(new THREE.Vector3(x, y, z), this.q, scale ?? new THREE.Vector3(1, 1, 1));
     const geo = g.index ? g.toNonIndexed() : g.clone();
     geo.applyMatrix4(this.m);
     for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv", "color"].includes(k)) geo.deleteAttribute(k);
+    if (this.tint) {
+      const c = (material as THREE.MeshStandardMaterial).color ?? new THREE.Color(1, 1, 1);
+      const n = geo.getAttribute("position").count;
+      const ao = geo.getAttribute("color");
+      const col = new Float32Array(n * 3);
+      for (let i = 0; i < n; i++) {
+        const a = ao ? ao.getX(i) : 1;
+        col.set([c.r * a, c.g * a, c.b * a], i * 3);
+      }
+      geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
+      geo.deleteAttribute("uv");
+      material = this.tint;
+    }
     if (cells) {
       const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + cells[0] / ATLAS, uv.getY(i) + cells[1] / ATLAS);
@@ -129,6 +156,12 @@ const ROLES: Record<string, RoleLook> = {
   carglass: { color: 0x1a2028, rough: 0.1, metal: 0.6 },
   steel: { color: 0x3e5a52, rough: 0.5, metal: 0.5 },
   led: { color: 0x9ab0c8, rough: 0.3, metal: 0.2, emissive: 0xd8ecff, night: 2 },
+  water: { color: 0x4a86a0, rough: 0.08, metal: 0.3 },
+  tyre: { color: 0x1a1a1a, rough: 0.9 },
+  chrome: { color: 0xc8ccd0, rough: 0.3, metal: 0.8 },
+  headlight: { color: 0xf0ecd8, rough: 0.3 },
+  taillight: { color: 0x8a1810, rough: 0.4 },
+  taxisign: { color: 0xf2c12e, rough: 0.5 },
 };
 
 const kitShared = new Map<string, THREE.MeshStandardMaterial>();
@@ -214,12 +247,12 @@ function looks(s: Spec, info: ModelInfo): Look {
   };
 }
 
-/** Puts a kit piece on the stack at height y, scaled to the footprint. */
-function put(p: Parts, name: string, y: number, sx: number, sz: number, look: Look, r: () => number) {
+/** Puts a kit piece on the stack at height y, scaled to the footprint and turned by ry. */
+function put(p: Parts, name: string, y: number, sx: number, sz: number, look: Look, r: () => number, ry = 0) {
   const cells: [number, number] = [Math.floor(r() * ATLAS), Math.floor(r() * ATLAS)];
   const scale = new THREE.Vector3(sx, 1, sz);
   for (const { role, geo } of piece(name).parts) {
-    p.add(look(role), geo, 0, y, 0, 0, 0, 0, scale, role === "window" || role === "glass" ? cells : undefined);
+    p.add(look(role), geo, 0, y, 0, 0, ry, 0, scale, role === "window" || role === "glass" ? cells : undefined);
   }
   return piece(name).anchors;
 }
@@ -238,11 +271,68 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
   const fh = s.floorH;
   const anchors: Record<string, THREE.Vector3> = {};
   let k = 1;
-  const place = (name: string, y: number) => {
-    for (const [key, a] of Object.entries(put(p, name, y, sx * k, sz * k, look, r))) {
-      anchors[key] = new THREE.Vector3(a.x * sx * k, a.y + y, a.z * sz * k);
+  const place = (name: string, y: number, ry = 0) => {
+    for (const [key, a] of Object.entries(put(p, name, y, sx * k, sz * k, look, r, ry))) {
+      anchors[key] = new THREE.Vector3(a.x * sx * k, a.y + y, a.z * sz * k).applyAxisAngle(UP, ry);
     }
   };
+  switch (s.style) {
+    case "modern":
+    case "aframe": {
+      const v = s.style === "modern" ? "e" : "f";
+      if (floors > 0) place(`cottage_body_${v}`, 0);
+      if (roof) place(`cottage_roof_${v}`, fh);
+      return { top: floors * fh, w: s.w, d: s.d, anchors };
+    }
+    case "diner":
+    case "factory": {
+      const [g, rf] = s.style === "diner" ? ["shop_ground_d", "shop_roof_d"] : ["factory_ground", "factory_roof"];
+      if (floors > 0) place(g, 0);
+      if (roof) place(rf, fh);
+      return { top: floors * fh, w: s.w, d: s.d, anchors };
+    }
+    case "townhouse": {
+      for (let f = 0; f < floors; f++) place(f === 0 ? "town_ground" : "town_floor", f * fh);
+      if (roof) place("town_roof", floors * fh);
+      return { top: floors * fh, w: s.w, d: s.d, anchors };
+    }
+    case "round": {
+      const lower = Math.max(1, Math.round(s.floors * 0.68));
+      for (let f = 0; f < floors; f++) {
+        if (f === lower) {
+          place("round_setback", f * fh);
+          k = 0.78;
+        }
+        place(f === 0 ? "round_ground" : "round_floor", f * fh);
+      }
+      if (roof) place("round_roof", floors * fh);
+      return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
+    }
+    case "twist": {
+      // Each storey turns a little and the tower tapers: a quarter turn in all.
+      const step = Math.PI / 2 / s.floors;
+      const at = (f: number) => 1 - 0.14 * (f / s.floors);
+      for (let f = 0; f < floors; f++) {
+        k = f === 0 ? 1 : at(f);
+        place(f === 0 ? "lm3_ground" : "lm3_floor", f * fh, f === 0 ? 0 : f * step);
+      }
+      k = at(floors);
+      if (roof) place("lm3_crown", floors * fh, floors * step);
+      return { top: floors * fh, w: s.w * k * 0.9, d: s.d * k * 0.9, anchors };
+    }
+    case "tvtower": {
+      // A concrete shaft with the observation pod three quarters up.
+      const pod = Math.round(s.floors * 0.74);
+      for (let f = 0; f < floors; f++) {
+        if (f === 0) place("tvt_base", 0);
+        else if (f === pod) place("tvt_pod", f * fh);
+        else if (f !== pod + 1) place("tvt_shaft", f * fh);
+      }
+      if (roof) place("tvt_spire", floors * fh);
+      k = 0.32;
+      return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
+    }
+  }
   switch (s.kind) {
     case "cottage": {
       const v = variant(4);
@@ -278,7 +368,7 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
     }
     case "landmark": {
       // Art deco stone and gold, or a modern glass tower with sky gardens.
-      const pre = r() < 0.5 ? "lm" : "lm2";
+      const pre = s.style === "glass" ? "lm2" : "lm";
       const e1 = Math.round(s.floors * 0.5);
       const e2 = Math.round(s.floors * 0.8);
       let tier = 1;
@@ -329,6 +419,128 @@ export function tree(p: Parts, x: number, z: number, s: number, seed: number, y 
   for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, y, z, 0, ry, 0, scale);
 }
 
+/** A parked car from the traffic kit, nose toward +z before ry. */
+export function parked(p: Parts, x: number, z: number, ry: number, seed: number, y = KERB) {
+  const r = rng(seed);
+  const model = ["car_sedan", "car_hatch", "car_sedan", "car_van"][Math.floor(r() * 4)];
+  const body = kitMat({ color: CAR_PAINT[Math.floor(r() * CAR_PAINT.length)], rough: 0.5, metal: 0.15 }, 0);
+  for (const { role, geo } of piece(model).parts) p.add(role === "body" ? body : kitMat(ROLES[role] ?? ROLES.dark, 0), geo, x, y, z, 0, ry, 0);
+}
+
+/** Parking bays: a strip of asphalt with lines and some cars, centred on (x, z), bays along x. */
+function parking(p: Parts, x: number, z: number, w: number, d: number, fill: number, seed: number) {
+  const r = rng(seed);
+  p.box(mat(0x45474b, { roughness: 0.95 }), w, 0.04, d, x, KERB, z);
+  const bays = Math.floor(w / 2.8);
+  const line = mat(0xe8e6de, { roughness: 0.7 });
+  for (let i = 0; i <= bays; i++) p.box(line, 0.12, 0.05, Math.min(5, d - 0.4), x - (bays * 2.8) / 2 + i * 2.8, KERB, z - d / 2 + Math.min(5, d - 0.4) / 2 + 0.2);
+  for (let i = 0; i < bays; i++) {
+    if (r() > fill) continue;
+    parked(p, x - (bays * 2.8) / 2 + (i + 0.5) * 2.8, z - d / 2 + 2.6, 0, seed * 31 + i);
+  }
+}
+
+const planter = (p: Parts, x: number, z: number, seed: number, s = 0.55) => {
+  p.box(mat(0x9a948a, { roughness: 0.9 }), 1.6, 0.6, 1.6, x, KERB, z);
+  tree(p, x, z, s, seed, KERB + 0.5);
+};
+
+/**
+ * The lot around a building: lawn or paving, a way in from the street, and
+ * what the type needs out back (a garden, parking, a loading yard). The
+ * building's centre is the origin and its front faces +z.
+ */
+function yard(p: Parts, s: Spec, r: () => number) {
+  const cz = -s.yard;
+  const front = LOT / 2 - s.yard;
+  const back = -LOT / 2 - s.yard;
+  const lawn = mat(0x6f9a4f, { roughness: 1 });
+  const paving = mat(0xbab4a8, { roughness: 0.9 });
+  const concrete = mat(0xa29e96, { roughness: 0.95 });
+  const hedge = mat(0x3f6a34, { flatShading: true });
+  const half = LOT / 2 - 0.2;
+  const ground = (m: THREE.Material) => p.box(m, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+  const path = (x: number, w = 1.4) => p.box(paving, w, KERB + 0.03, front - s.d / 2, x, 0, (front + s.d / 2) / 2);
+  switch (s.kind) {
+    case "cottage": {
+      ground(lawn);
+      const side = r() < 0.5 ? -1 : 1;
+      // A drive up to the garage (modern) or along the side of the house, a
+      // car on it, and a path to the door.
+      const modern = s.style === "modern";
+      const dx = modern ? s.w * 0.3 : side * (s.w / 2 + 2.2);
+      const dw = modern ? 2.6 : 2.4;
+      const dEnd = modern ? s.d / 2 : -s.d / 4;
+      p.box(concrete, dw, KERB + 0.03, front - dEnd, dx, 0, (front + dEnd) / 2);
+      parked(p, dx, modern ? s.d / 2 + 2.6 : 0.4, 0, s.seed + 3);
+      const px = modern ? s.w * 0.05 : 0;
+      path(px, 1.2);
+      // Hedge along the front, broken for the path and the drive.
+      const gaps = [[dx - dw / 2 - 0.1, dx + dw / 2 + 0.1], [px - 0.7, px + 0.7]].sort((a, b) => a[0] - b[0]);
+      let x0 = -half;
+      for (const [g0, g1] of [...gaps, [half, half]]) {
+        if (g0 > x0 + 0.4) p.box(hedge, g0 - x0, KERB + 0.75, 0.6, (x0 + g0) / 2, 0, front - 0.5);
+        x0 = Math.max(x0, g1);
+      }
+      // Garden: trees, maybe a shed, and a fence round the back.
+      tree(p, -side * (s.w / 2 + 2.0), s.d / 2 + 1.8, 0.7, s.seed + 1, KERB);
+      tree(p, (r() - 0.5) * s.w, back + 2.2, 0.85, s.seed + 2, KERB);
+      if (r() < 0.6) p.box(mat(0x7a5a3e), 1.6, 2.0, 1.4, -side * (half - 1.2), KERB, back + 1.2);
+      const fence = mat(0xe8e0d0, { roughness: 0.8 });
+      const run = LOT / 2 + s.yard;
+      p.box(fence, LOT - 0.4, 1.1, 0.08, 0, KERB, back + 0.25);
+      for (const sx of [-1, 1]) p.box(fence, 0.08, 1.1, run, sx * half, KERB, back + run / 2 + 0.25);
+      break;
+    }
+    case "shop": {
+      ground(s.style === "factory" ? concrete : paving);
+      if (s.style === "factory") {
+        // Loading yard out back: pallets, a skip and a van at the dock.
+        parked(p, -s.w * 0.25, s.d / 2 + 2.8, 0, s.seed + 7);
+        const wood = mat(0x8a6a40, { roughness: 0.9 });
+        for (let i = 0; i < 6; i++) p.box(wood, 1.2, 0.9 + r() * 0.9, 1.0, -half + 1 + (i % 3) * 1.4, KERB, back + 1 + Math.floor(i / 3) * 1.3);
+        p.box(mat(0x3a6a3a, { roughness: 0.7, metalness: 0.3 }), 3.2, 1.4, 1.8, half - 2, KERB, back + 1.3);
+        p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 2.0, 0.06, 0, KERB, back + 0.1);
+      } else {
+        // Shoppers' parking behind, benches and planters at the front.
+        parking(p, 0, back + 3.2, LOT - 1, 5.8, 0.7, s.seed + 5);
+        planter(p, -s.w / 2 + 0.4, front - 0.9, s.seed + 11, 0.45);
+        planter(p, s.w / 2 - 0.4, front - 0.9, s.seed + 12, 0.45);
+      }
+      break;
+    }
+    case "apartment": {
+      ground(lawn);
+      path(0, s.style === "townhouse" ? s.w : 2);
+      if (s.style !== "townhouse") {
+        tree(p, -s.w / 2 + 0.8, front - 1.2, 0.6, s.seed + 1, KERB);
+        tree(p, s.w / 2 - 0.8, front - 1.2, 0.6, s.seed + 2, KERB);
+      } else {
+        p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 0.9, 0.06, 0, KERB, front - 0.3);
+      }
+      parking(p, 0, back + 3.2, LOT - 1, 5.8, 0.8, s.seed + 5);
+      break;
+    }
+    case "office": {
+      ground(paving);
+      // A plaza out front with trees in planters, a smoking-area bench at the back.
+      for (const sx of [-1, 1]) {
+        planter(p, sx * (s.w / 2 + 1.6), front - 1.3, s.seed + (sx > 0 ? 1 : 2));
+        planter(p, sx * (s.w / 2 + 1.6), cz, s.seed + (sx > 0 ? 3 : 4));
+      }
+      p.box(mat(0x8f8a80, { roughness: 0.9 }), s.w * 0.7, 0.05, front - s.d / 2 - 0.6, 0, KERB, (front + s.d / 2) / 2);
+      parking(p, 0, back + 3.0, LOT - 1, 5.6, 0.85, s.seed + 5);
+      break;
+    }
+    case "landmark": {
+      ground(mat(0xc8c0b0, { roughness: 0.85 }));
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) planter(p, sx * (half - 1.1), sz * (half - 1.1) + cz, s.seed + sx * 3 + sz, 0.5);
+      p.box(mat(0xd9a441, { roughness: 0.3, metalness: 0.85 }), LOT - 3, 0.05, 0.25, 0, KERB, front - 0.6);
+      break;
+    }
+  }
+}
+
 export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const g = new THREE.Group();
   const p = new Parts();
@@ -337,19 +549,14 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const look = looks(s, info);
   const broken = s.damage >= 2;
 
-  // Lot: lawn and a path to the front door.
-  p.box(mat(0x6f9a4f), LOT - 1.2, 0.08, LOT - 1.2, 0, 0, 0);
-  p.box(mat(0xbab4a8), 1.4, 0.1, LOT / 2 - s.d / 2, 0, 0, s.d / 2 + (LOT / 2 - s.d / 2) / 2);
-  if (s.kind === "cottage") {
-    p.box(mat(0x3f6a34, { flatShading: true }), LOT - 2, 0.7, 0.6, 0, 0, LOT / 2 - 1.2);
-    tree(p, (r() < 0.5 ? -1 : 1) * (s.w / 2 + 1.6), s.d / 2 + 1.6, 0.7, s.seed + 1);
-  }
-  if (s.kind === "landmark") p.box(mat(0xc8c0b0), LOT - 1.4, 0.15, 1.2, 0, 0, s.d / 2 + 0.6);
+  const yp = new Parts(YARD);
+  yard(yp, s, r);
+  yp.into(g);
 
   // Heavy damage takes the top quarter off, roof and all.
   const floors = broken ? Math.max(1, Math.round(s.floors * (0.72 + r() * 0.1))) : s.floors;
   const top = stack(p, s, look, floors, !broken);
-  if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : 0.25 });
+  if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" ? 1.4 : 0.25 });
   if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
   if (broken) wreckTop(p, top.w, top.d, top.top, s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall], r);
 
@@ -375,7 +582,7 @@ export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const p = new Parts();
   const r = rng(s.seed * 7 + 1);
   const pile = 1.4 + s.grade * 0.9;
-  p.box(mat(0x4a4642), LOT - 1.2, 0.08, LOT - 1.2, 0, 0, 0);
+  p.box(mat(0x4a4642), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, -s.yard);
   p.add(mat(0x5d5852, { flatShading: true, roughness: 1 }), new THREE.ConeGeometry(s.w * 0.62, pile, 9, 1), 0, pile / 2, 0, 0, r(), 0);
   const conc = mat(0x7a7570, { roughness: 1, flatShading: true });
   const wall = mat(new THREE.Color(WALLS[s.wall]).multiplyScalar(0.55).getHex(), { flatShading: true });
@@ -408,8 +615,11 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   const builtH = built * s.floorH;
   const conc = mat(0xa9a6a0, { roughness: 0.95 });
   const col = mat(0x8f8c86, { roughness: 0.95 });
-  p.box(mat(0x8a7a62, { roughness: 1 }), LOT - 1.2, 0.08, LOT - 1.2, 0, 0, 0);
+  p.box(mat(0x8a7a62, { roughness: 1 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, -s.yard);
   p.box(conc, s.w + 0.6, 0.4, s.d + 0.6, 0, 0, 0);
+  // Site fence along the street.
+  const fence = mat(0x2f5a8a, { roughness: 0.8 });
+  p.box(fence, LOT - 0.8, 1.9, 0.08, 0, KERB, LOT / 2 - s.yard - 0.4);
   for (let f = 1; f <= built; f++) p.box(conc, s.w, 0.3, s.d, 0, f * s.floorH - 0.3, 0);
   for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1], [0, -1], [0, 1], [-1, 0], [1, 0]]) {
     p.box(col, 0.45, builtH, 0.45, (cx * (s.w - 0.5)) / 2, 0, (cz * (s.d - 0.5)) / 2);
@@ -502,4 +712,125 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   g.position.set(s.x, 0, s.z);
   g.rotation.y = s.rot;
   return { group: g, info, jib, ghost };
+}
+
+// ---- parks --------------------------------------------------------------------
+
+const PARK_ROLES: Record<string, RoleLook> = { ...ROLES, roof: { color: 0x56606e, rough: 0.8 }, accent: { color: 0x3a6fb5, rough: 0.7 } };
+
+function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = KERB) {
+  const scale = new THREE.Vector3(s, s, s);
+  for (const { role, geo } of piece(name).parts) p.add(kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
+}
+
+/** A park lamp: a post with a lantern, lit by `bulb` at night. */
+export function lampPost(p: Parts, pole: THREE.Material, bulb: THREE.Material, x: number, z: number, h = 3.6) {
+  p.cyl(pole, 0.07, 0.1, h, x, KERB, z, 6);
+  p.box(bulb, 0.36, 0.5, 0.36, x, KERB + h, z);
+  p.box(pole, 0.5, 0.08, 0.5, x, KERB + h + 0.5, z);
+}
+
+/**
+ * A park block in place of a district, in world coordinates: a plaza with a
+ * fountain, a park with a pond and a bandstand, or a football ground.
+ */
+export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Material) {
+  const r = rng(k.seed);
+  const { x: X, z: Z } = k;
+  const W = BLOCK_X;
+  const D = BLOCK_Z;
+  const lawn = mat(0x6a9a48, { roughness: 1 });
+  const paving = mat(0xc4bcae, { roughness: 0.9 });
+  const flat = (m: THREE.Material, g: THREE.BufferGeometry, x: number, z: number, y = KERB + 0.02) => p.add(m, g, X + x, y, Z + z, -Math.PI / 2);
+  const bench = (x: number, z: number, ry: number) => prop(p, "bench", X + x, Z + z, ry);
+  switch (k.kind) {
+    case "plaza": {
+      p.box(paving, W, KERB, D, X, 0, Z);
+      flat(mat(0x9a8e7e, { roughness: 0.9 }), new THREE.CircleGeometry(10, 32), 0, 0);
+      flat(mat(0xd8d0c0, { roughness: 0.9 }), new THREE.RingGeometry(10, 10.8, 32), 0, 0, KERB + 0.03);
+      prop(p, "fountain", X, Z, 0, 1.45);
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
+        // Benches face the fountain (a bench's front is +z before turning).
+        bench(Math.cos(a) * 7.4, Math.sin(a) * 7.4, Math.atan2(-Math.cos(a), -Math.sin(a)));
+      }
+      for (const z of [-11.5, 11.5]) for (let x = -27; x <= 27; x += 9) planter(p, X + x, Z + z, k.seed + x * 3 + z, 0.75);
+      for (const [x, z] of [[-24, 0], [24, 0]]) {
+        p.box(lawn, 12, KERB + 0.12, 9, X + x, 0, Z + z);
+        for (let i = 0; i < 5; i++) tree(p, X + x + (r() - 0.5) * 9, Z + z + (r() - 0.5) * 6, 0.35 + r() * 0.2, k.seed + 40 + i + x, KERB + 0.1);
+      }
+      for (const [x, z] of [[-14, -6], [14, -6], [-14, 6], [14, 6]]) lampPost(p, pole, bulb, X + x, Z + z);
+      break;
+    }
+    case "park": {
+      p.box(lawn, W, KERB, D, X, 0, Z);
+      // A loop path round the lawn, with a cut through the middle.
+      const path = mat(0xc9b896, { roughness: 1 });
+      const ax = W / 2 - 6;
+      const az = D / 2 - 4.5;
+      const n = 36;
+      const ring: [number, number][] = Array.from({ length: n }, (_, i) => [Math.cos((i / n) * Math.PI * 2) * ax, Math.sin((i / n) * Math.PI * 2) * az]);
+      ring.forEach(([x0, z0], i) => {
+        const [x1, z1] = ring[(i + 1) % n];
+        p.box(path, Math.hypot(x1 - x0, z1 - z0) + 0.6, KERB + 0.03, 2.2, X + (x0 + x1) / 2, 0, Z + (z0 + z1) / 2, -Math.atan2(z1 - z0, x1 - x0));
+        if (i % 6 === 3) lampPost(p, pole, bulb, X + x0 * 1.09, Z + z0 * 1.14);
+        if (i % 6 === 0) bench(x0 * 0.9, z0 * 0.86, Math.atan2(x0, z0));
+      });
+      p.box(path, 2.2, KERB + 0.03, D, X + 4, 0, Z);
+      // A pond with a sandy edge, and the bandstand across the lawn.
+      const pond = { x: -12, z: 1, rx: 10, rz: 5.5 };
+      const sand = new THREE.CircleGeometry(1, 28).scale(pond.rx + 0.9, pond.rz + 0.9, 1);
+      flat(mat(0xb8a87c, { roughness: 1 }), sand, pond.x, pond.z, KERB + 0.025);
+      flat(mat(0x4a86a0, { roughness: 0.08, metalness: 0.3 }), new THREE.CircleGeometry(1, 28).scale(pond.rx, pond.rz, 1), pond.x, pond.z, KERB + 0.04);
+      prop(p, "bandstand", X + 16, Z - 1);
+      // Trees wherever the paths, the pond and the bandstand leave room.
+      for (let i = 0, placed = 0; i < 400 && placed < 34; i++) {
+        const x = (r() - 0.5) * (W - 3);
+        const z = (r() - 0.5) * (D - 3);
+        const e = Math.hypot(x / ax, z / az);
+        if (Math.abs(e - 1) < 0.16 || Math.abs(x - 4) < 2.5) continue;
+        if (Math.hypot((x - pond.x) / (pond.rx + 3), (z - pond.z) / (pond.rz + 3)) < 1) continue;
+        if (Math.hypot(x - 16, z + 1) < 6) continue;
+        tree(p, X + x, Z + z, 0.6 + r() * 0.45, k.seed + i, KERB);
+        placed++;
+      }
+      break;
+    }
+    case "sports": {
+      p.box(lawn, W, KERB, D, X, 0, Z);
+      const pz = -3;
+      const [pw, pd] = [46, 22];
+      p.box(mat(0xa85a40, { roughness: 1 }), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
+      for (let i = 0; i < 10; i++) {
+        p.box(mat(i % 2 ? 0x5e9a3e : 0x6aa646, { roughness: 1 }), pw / 10, KERB + 0.04, pd, X - pw / 2 + (i + 0.5) * (pw / 10), 0, Z + pz);
+      }
+      const white = mat(0xf2f2ea, { roughness: 0.7 });
+      const ly = KERB + 0.045;
+      const line = (w: number, d: number, x: number, z: number) => p.box(white, w, 0.02, d, X + x, ly, Z + pz + z);
+      line(pw, 0.15, 0, -pd / 2);
+      line(pw, 0.15, 0, pd / 2);
+      for (const sx of [-1, 1]) {
+        line(0.15, pd, (sx * pw) / 2, 0);
+        line(0.15, 11, sx * (pw / 2 - 6), 0);
+        line(6, 0.15, sx * (pw / 2 - 3), -5.5);
+        line(6, 0.15, sx * (pw / 2 - 3), 5.5);
+        prop(p, "goal", X + (sx * pw) / 2, Z + pz, -sx * Math.PI / 2);
+      }
+      line(0.15, pd, 0, 0);
+      p.add(white, new THREE.RingGeometry(4.2, 4.35, 32), X, ly + 0.02, Z + pz, -Math.PI / 2);
+      for (const x of [-9, 9]) prop(p, "bleachers", X + x, Z + 10.2, Math.PI);
+      // Floodlights at the corners.
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const x = X + sx * (pw / 2 + 4);
+          const z = Z + pz + sz * (pd / 2 + 2.2);
+          p.cyl(pole, 0.15, 0.25, 13, x, KERB, z, 6);
+          p.box(pole, 2.2, 0.2, 0.3, x, KERB + 13, z);
+          p.box(bulb, 2.0, 0.8, 0.25, x - sx * 0.1, KERB + 13.2, z - sz * 0.2, 0, -sz * 0.5);
+        }
+      }
+      for (let i = 0; i < 8; i++) tree(p, X + (r() < 0.5 ? -1 : 1) * (28 + r() * 3), Z + (r() - 0.5) * (D - 4), 0.7 + r() * 0.3, k.seed + i, KERB);
+      break;
+    }
+  }
 }

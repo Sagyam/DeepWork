@@ -3,11 +3,15 @@
 // three.js side only builds meshes from what this returns.
 //
 // Each district is a city block of 8 lots (4 x 2) ringed by road. Blocks
-// are placed in a square spiral from the centre, so the city grows outward.
+// fill the grid outward from the centre in rings, so the city grows round,
+// and every fourth block is a park: a plaza, a park with a pond or a
+// football ground. Lots are roomy, with yards, drives and parking.
 import { DISTRICT_SIZE, type Construction, type Plot, type World } from "../proto";
 
-export const LOT = 12;
-export const ROAD = 9;
+export const LOT = 16;
+/** Kerb to kerb plus the pavements either side. */
+export const ROAD = 12;
+export const PAVEMENT = 2;
 export const BLOCK_X = 4 * LOT;
 export const BLOCK_Z = 2 * LOT;
 export const PITCH_X = BLOCK_X + ROAD;
@@ -16,15 +20,37 @@ export const PITCH_Z = BLOCK_Z + ROAD;
 export type Kind = "cottage" | "shop" | "apartment" | "office" | "landmark";
 export const KINDS: Kind[] = ["cottage", "shop", "apartment", "office", "landmark"];
 
+/**
+ * Building types per kind, from the seed. "classic" is the original kit
+ * (several variants each); the rest are the skyline styles.
+ */
+export const STYLES: Record<Kind, [string, number][]> = {
+  cottage: [["classic", 0.55], ["modern", 0.25], ["aframe", 0.2]],
+  shop: [["classic", 0.5], ["diner", 0.25], ["factory", 0.25]],
+  apartment: [["classic", 0.6], ["townhouse", 0.4]],
+  office: [["classic", 0.6], ["round", 0.4]],
+  landmark: [["deco", 0.25], ["glass", 0.25], ["twist", 0.25], ["tvtower", 0.25]],
+};
+
+/** How far each type stands back from the street, front wall to lot edge. */
+const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, apartment: 2.2, townhouse: 2.6, office: 2.6 };
+
+export type ParkKind = "plaza" | "park" | "sports";
+const PARKS: ParkKind[] = ["plaza", "park", "sports", "park"];
+
 export interface Spec {
   index: number;
   kind: Kind;
+  /** One of STYLES[kind]. */
+  style: string;
   grade: number;
-  /** Lot centre on the ground plane. */
+  /** Centre of the building's footprint on the ground plane. */
   x: number;
   z: number;
-  /** Rotation about Y so the front faces its road. */
+  /** Rotation about Y so the front (local +z) faces its road. */
   rot: number;
+  /** The lot's centre is this far behind the building (local -z). */
+  yard: number;
   w: number;
   d: number;
   floors: number;
@@ -47,9 +73,17 @@ export interface SiteSpec extends Spec {
   stopwatch: boolean;
 }
 
+export interface ParkSpec {
+  x: number;
+  z: number;
+  kind: ParkKind;
+  seed: number;
+}
+
 export interface CityPlan {
-  /** Block centres in use (including the one the site is on), spiral order. */
+  /** Block centres in use (including the one the site is on, and parks), growth order. */
   blocks: { x: number; z: number }[];
+  parks: ParkSpec[];
   buildings: Spec[];
   site: SiteSpec | null;
   /** Empty lots in used blocks: grass, maybe a tree. */
@@ -94,9 +128,42 @@ export function spiral(n: number): [number, number][] {
   return out;
 }
 
-export function blockCentre(district: number): { x: number; z: number } {
-  const [bx, bz] = spiral(district + 1)[district];
+let order: [number, number][] = [];
+
+/**
+ * Grid cells by distance from the centre in metres (then by angle), so the
+ * city grows as a disc even though blocks are wider than deep. Fixed: a
+ * cell's place in the order never changes as the city grows.
+ */
+export function cells(n: number): [number, number][] {
+  if (order.length < n) {
+    const R = Math.max(12, Math.ceil(Math.sqrt(n)) + 4);
+    const all: [number, number][] = [];
+    for (let x = -R; x <= R; x++) for (let y = -R; y <= R; y++) all.push([x, y]);
+    const key = ([x, y]: [number, number]) => Math.round(Math.hypot(x * PITCH_X, y * PITCH_Z) * 1000);
+    const ang = ([x, y]: [number, number]) => (Math.atan2(y, x) + 2 * Math.PI) % (2 * Math.PI);
+    all.sort((a, b) => key(a) - key(b) || ang(a) - ang(b));
+    order = all;
+  }
+  return order.slice(0, n);
+}
+
+/** Every fourth cell from the third is a park. */
+export const isPark = (cell: number) => cell >= 2 && (cell - 2) % 4 === 0;
+
+/** The cell a district's block takes: the district-th cell that is not a park. */
+export function districtCell(district: number): number {
+  const before = district < 2 ? 0 : 1 + Math.floor((district - 2) / 3);
+  return district + before;
+}
+
+function cellCentre(cell: number): { x: number; z: number } {
+  const [bx, bz] = cells(cell + 1)[cell];
   return { x: bx * PITCH_X, z: bz * PITCH_Z };
+}
+
+export function blockCentre(district: number): { x: number; z: number } {
+  return cellCentre(districtCell(district));
 }
 
 /** Lot centre and facing for a plot index. Front row faces -z, back row +z. */
@@ -138,21 +205,36 @@ export function shape(grade: number, seed: number) {
       [w, d, floors, floorH] = [10.4, 10.4, 18 + pick(r, 8), 3.5];
       break;
   }
-  return { kind, grade: g, w, d, floors, floorH, height: floors * floorH, wall: pick(r, 8), accent: pick(r, 6), seed: Math.floor(r() * 2 ** 31) };
+  const [wall, accent, own] = [pick(r, 8), pick(r, 6), Math.floor(r() * 2 ** 31)];
+  // Drawn after the rest, so adding styles left the older buildings' sizes alone.
+  let u = r();
+  const style = STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
+  if (style === "diner") floors = 1;
+  if (style === "factory") [floors, floorH] = [1, 5];
+  if (style === "townhouse") floors = Math.min(floors, 3 + pick(r, 2));
+  return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
+}
+
+/** Where a building stands on its lot: set back from the street, yard behind. */
+function placed(index: number, s: ReturnType<typeof shape>) {
+  const l = lot(index);
+  const front = FRONT[s.style] ?? FRONT[s.kind];
+  const yard = front === undefined ? 0 : LOT / 2 - s.d / 2 - front;
+  return { x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard, rot: l.rot, yard };
 }
 
 function spec(p: Plot): Spec {
-  const l = lot(p.index);
-  return { index: p.index, ...l, ...shape(p.grade, p.seed), damage: p.damage, rubble: p.rubble };
+  const s = shape(p.grade, p.seed);
+  return { index: p.index, ...s, ...placed(p.index, s), damage: p.damage, rubble: p.rubble };
 }
 
 function siteSpec(c: Construction, elapsedSecs: number): SiteSpec {
-  const l = lot(c.index);
+  const s = shape(c.grade, c.seed);
   const progress = c.progress_permille === null ? 0.8 + 0.2 * ((elapsedSecs % 900) / 900) : c.progress_permille / 1000;
   return {
     index: c.index,
-    ...l,
-    ...shape(c.grade, c.seed),
+    ...s,
+    ...placed(c.index, s),
     damage: 0,
     rubble: false,
     progress: Math.min(1, Math.max(0, progress)),
@@ -165,7 +247,10 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
   const siteIndex = w.construction?.index ?? -1;
   const lots = Math.max(w.plots.length, siteIndex + 1);
   const districts = Math.max(1, Math.ceil(lots / DISTRICT_SIZE));
-  const blocks = Array.from({ length: districts }, (_, d) => blockCentre(d));
+  const last = districtCell(districts - 1);
+  const parks: ParkSpec[] = [];
+  for (let c = 0, n = 0; c < last; c++) if (isPark(c)) parks.push({ ...cellCentre(c), kind: PARKS[n++ % PARKS.length], seed: c * 7919 + 17 });
+  const blocks = [...Array.from({ length: districts }, (_, d) => blockCentre(d)), ...parks.map(({ x, z }) => ({ x, z }))];
   const buildings = w.plots.filter((p) => p.index !== siteIndex).map(spec);
   const site = w.construction ? siteSpec(w.construction, elapsedSecs) : null;
 
@@ -192,7 +277,7 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
     if (!inside) trees.push({ x, z, s: between(r, 0.7, 1.4), seed: Math.floor(r() * 2 ** 31) });
   }
 
-  return { blocks, buildings, site, emptyLots, trees, bounds, tier: w.tier };
+  return { blocks, parks, buildings, site, emptyLots, trees, bounds, tier: w.tier };
 }
 
 /** A closed path that can be sampled by distance travelled. */

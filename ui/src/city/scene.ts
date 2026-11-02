@@ -18,8 +18,8 @@ import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
-import { building, kitLook, mat, Parts, rubble, site, tree, type ModelInfo } from "./models";
-import { BLOCK_X, BLOCK_Z, LOT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
+import { building, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
+import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
 
@@ -418,9 +418,12 @@ export class City {
     const pole = mat(0x3c4046, { metalness: 0.6, roughness: 0.4 });
     const bulb = mat(0xfff0d0, { emissive: 0xffd9a0, emissiveIntensity: 0, night: 2.2 });
     this.lampMats.push(bulb);
+    const pw = PAVEMENT;
     for (const b of p.blocks) {
       parts.box(asphalt, PITCH_X + 0.02, 0.06, PITCH_Z + 0.02, b.x, 0, b.z);
-      parts.box(walk, BLOCK_X + 2.4, 0.22, BLOCK_Z + 2.4, b.x, 0, b.z);
+      // Pavement: a raised ring round the block, kerb on the road side.
+      for (const sz of [-1, 1]) parts.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
+      for (const sx of [-1, 1]) parts.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
       // Dashed centre lines on the roads around the block.
       for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) {
         parts.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
@@ -428,27 +431,43 @@ export class City {
       for (let z = -PITCH_Z / 2; z < PITCH_Z / 2; z += 5) {
         parts.box(line, 0.25, 0.07, 2.4, b.x - PITCH_X / 2, 0, b.z + z + 1.2);
       }
-      // Street lamps along the kerb.
-      for (const [lx, lz] of [
-        [-1, -1], [0, -1], [1, -1], [-1, 1], [0, 1], [1, 1],
-      ]) {
-        const x = b.x + lx * (BLOCK_X / 2 + 0.6);
-        const z = b.z + lz * (BLOCK_Z / 2 + 0.6);
-        parts.cyl(pole, 0.08, 0.12, 5, x, 0.2, z, 6);
-        parts.box(pole, 0.2, 0.15, 1.4, x, 5.1, z - lz * 0.6);
-        parts.box(bulb, 0.5, 0.18, 0.5, x, 4.95, z - lz * 1.1);
+      // Zebra crossings at the corners.
+      const kerb = ROAD - 2 * pw;
+      for (const sx of [-1, 1]) {
+        const x = b.x + sx * (BLOCK_X / 2 - 2.2);
+        for (let i = 0; i < 6; i++) parts.box(line, 2.6, 0.07, 0.5, x, 0, b.z - BLOCK_Z / 2 - pw - 0.8 - i * ((kerb - 1) / 5));
+        const z = b.z + (sx < 0 ? -1 : 1) * (BLOCK_Z / 2 - 2.2);
+        for (let i = 0; i < 6; i++) parts.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
       }
+      // Street lamps along the kerb, and trees between them.
+      const ex = BLOCK_X / 2 + pw - 0.45;
+      const ez = BLOCK_Z / 2 + pw - 0.45;
+      for (const lz of [-1, 1]) {
+        for (const t of [-1, -1 / 3, 1 / 3, 1]) {
+          const x = b.x + t * (BLOCK_X / 2 - 1);
+          const z = b.z + lz * ez;
+          parts.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
+          parts.box(pole, 0.2, 0.15, 1.4, x, KERB + 4.9, z + lz * 0.6);
+          parts.box(bulb, 0.5, 0.18, 0.5, x, KERB + 4.75, z + lz * 1.1);
+        }
+        for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
+          tree(parts, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
+        }
+      }
+      for (const sx of [-1, 1]) tree(parts, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
     }
+    for (const k of p.parks) park(parts, k, pole, bulb);
     // Empty lots: rough grass with survey stakes, waiting to be built on.
     const stake = mat(0xc9a36a);
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
+    const e = LOT / 2 - 1.4;
     for (const l of p.emptyLots) {
-      parts.box(mat(0x7a8f55, { roughness: 1 }), LOT - 1.2, 0.26, LOT - 1.2, l.x, 0, l.z);
-      for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * 4, 0.2, l.z + cz * 4);
-      parts.box(tape, 8, 0.04, 0.04, l.x, 0.95, l.z - 4);
-      parts.box(tape, 8, 0.04, 0.04, l.x, 0.95, l.z + 4);
+      parts.box(mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
+      for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
+      for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
+      for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
       const r = rng(l.seed);
-      if (r() < 0.35) tree(parts, l.x + (r() - 0.5) * 6, l.z + (r() - 0.5) * 6, 0.8 + r() * 0.4, l.seed);
+      if (r() < 0.35) tree(parts, l.x + (r() - 0.5) * 8, l.z + (r() - 0.5) * 8, 0.8 + r() * 0.4, l.seed, KERB);
     }
     this.land.build(p);
     const ground = this.land.shape;
@@ -468,7 +487,7 @@ export class City {
       for (let i = 0; i <= n; i++) {
         const x = x0 + ((x1 - x0) * i) / n;
         const y = ground.height(x, ROAD_Z) + 0.045;
-        pos.push(x, y, ROAD_Z - ROAD / 2, x, y, ROAD_Z + ROAD / 2);
+        pos.push(x, y, ROAD_Z - 4.5, x, y, ROAD_Z + 4.5);
       }
       for (let i = 0; i < n; i++) {
         const a = i * 2;
@@ -522,7 +541,21 @@ export class City {
     this.controls.target.copy(c);
     // About 14 degrees above the horizon, from the south-east, so the hills
     // and the peaks behind them show above the city.
-    if (jump) this.camera.position.set(c.x + dist * 0.675, c.y + dist * 0.24, c.z + dist * 0.69);
+    if (jump) {
+      const cam = this.camera.position.set(c.x + dist * 0.675, c.y + dist * 0.24, c.z + dist * 0.69);
+      // Climb until no swell of the land outside town blocks the view.
+      const ground = this.land.shape;
+      for (let i = 0; i < 40; i++) {
+        let clear = true;
+        for (let t = 0; t < 0.8 && clear; t += 0.04) {
+          const x = cam.x + (c.x - cam.x) * t;
+          const z = cam.z + (c.z - cam.z) * t;
+          clear = cam.y + (c.y - cam.y) * t > ground.height(x, z) + 3;
+        }
+        if (clear) break;
+        cam.y += 4;
+      }
+    }
     // Haze that softens the hills and fades the mountains, without hiding them.
     const fog = this.scene.fog as THREE.Fog;
     fog.near = Math.max(650, dist * 3.2);

@@ -1,5 +1,5 @@
 import { describe as group, expect, test } from "bun:test";
-import { BLOCK_X, BLOCK_Z, KINDS, PITCH_X, blockLoop, lot, plan, rng, shape, spiral } from "./plan";
+import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, STYLES, blockLoop, cells, districtCell, isPark, lot, plan, rng, shape, spiral } from "./plan";
 import { clock, describe, hm } from "../format";
 import type { Plot, World } from "../proto";
 
@@ -46,7 +46,9 @@ group("plan", () => {
 
   test("the city grows by blocks and the bounds hold them all", () => {
     const p = plan(world(Array.from({ length: 41 }, (_, i) => plot(i))));
-    expect(p.blocks).toHaveLength(6);
+    // Six districts, and the two parks among them.
+    expect(p.blocks).toHaveLength(8);
+    expect(p.parks.map((k) => k.kind)).toEqual(["plaza", "park"]);
     for (const b of p.buildings) {
       expect(b.x).toBeGreaterThan(p.bounds.minX);
       expect(b.x).toBeLessThan(p.bounds.maxX);
@@ -54,8 +56,8 @@ group("plan", () => {
       expect(b.z).toBeLessThan(p.bounds.maxZ);
     }
     for (const t of p.trees) {
-      const inside = t.x > p.bounds.minX && t.x < p.bounds.maxX && t.z > p.bounds.minZ && t.z < p.bounds.maxZ;
-      expect(inside).toBe(false);
+      const onBlock = p.blocks.some((b) => Math.abs(t.x - b.x) < PITCH_X / 2 && Math.abs(t.z - b.z) < PITCH_Z / 2);
+      expect(onBlock).toBe(false);
     }
   });
 
@@ -95,6 +97,37 @@ test("higher grades are taller and the kinds follow the grade", () => {
   for (let g = 0; g <= 4; g++) expect(shape(g, 3).w).toBeLessThan(12);
 });
 
+test("every style turns up, and buildings stay on their lots", () => {
+  for (const [g, kind] of KINDS.entries()) {
+    const seen = new Set<string>();
+    for (let i = 0; i < 400; i++) seen.add(shape(g, i * 7919 + 1).style);
+    expect([...seen].sort()).toEqual(STYLES[kind].map(([s]) => s).sort());
+  }
+  const p = plan(world(Array.from({ length: 64 }, (_, i) => plot(i, i % 5))));
+  for (const b of p.buildings) {
+    const l = lot(b.index);
+    // Set back from the street, but the footprint never leaves the lot.
+    const front = l.z < Math.round(l.z / PITCH_Z) * PITCH_Z ? -1 : 1;
+    expect(Math.abs(b.x - l.x)).toBeLessThan(1e-9);
+    expect(Math.abs(b.z - l.z) + b.d / 2).toBeLessThanOrEqual(LOT / 2);
+    expect(b.yard).toBeGreaterThanOrEqual(0);
+    expect(Math.sign(b.z - l.z) || front).toBe(front);
+  }
+});
+
+test("blocks grow outward as a disc, every fourth cell a park", () => {
+  const c = cells(60);
+  expect(c[0]).toEqual([0, 0]);
+  expect(new Set(c.map(([x, y]) => `${x},${y}`)).size).toBe(60);
+  const dist = c.map(([x, y]) => Math.hypot(x * PITCH_X, y * PITCH_Z));
+  for (let i = 1; i < dist.length; i++) expect(dist[i]).toBeGreaterThanOrEqual(dist[i - 1] - 1e-9);
+  // Districts take the cells that are not parks, in order, once each.
+  const used = Array.from({ length: 40 }, (_, d) => districtCell(d));
+  expect(used.some(isPark)).toBe(false);
+  expect(new Set(used).size).toBe(40);
+  for (let i = 0; i < used[39]; i++) expect(isPark(i) || used.includes(i)).toBe(true);
+});
+
 test("rng is stable for rounded u64 seeds", () => {
   const seed = JSON.parse("10451216379200822465");
   expect(rng(seed)()).toBe(rng(seed)());
@@ -114,16 +147,17 @@ test("format", () => {
 });
 
 test("traffic loops keep the block on the right and stay in their lane", () => {
-  const hx = BLOCK_X / 2 + 2.85;
-  const hz = BLOCK_Z / 2 + 2.85;
-  const loop = blockLoop(PITCH_X, 0, hx, hz, 3);
+  const lane = PAVEMENT + (ROAD - 2 * PAVEMENT) / 4;
+  const hx = BLOCK_X / 2 + lane;
+  const hz = BLOCK_Z / 2 + lane;
+  const loop = blockLoop(PITCH_X, 0, hx, hz, 3.5);
   expect(loop.length).toBeGreaterThan(2 * (hx + hz));
   for (let d = 0; d < loop.length; d += 1.7) {
     const p = loop.at(d);
     // Inside the lane: no further out than the loop, never onto the pavement.
     expect(Math.abs(p.x - PITCH_X)).toBeLessThanOrEqual(hx + 1e-6);
     expect(Math.abs(p.z)).toBeLessThanOrEqual(hz + 1e-6);
-    expect(Math.max(Math.abs(p.x - PITCH_X) - BLOCK_X / 2, Math.abs(p.z) - BLOCK_Z / 2)).toBeGreaterThan(1.2);
+    expect(Math.max(Math.abs(p.x - PITCH_X) - BLOCK_X / 2, Math.abs(p.z) - BLOCK_Z / 2)).toBeGreaterThan(PAVEMENT);
     // The block centre is on the right of the direction of travel.
     const f = { x: Math.sin(p.heading), z: Math.cos(p.heading) };
     const right = { x: -f.z, z: f.x };

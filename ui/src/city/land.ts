@@ -163,6 +163,11 @@ export class Land {
       buckets.set(key, list);
     };
     const bridge = land.bridge;
+    // Where the camera circles (see frameCamera in scene.ts): no rainforest
+    // giants there, or one crown fills the view.
+    const { minX, maxX, minZ, maxZ } = p.bounds;
+    const [cx, cz] = [(minX + maxX) / 2, (minZ + maxZ) / 2];
+    const orbit = Math.max(95, Math.max(maxX - minX, maxZ - minZ) * 1.4) + 90;
     // Near woods are real trees packed into a canopy; further out each
     // instance is a clump standing for several, scaled to close the gaps.
     for (const [r0, r1, step] of [[0, 460, 10], [460, 1300, 18], [1300, 2600, 32]] as const) {
@@ -189,6 +194,7 @@ export class Land {
               h > 150 ? (k < 0.9 ? "forest_b" : "forest_a")
               : h > 55 ? (k < 0.45 ? "forest_b" : k < 0.85 ? "forest_a" : "forest_d")
               : k < 0.36 ? "forest_a" : k < 0.66 ? "forest_d" : k < 0.84 ? "forest_c" : "forest_b";
+            if (model === "forest_c" && Math.hypot(x - cx, z - cz) < orbit) model = "forest_a";
             const pine = model === "forest_b";
             const palette = pine ? PINES : LUSH;
             const jitter = 0.8 + r() * 0.45;
@@ -235,7 +241,6 @@ export class Land {
     const paved = (x: number, z: number) =>
       Math.abs(z - ROAD_Z) < 6 ||
       p.blocks.some((b) => Math.abs(x - b.x) < PITCH_X / 2 - 1 && Math.abs(z - b.z) < PITCH_Z / 2 - 1);
-    const { minX, maxX, minZ, maxZ } = p.bounds;
     for (let i = 0; i < 700; i++) {
       const x = minX + r() * (maxX - minX);
       const z = minZ + r() * (maxZ - minZ);

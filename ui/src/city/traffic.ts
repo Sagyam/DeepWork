@@ -5,7 +5,7 @@
 // lights and signs follow the night.
 import * as THREE from "three";
 import { piece } from "./kit";
-import { BLOCK_X, BLOCK_Z, blockLoop, rng, type CityPlan, type Loop } from "./plan";
+import { BLOCK_X, BLOCK_Z, PAVEMENT, ROAD, blockLoop, rng, type CityPlan, type Loop } from "./plan";
 
 const CAR_PAINT = [0xb8252a, 0x1f4e8c, 0xe8e6e0, 0x2a2c30, 0x8a8f96, 0x2f6b4a, 0xd9a03a, 0x6a2a4a, 0x3a7fb8, 0xc8c2b4];
 const BUS_PAINT = [0xc0392b, 0x2e6fb5, 0x2a9a5a];
@@ -148,7 +148,9 @@ export class Traffic {
       fleets.set(model, new Fleet(model, n, paint, this.mat, r));
     }
     const slots = new Map<string, number>();
-    const loops = p.blocks.map((b) => blockLoop(b.x, b.z, BLOCK_X / 2 + 2.85, BLOCK_Z / 2 + 2.85, 3));
+    // The lane next to the block: a quarter of the way across the carriageway.
+    const lane = PAVEMENT + (ROAD - 2 * PAVEMENT) / 4;
+    const loops = p.blocks.map((b) => blockLoop(b.x, b.z, BLOCK_X / 2 + lane, BLOCK_Z / 2 + lane, 3.5));
     const speeds = p.blocks.map(() => 6 + r() * 4);
     const phase = p.blocks.map(() => r());
     for (const v of plans) {
@@ -162,8 +164,8 @@ export class Traffic {
     const walkers = p.blocks.length * PEOPLE[tier];
     const people = new Fleet("person", walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
     const walks = p.blocks.flatMap((b) => [
-      blockLoop(b.x, b.z, BLOCK_X / 2 + 0.15, BLOCK_Z / 2 + 0.15, 0.8),
-      blockLoop(b.x, b.z, BLOCK_X / 2 + 1.0, BLOCK_Z / 2 + 1.0, 1.2),
+      blockLoop(b.x, b.z, BLOCK_X / 2 + 0.5, BLOCK_Z / 2 + 0.5, 0.8),
+      blockLoop(b.x, b.z, BLOCK_X / 2 + 1.25, BLOCK_Z / 2 + 1.25, 1.2),
     ]);
     for (let i = 0; i < walkers; i++) {
       const loop = walks[Math.floor(i / PEOPLE[tier]) * 2 + (i % 2)];

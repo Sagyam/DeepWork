@@ -55,6 +55,7 @@ PREVIEW_COLORS = {
     "carglass": (0.08, 0.1, 0.13), "tyre": (0.05, 0.05, 0.05), "chrome": (0.8, 0.8, 0.82),
     "headlight": (1, 0.95, 0.8), "taillight": (0.8, 0.05, 0.05), "taxisign": (1, 0.85, 0.2),
     "steel": (0.25, 0.4, 0.35), "rock": (0.5, 0.48, 0.44),
+    "water": (0.25, 0.45, 0.55),
     "skin": (0.8, 0.6, 0.45), "shirt": (0.2, 0.4, 0.7), "pants": (0.15, 0.15, 0.2), "hair": (0.15, 0.1, 0.05),
 }
 CELL_ROLES = {"window", "glass"}
@@ -1209,6 +1210,665 @@ def lm2_crown():
     m.anchor("beacon", (0, 0, 0.85 + h + 11.3))
 
 
+# ---- skyline styles -----------------------------------------------------------
+# Building types picked per building by `style` in plan.ts: a modern house and
+# an A-frame cabin (grade 0), a diner and a brick factory (grade 1), a row of
+# brownstone townhouses (grade 2), a round glass office tower (grade 3), and a
+# twisting supertall and a TV tower (grade 4). Park furniture follows.
+
+FACTORY_H = 5.0
+TAU = 2 * math.pi
+
+
+def around(r, a, z):
+    return (r * math.cos(a), r * math.sin(a), z)
+
+
+def ringwall(m, role, r0, r1, z0, z1, seg, cell=False, a0=0.0):
+    """Outward faces of a (tapered) cylinder, one quad per segment."""
+    for i in range(seg):
+        a, b = a0 + TAU * i / seg, a0 + TAU * (i + 1) / seg
+        mid = (a + b) / 2
+        m.face(role, [around(r0, a, z0), around(r0, b, z0), around(r1, b, z1), around(r1, a, z1)],
+               out=(math.cos(mid), math.sin(mid), (r0 - r1) / max(z1 - z0, 1e-6)), cell=cell)
+
+
+def disk(m, role, r, z, seg, up=True):
+    m.face(role, [around(r, TAU * i / seg, z) for i in range(seg)], out=Z if up else -Z)
+
+
+def annulus(m, role, r0, r1, z, seg, up=True):
+    for i in range(seg):
+        a, b = TAU * i / seg, TAU * (i + 1) / seg
+        m.face(role, [around(r0, a, z), around(r0, b, z), around(r1, b, z), around(r1, a, z)], out=Z if up else -Z)
+
+
+def mullions(m, role, r, z0, z1, seg, t=0.08, out=0.06, a0=0.0, every=1):
+    for i in range(0, seg, every):
+        a = a0 + TAU * i / seg
+        c = Matrix.Translation(around(r + out / 2, a, (z0 + z1) / 2)) @ Matrix.Rotation(a, 4, "Z")
+        m.mbox(role, c, out + 0.04, t, z1 - z0)
+
+
+def octagon(a, c):
+    """A square of half-size a with corners cut by c, counter-clockwise."""
+    return [(a - c, -a), (a, -a + c), (a, a - c), (a - c, a), (-a + c, a), (-a, a - c), (-a, -a + c), (-a + c, -a)]
+
+
+def prism_sides(m, role, pts, z0, z1, cells=0, grow=0.0):
+    """Side faces of a prism on a convex outline; cells > 0 splits each face into panes."""
+    n = len(pts)
+    for i in range(n):
+        (x0, y0), (x1, y1) = pts[i], pts[(i + 1) % n]
+        nx, ny = y1 - y0, -(x1 - x0)
+        ln = math.hypot(nx, ny)
+        nx, ny = nx / ln, ny / ln
+        k = max(1, round(math.hypot(x1 - x0, y1 - y0) / cells)) if cells else 1
+        for j in range(k):
+            ta, tb = j / k, (j + 1) / k
+            pa = (x0 + (x1 - x0) * ta + nx * grow, y0 + (y1 - y0) * ta + ny * grow)
+            pb = (x0 + (x1 - x0) * tb + nx * grow, y0 + (y1 - y0) * tb + ny * grow)
+            m.face(role, [(*pa, z0), (*pb, z0), (*pb, z1), (*pa, z1)], out=(nx, ny, 0), cell=bool(cells) and role in CELL_ROLES)
+
+
+def prism(m, role, pts, z0, z1, grow=0.0, top=True, bottom=False):
+    prism_sides(m, role, pts, z0, z1, grow=grow)
+    g = [(x * (1 + grow / max(abs(x), abs(y), 1e-6)), y * (1 + grow / max(abs(x), abs(y), 1e-6))) for x, y in pts]
+    if top:
+        m.face(role, [(x, y, z1) for x, y in g], out=Z)
+    if bottom:
+        m.face(role, [(x, y, z0) for x, y in g], out=-Z)
+
+
+# Grade 0: a modern house with a garage, and an A-frame cabin.
+
+
+def cottage_body_e():
+    W, D, H = COTTAGE
+    m = Mod("cottage_body_e", ground=True)
+    m.box("concrete", -W / 2 - 0.05, -D / 2 - 0.05, 0, W / 2 + 0.05, D / 2 + 0.05, 0.3, skip="b")
+    g0 = W * 0.64
+    front = [(0.35, 2.9, 0.35, 2.9, "glass"), (3.25, 4.15, 0.3, 2.6, "door"), (g0, W - 0.3, 0.3, 2.55, "metal")]
+    sides = punched(
+        m, W, D, 0, H,
+        {"n": front, "e": [(D * 0.55, D - 0.5, 1.2, 2.4)], "s": [(0.4, W * 0.55, 0.3, 2.9, "glass"), (W * 0.7, W - 0.6, 1.3, 2.5)], "w": [(0.6, D * 0.45, 0.35, 2.9, "glass")]},
+        depth=0.12, reveal="dark", sill=None, lintel=None,
+    )
+    n = sides["n"]
+    # Garage door panels and a timber screen in front of the big window.
+    for i in range(1, 5):
+        v = 0.3 + 2.25 * i / 5
+        n.box("dark", g0, W - 0.3, v - 0.03, v + 0.02, -0.12, -0.1, skip="n")
+    for i in range(8):
+        u = 0.45 + i * 0.3
+        n.box("wood", u, u + 0.08, 0.35, 2.9, 0.25, 0.33)
+    n.box("wood", 0.35, 2.9, 2.9, 3.0, 0.0, 0.34, skip="n")
+    n.box("wood", 3.0, 4.4, 0.3, H, 0.0, 0.06, skip="nbt")
+    n.box("concrete", 3.0, 4.4, 0.0, 0.3, 0.0, 1.1, skip="n")
+    n.box("concrete", g0 - 0.1, W - 0.2, 0.0, 0.08, 0.0, 2.4, skip="n")
+    m.cyl("shopfront", 0, 0, 0, 0.07, 0.07, 0.3, seg=8, M=Matrix.Translation(n.P(4.3, 2.3, 0.1)))
+    cap(m, W, D, H)
+
+
+def cottage_roof_e():
+    W, D, _ = COTTAGE
+    m = Mod("cottage_roof_e")
+    # Thin white slab cantilevered over the entrance; a timber-clad box on top.
+    m.box("paint", -W / 2 - 0.25, -D / 2 - 1.3, 0, W / 2 + 0.25, D / 2 + 0.25, 0.32, bevel=0.02)
+    w, d = W * 0.58, D * 0.72
+    x0 = -W / 2 + 0.2
+    m.box("wood", x0, -D / 2 + 0.3, 0.32, x0 + w, -D / 2 + 0.3 + d, 2.9, skip="b")
+    sd = Side(m, "n", w, d, 0.32, at=(x0 + w / 2, -D / 2 + 0.3 + d / 2))
+    sd.quad("glass", 0.3, w - 0.3, 0.7, 2.3, 0.01, cell=True)
+    sd.box("dark", 0.25, w - 0.25, 0.62, 0.7, 0, 0.06)
+    sd = Side(m, "e", w, d, 0.32, at=(x0 + w / 2, -D / 2 + 0.3 + d / 2))
+    sd.quad("glass", 0.4, d * 0.55, 0.7, 2.3, 0.01, cell=True)
+    m.box("paint", x0 - 0.15, -D / 2 + 0.15, 2.9, x0 + w + 0.15, -D / 2 + 0.45 + d, 3.12, bevel=0.02)
+    # Solar panels on the lower roof.
+    for i in range(3):
+        x = W * 0.12 + i * 0.95
+        M = Matrix.Translation((x, D * 0.1, 0.62)) @ Matrix.Rotation(0.45, 4, "X")
+        m.mbox("spandrel", M, 0.85, 1.6, 0.05)
+        m.box("metal", x - 0.04, D * 0.1 + 0.4, 0.32, x + 0.04, D * 0.1 + 0.48, 0.85)
+    ring(m, W * 0.42, D, 0.32, 0.5, 0.06, "paint", out=0.0)
+    return m
+
+
+def cottage_body_f():
+    W, D, H = COTTAGE
+    m = Mod("cottage_body_f", ground=True)
+    m.box("stone", -W / 2 - 0.05, -D / 2 - 0.05, 0, W / 2 + 0.05, D / 2 + 0.05, 0.45, skip="b", bevel=0.02)
+    dc = W / 2
+    front = [(0.5, dc - 0.7, 0.45, 2.9, "glass"), (dc - 0.55, dc + 0.55, 0.45, 2.7, "door"), (dc + 0.7, W - 0.5, 0.45, 2.9, "glass")]
+    side = [(D * 0.3 - 0.5, D * 0.3 + 0.5, 1.1, 2.2), (D * 0.7 - 0.5, D * 0.7 + 0.5, 1.1, 2.2)]
+    sides = punched(m, W, D, 0, H, {"n": front, "e": side, "s": [(W / 2 - 0.5, W / 2 + 0.5, 1.1, 2.3)], "w": side}, role="wood", depth=0.1, reveal="frame", lintel=None)
+    # Log courses.
+    for sd in sides.values():
+        for i in range(1, 9):
+            v = 0.45 + i * 0.32
+            sd.box("bark", 0, sd.L, v - 0.03, v, 0, 0.04, skip="n")
+    # A deck across the front with a rail.
+    n = sides["n"]
+    n.box("wood", -0.3, W + 0.3, 0.3, 0.45, 0, 1.6, skip="n")
+    for u in (-0.2, W / 4, W * 3 / 4, W + 0.2):
+        n.box("wood", u - 0.06, u + 0.06, 0.45, 1.4, 1.42, 1.54)
+    n.box("wood", -0.25, dc - 0.8, 1.3, 1.4, 1.42, 1.54)
+    n.box("wood", dc + 0.8, W + 0.25, 1.3, 1.4, 1.42, 1.54)
+    n.box("wood", dc - 0.7, dc + 0.7, 0.0, 0.15, 1.6, 2.2)
+    cap(m, W, D, H)
+
+
+def cottage_roof_f():
+    """A steep A-frame whose eaves come down to the deck, glazed gable."""
+    W, D, _ = COTTAGE
+    m = Mod("cottage_roof_f")
+    rise = 4.6
+    gable(m, W, D, rise, oe=1.25, og=0.55, t=0.22, axis="y", wall="wood")
+    sd = Side(m, "n", W, D)
+    c = W / 2
+    tri = lambda k, s: [sd.P(c - s * W / 2, 0.15, k), sd.P(c + s * W / 2, 0.15, k), sd.P(c, 0.15 + s * (rise - 0.4), k)]  # noqa: E731
+    m.face("glass", tri(0.03, 0.78), out=sd.n, cell=True)
+    for u in (c - 0.9, c, c + 0.9):
+        h = (rise - 0.4) * (1 - abs(u - c) / (W / 2 * 0.78)) + 0.15
+        sd.box("frame", u - 0.05, u + 0.05, 0.15, h, 0.03, 0.09)
+    sd.box("frame", c - W / 2 * 0.62, c + W / 2 * 0.62, 1.3, 1.38, 0.03, 0.09)
+    m.cyl("dark", W * 0.18, D * 0.2, 0.8, 0.14, 0.14, 3.6, seg=8)
+    m.cyl("dark", W * 0.18, D * 0.2, 4.4, 0.24, 0.05, 0.25, seg=8)
+    m.anchor("smoke", (W * 0.18, D * 0.2, 4.9))
+    return m
+
+
+# Grade 1: a diner and a brick factory.
+
+
+def shop_ground_d():
+    W, D, H = SHOP
+    m = Mod("shop_ground_d", ground=True)
+    dc = W * 0.3
+    front = [(0.3, dc - 0.7, 0.95, 2.45, "shopfront"), (dc - 0.6, dc + 0.6, 0.0, 2.45, "door"), (dc + 0.7, W - 0.3, 0.95, 2.45, "shopfront")]
+    sides = punched(
+        m, W, D, 0, H,
+        {"n": front, "e": [(0.3, D * 0.62, 0.95, 2.45, "shopfront")], "s": [(W * 0.7 - 0.5, W * 0.7 + 0.5, 0, 2.2, "door"), (W * 0.3 - 0.6, W * 0.3 + 0.6, 1.3, 2.3)], "w": [(D * 0.5 - 0.5, D * 0.5 + 0.5, 1.3, 2.3)]},
+        depth=0.12, reveal="metal", sill=None, lintel=None,
+    )
+    for side, sd in sides.items():
+        L = sd.L
+        sd.box("accent", 0, L, 0.0, 0.95, 0, 0.05, skip="n")
+        sd.box("metal", 0, L, 0.88, 0.98, 0, 0.09, skip="n", bevel=0.02)
+        sd.box("metal", 0, L, 2.45, 2.55, 0, 0.09, skip="n", bevel=0.02)
+        sd.box("accent", 0, L, 2.8, 3.05, 0, 0.06, skip="n")
+        sd.box("metal", 0, L, 3.05, 3.12, 0, 0.08, skip="n")
+    n = sides["n"]
+    for h in front:
+        if h[4] == "shopfront":
+            k = max(1, round((h[1] - h[0]) / 1.0))
+            for i in range(1, k):
+                u = h[0] + (h[1] - h[0]) * i / k
+                n.box("metal", u - 0.03, u + 0.03, h[2], h[3], -0.12, -0.08, skip="n")
+    # Entrance canopy and a pylon sign on the corner.
+    n.box("metal", dc - 1.1, dc + 1.1, 2.6, 2.75, 0, 1.4, bevel=0.03)
+    n.box("sign", dc - 1.05, dc + 1.05, 2.56, 2.6, 0.1, 1.3)
+    px, py = W / 2 + 0.6, -D / 2 - 0.8
+    m.cyl("metal", px, py, 0, 0.12, 0.12, 5.6, seg=8)
+    m.box("board", px - 0.15, py - 0.85, 4.0, px + 0.15, py + 0.85, 6.6, bevel=0.05)
+    for s in (-1, 1):
+        sd = Side(m, "e" if s > 0 else "w", 0.3, 1.7, 4.0, at=(px, py))
+        lettering(m, sd, 0.85, 1.75, 0.0, 3, px=0.09)
+        sd.box("sign", 0.1, 1.6, 0.15, 0.25, 0.0, 0.04)
+        sd.box("sign", 0.1, 1.6, 2.4, 2.5, 0.0, 0.04)
+    m.box("concrete", -W / 2 - 0.05, -D / 2 - 0.05, 0, W / 2 + 0.05, D / 2 + 0.05, 0.12, skip="b")
+    cap(m, W, D, H)
+
+
+def shop_roof_d():
+    W, D, _ = SHOP
+    m = Mod("shop_roof_d")
+    band(m, W, D, 0, 0.25, 0.1, "metal")
+    ring(m, W, D, 0.25, 0.7, 0.15, "accent")
+    roof_deck(m, W, D, 0.2, 0.15)
+    # A billboard on legs facing the street.
+    sd = Side(m, "n", W, D, 0.2)
+    for u in (W * 0.25, W * 0.75):
+        sd.box("metal", u - 0.07, u + 0.07, 0.0, 1.4, -1.6, -1.45)
+        m.strut("metal", sd.P(u, 0.0, -2.6), sd.P(u, 1.4, -1.55), 0.08)
+    sd.box("board", W * 0.12, W * 0.88, 1.4, 3.0, -1.6, -1.4, bevel=0.03)
+    sd.box("accent", W * 0.12, W * 0.88, 1.4, 1.6, -1.4, -1.36)
+    lettering(m, sd, W / 2, 2.35, -1.4, 6, px=0.1)
+    ac_unit(m, -W * 0.25, D * 0.25, 0.2)
+    vent(m, W * 0.3, D * 0.3, 0.2, h=1.2)
+    return m
+
+
+def factory_ground():
+    W, D, _ = SHOP
+    H = FACTORY_H
+    m = Mod("factory_ground", ground=True)
+    tall = lambda c, w=1.3: (c - w / 2, c + w / 2, 1.3, 4.2)  # noqa: E731
+    front = [(0.5, 3.5, 1.0, 4.0, "metal"), (4.1, 5.0, 0, 2.3, "door"), tall(6.2), tall(7.8, 1.1)]
+    side = [tall(a + 0.65) for a, _ in spaced(D, 3, 1.3)]
+    back = [tall(a + 0.65) for a, _ in spaced(W, 4, 1.3)]
+    layout = {"n": front, "e": side, "s": back, "w": side}
+    sides = punched(m, W, D, 0, H, layout, role="brick", depth=0.22, reveal="brick", sill="stone", lintel="stone")
+    for key, sd in sides.items():
+        for h in layout[key]:
+            p = h[4] if len(h) > 4 else "window"
+            if p != "window":
+                continue
+            for i in range(1, 3):
+                u = h[0] + (h[1] - h[0]) * i / 3
+                sd.box("dark", u - 0.03, u + 0.03, h[2], h[3], -0.22, -0.17, skip="n")
+            for i in range(1, 4):
+                v = h[2] + (h[3] - h[2]) * i / 4
+                sd.box("dark", h[0], h[1], v - 0.03, v + 0.03, -0.22, -0.17, skip="n")
+        sd.box("stone", 0, sd.L, 0, 0.5, 0, 0.06, skip="n")
+        # Brick pilasters.
+        for u in (0.0, sd.L):
+            sd.box("brick", max(0, u - 0.3), min(sd.L, u + 0.3), 0, H, 0, 0.15, skip="nb")
+    n = sides["n"]
+    # Roller door slats, a loading dock with bumpers, and a company sign.
+    for i in range(1, 10):
+        v = 1.0 + 3.0 * i / 10
+        n.box("dark", 0.5, 3.5, v - 0.02, v + 0.02, -0.22, -0.19, skip="n")
+    n.box("concrete", 0.3, 3.7, 0, 1.0, 0, 1.8, skip="n")
+    for u in (0.7, 3.3):
+        n.box("crane", u - 0.15, u + 0.15, 0.25, 0.9, 1.8, 1.95)
+    n.box("metal", 0.3, 3.7, 4.15, 4.3, 0, 1.0, bevel=0.02)
+    n.box("board", 4.0, 8.4, 4.45, 4.95, 0, 0.12, skip="n")
+    lettering(m, n, 6.2, 4.7, 0.12, 6, px=0.075)
+    n.box("metal", 3.95, 5.15, 2.4, 2.5, 0, 0.8, skip="n")
+    cap(m, W, D, H)
+
+
+def factory_roof():
+    W, D, _ = SHOP
+    m = Mod("factory_roof")
+    band(m, W, D, 0, 0.3, 0.08, "stone")
+    teeth, h = 3, 1.9
+    for i in range(teeth):
+        y0 = -D / 2 + D * i / teeth
+        y1 = y0 + D / teeth
+        m.face("metal", [(-W / 2, y0, 0.3), (W / 2, y0, 0.3), (W / 2, y1, 0.3 + h), (-W / 2, y1, 0.3 + h)], out=(0, -1, 1.2))
+        k = 5
+        for j in range(k):
+            x0, x1 = -W / 2 + W * j / k, -W / 2 + W * (j + 1) / k
+            m.face("window", [(x0, y1, 0.3), (x1, y1, 0.3), (x1, y1, 0.3 + h), (x0, y1, 0.3 + h)], out=(0, 1, 0), cell=True)
+            m.box("dark", x1 - 0.04, y1, 0.3, x1 + 0.04, y1 + 0.06, 0.3 + h)
+        m.box("dark", -W / 2, y1, 0.3 + h - 0.08, W / 2, y1 + 0.08, 0.3 + h + 0.04)
+        for x in (-W / 2, W / 2):
+            m.face("brick", [(x, y0, 0.3), (x, y1, 0.3), (x, y1, 0.3 + h)], out=(x, 0, 0))
+    # Smokestack with banding; a tank and ventilators.
+    sx, sy = W * 0.33, D * 0.32
+    m.cyl("brick", sx, sy, 0.3, 0.75, 0.5, 12.5, seg=12)
+    for z in (3.0, 7.0, 11.0):
+        r = 0.75 - (0.25 * (z - 0.3) / 12.5)
+        m.cyl("dark", sx, sy, z, r + 0.06, r + 0.06, 0.3, seg=12, smooth=False)
+    m.cyl("dark", sx, sy, 12.8, 0.6, 0.6, 0.5, seg=12, smooth=False)
+    m.anchor("smoke", (sx, sy, 13.6))
+    tx, ty = -W * 0.3, -D * 0.05
+    for lx, ly in ((-0.6, -0.6), (0.6, -0.6), (-0.6, 0.6), (0.6, 0.6)):
+        m.box("dark", tx + lx - 0.06, ty + ly - 0.06, 0.3 + h, tx + lx + 0.06, ty + ly + 0.06, 3.2 + h)
+    m.cyl("metal", tx, ty, 3.2 + h, 1.05, 1.05, 2.2, seg=14)
+    m.cyl("metal", tx, ty, 5.4 + h, 1.1, 0.15, 0.7, seg=14, smooth=False)
+    for x in (-W * 0.05, W * 0.1):
+        vent(m, x, -D * 0.38, 0.3 + h * 0.25, h=1.0)
+    return m
+
+
+# Grade 2: a row of three brownstone townhouses.
+
+
+def town_ground():
+    W, D, H = APT
+    m = Mod("town_ground", ground=True)
+    uw = W / 3
+    n = Side(m, "n", W, D)
+    for i, role in enumerate(("brick", "wall", "brick")):
+        u0 = i * uw
+        dc = u0 + uw * 0.32
+        door = (dc - 0.5, dc + 0.5, 0.9, 2.85, "door")
+        win = (u0 + uw * 0.72 - 0.45, u0 + uw * 0.72 + 0.45, 1.15, 2.65)
+        low = (u0 + uw * 0.72 - 0.4, u0 + uw * 0.72 + 0.4, 0.15, 0.65)
+        n.wall(role, 0, H, [door, win, low], u0, u0 + uw)
+        n.opening(door, 0.2, pane="door", reveal="stone")
+        n.opening(win, 0.16, pane="window", reveal=role)
+        n.opening(low, 0.12, pane="window", reveal=role)
+        n.box("stone", win[0] - 0.1, win[1] + 0.1, win[2] - 0.09, win[2], 0, 0.13, skip="n")
+        n.box("stone", win[0] - 0.12, win[1] + 0.12, win[3], win[3] + 0.22, 0, 0.06, skip="n")
+        # Stoop: steps up to the raised door, with a rail either side.
+        for j in range(4):
+            n.box("stone", dc - 0.6, dc + 0.6, 0, 0.9 * (4 - j) / 4, 0, 0.35 * (j + 1) + 0.1, skip="n")
+        for u in (dc - 0.62, dc + 0.56):
+            n.m.strut("metal", n.P(u + 0.03, 1.8, 0.1), n.P(u + 0.03, 1.0, 1.45), 0.05)
+            n.box("metal", u, u + 0.06, 0.25, 1.0, 1.42, 1.48)
+        n.box("trim", dc - 0.65, dc + 0.65, 2.85, 3.0, 0, 0.18, skip="n", bevel=0.02)
+        n.box("stone", u0, u0 + uw, 0, 0.8, 0, 0.05, skip="n")
+    for i in range(4):
+        u = i * uw
+        n.box("trim", max(0, u - 0.1), min(W, u + 0.1), 0, H, 0, 0.1, skip="nb")
+    sides = punched(
+        m, W, D, 0, H,
+        {"e": [(a, b, 1.1, 2.5) for a, b in spaced(D, 2, 0.9)], "s": [(a, b, 1.1, 2.5) for a, b in spaced(W, 3, 0.9)], "w": [(a, b, 1.1, 2.5) for a, b in spaced(D, 2, 0.9)]},
+        role="brick", depth=0.15, sill="stone", lintel="stone",
+    )
+    band(m, W, D, H - 0.18, H, 0.06, "stone")
+    cap(m, W, D, H)
+    return sides
+
+
+def town_floor():
+    W, D, H = APT
+    m = Mod("town_floor")
+    uw = W / 3
+    n = Side(m, "n", W, D)
+    for i, role in enumerate(("brick", "wall", "brick")):
+        u0 = i * uw
+        if i == 1:
+            # The middle house has a bay window.
+            n.wall(role, 0, H, [], u0, u0 + uw)
+            b0, b1, bd = u0 + 0.4, u0 + uw - 0.4, 0.65
+            n.box(role, b0, b1, 0.2, H - 0.05, 0, bd, skip="n")
+            for a, b in spaced(b1 - b0, 2, 0.85):
+                n.quad("window", b0 + a, b0 + b, 0.75, 2.5, bd + 0.01, cell=True)
+                n.box("trim", b0 + a - 0.06, b0 + b + 0.06, 0.66, 0.75, bd, bd + 0.1)
+            n.box("trim", b0 - 0.05, b1 + 0.05, H - 0.3, H - 0.05, 0, bd + 0.08)
+        else:
+            holes = [(u0 + uw * c - 0.45, u0 + uw * c + 0.45, 0.75, 2.5) for c in (0.3, 0.72)]
+            n.wall(role, 0, H, holes, u0, u0 + uw)
+            for h in holes:
+                n.opening(h, 0.16, pane="window", reveal=role)
+                n.box("stone", h[0] - 0.1, h[1] + 0.1, h[2] - 0.09, h[2], 0, 0.13, skip="n")
+                n.box("stone", h[0] - 0.12, h[1] + 0.12, h[3], h[3] + 0.22, 0, 0.06, skip="n")
+                c = (h[0] + h[1]) / 2
+                n.box("stone", c - 0.1, c + 0.1, h[3] + 0.04, h[3] + 0.3, 0, 0.09, skip="n")
+    for i in range(4):
+        u = i * uw
+        n.box("trim", max(0, u - 0.1), min(W, u + 0.1), 0, H, 0, 0.1, skip="nb")
+    punched(
+        m, W, D, 0, H,
+        {"e": [(a, b, 0.8, 2.4) for a, b in spaced(D, 2, 0.9)], "s": [(a, b, 0.8, 2.4) for a, b in spaced(W, 3, 0.9)], "w": [(a, b, 0.8, 2.4) for a, b in spaced(D, 2, 0.9)]},
+        role="brick", depth=0.15, sill="stone", lintel="stone",
+    )
+    band(m, W, D, 0, 0.14, 0.04, "stone", bevel=0.0)
+    cap(m, W, D, H)
+
+
+def town_roof():
+    W, D, _ = APT
+    m = Mod("town_roof")
+    uw = W / 3
+    band(m, W, D, 0, 0.3, 0.1, "trim")
+    band(m, W, D, 0.3, 0.45, 0.3, "trim", bevel=0.04)
+    n = Side(m, "n", W, D)
+    k = round(W / 0.6)
+    for i in range(k):
+        u = W * (i + 0.5) / k
+        n.box("trim", u - 0.06, u + 0.06, 0.05, 0.3, 0.1, 0.28, skip="nt")
+    # Mansard roofs with a dormer each, chimneys on the party walls.
+    t, rise = 0.95, 2.1
+    m.hexa("roof", lambda a, b, c: ((-1, 1)[a] * (W / 2 - 0.05 - c * t), (-1, 1)[b] * (D / 2 - 0.05 - c * t), 0.45 + c * rise), skip="b")
+    for i in range(3):
+        uc = (i + 0.5) * uw
+        n.box("trim", uc - 0.55, uc + 0.55, 0.75, 2.05, -0.55, 0.12)
+        n.quad("window", uc - 0.38, uc + 0.38, 0.95, 1.85, 0.121, cell=True)
+        n.m.hexa("roof", lambda a, b, c, uc=uc: n.P(uc + (a - 0.5) * 1.35, 2.05 + c * 0.14 + b * 0.25, 0.22 - b * 0.9))
+    for i in (1, 2):
+        u = i * uw - W / 2
+        m.box("brick", u - 0.35, D * 0.18, 0.45, u + 0.35, D * 0.18 + 0.7, 3.4)
+        m.box("stone", u - 0.42, D * 0.18 - 0.07, 3.4, u + 0.42, D * 0.18 + 0.77, 3.55)
+        for dx in (-0.15, 0.15):
+            m.cyl("dark", u + dx, D * 0.18 + 0.35, 3.55, 0.08, 0.08, 0.25, seg=6)
+    m.anchor("smoke", (uw - W / 2, D * 0.18 + 0.35, 4.1))
+    return m
+
+
+# Grade 3: a round glass office tower.
+
+RSEG = 20
+
+
+def round_ground():
+    W, _, H = OFFICE
+    R = W / 2
+    m = Mod("round_ground", ground=True)
+    ringwall(m, "lobby", R - 0.6, R - 0.6, 0.15, H - 0.45, RSEG)
+    mullions(m, "metal", R - 0.6, 0.15, H - 0.45, RSEG, t=0.06, out=0.05)
+    for i in range(0, RSEG, 2):
+        x, y, _ = around(R - 0.15, TAU * (i + 0.5) / RSEG, 0)
+        m.cyl("stone", x, y, 0, 0.22, 0.22, H - 0.4, seg=8)
+    m.cyl("metal", 0, 0, H - 0.45, R + 0.05, R + 0.05, 0.45, seg=RSEG * 2, smooth=False)
+    m.cyl("stone", 0, 0, 0, R + 0.1, R + 0.1, 0.15, seg=RSEG * 2, smooth=False)
+    # A canopy over the doors, lit underneath.
+    m.box("metal", -2.2, -R - 1.6, 2.7, 2.2, -R + 0.5, 2.9, bevel=0.03)
+    m.box("shopfront", -2.0, -R - 1.5, 2.66, 2.0, -R + 0.4, 2.7)
+    for x in (-1.9, 1.9):
+        m.cyl("metal", x, -R - 1.35, 0.15, 0.08, 0.08, 2.55, seg=8)
+    disk(m, "deck", R, H, RSEG * 2)
+
+
+def round_floor():
+    W, _, H = OFFICE
+    R = W / 2
+    m = Mod("round_floor")
+    ringwall(m, "spandrel", R, R, 0, 0.6, RSEG)
+    ringwall(m, "glass", R - 0.03, R - 0.03, 0.6, H, RSEG, cell=True)
+    mullions(m, "metal", R - 0.03, 0.0, H, RSEG, t=0.07, out=0.07)
+    m.cyl("metal", 0, 0, 0, R + 0.1, R + 0.1, 0.12, seg=RSEG * 2, smooth=False)
+    disk(m, "deck", R, H, RSEG * 2)
+
+
+def round_setback():
+    W, _, _ = OFFICE
+    R = W / 2
+    m = Mod("round_setback")
+    m.cyl("metal", 0, 0, 0, R + 0.15, R + 0.15, 0.5, seg=RSEG * 2, smooth=False)
+    ringwall(m, "railglass", R + 0.05, R + 0.05, 0.5, 1.4, RSEG * 2)
+    m.cyl("metal", 0, 0, 1.4, R + 0.1, R + 0.1, 0.06, seg=RSEG * 2, smooth=False)
+    for i in range(8):
+        x, y, _ = around(R * 0.84, TAU * (i + 0.5) / 8, 0)
+        m.cyl("stone", x, y, 0.5, 0.4, 0.35, 0.45, seg=8)
+        m.blob("leaf", (x, y, 1.25), (0.48, 0.48, 0.5), sub=1, jitter=0.06)
+
+
+def round_roof():
+    W, _, _ = OFFICE
+    R = W / 2
+    m = Mod("round_roof")
+    ringwall(m, "metal", R + 0.05, R + 0.05, 0, 1.1, RSEG * 2)
+    annulus(m, "metal", R - 0.2, R + 0.05, 1.1, RSEG * 2)
+    disk(m, "deck", R - 0.2, 0.15, RSEG * 2)
+    # A glass crown ringed with light, and a mast.
+    ringwall(m, "railglass", R * 0.82, R * 0.42, 1.1, 6.5, RSEG)
+    mullions(m, "metal", R * 0.62, 1.1, 6.5, RSEG, t=0.08, out=0.04, every=2)
+    for z, r in ((2.2, R * 0.76), (4.0, R * 0.62)):
+        m.cyl("led", 0, 0, z, r + 0.04, r + 0.04, 0.12, seg=RSEG * 2, smooth=False)
+    m.cyl("metal", 0, 0, 6.5, R * 0.44, R * 0.44, 0.3, seg=RSEG, smooth=False)
+    m.cyl("metal", 0, 0, 6.8, 0.25, 0.05, 9.0, seg=8)
+    m.anchor("beacon", (0, 0, 16.0))
+    return m
+
+
+# Grade 4: a twisting supertall (the app turns each storey a little) and a TV tower.
+
+TW_A, TW_C = 4.7, 1.5
+
+
+def lm3_ground():
+    S, H = LANDMARK
+    m = Mod("lm3_ground", ground=True)
+    oc = octagon(TW_A - 0.6, TW_C - 0.25)
+    prism_sides(m, "lobby", oc, 0.15, H - 0.4, cells=1.6)
+    for x, y in octagon(TW_A - 0.1, TW_C):
+        m.cyl("metal", x, y, 0, 0.22, 0.22, H - 0.3, seg=8)
+    prism(m, "metal", octagon(TW_A + 0.1, TW_C + 0.05), H - 0.4, H, top=True)
+    prism(m, "stone", octagon(TW_A + 0.5, TW_C + 0.2), 0, 0.15, top=True)
+    m.box("metal", -2.6, -TW_A - 2.0, 2.8, 2.6, -TW_A + 0.4, 3.0, bevel=0.04)
+    m.box("led", -2.5, -TW_A - 1.95, 2.76, 2.5, -TW_A + 0.3, 2.8)
+
+
+def lm3_floor():
+    _, H = LANDMARK
+    m = Mod("lm3_floor")
+    oc = octagon(TW_A, TW_C)
+    prism_sides(m, "spandrel", oc, 0.22, 0.6)
+    prism_sides(m, "glass", oc, 0.6, H, cells=1.55)
+    # White slab edges make the twist read from afar.
+    prism(m, "paint", octagon(TW_A + 0.22, TW_C + 0.09), 0, 0.22, top=False, bottom=False)
+    m.face("paint", [(x, y, 0.22) for x, y in octagon(TW_A + 0.22, TW_C + 0.09)], out=Z)
+    for x, y in oc:
+        m.box("metal", x - 0.06, y - 0.06, 0.22, x + 0.06, y + 0.06, H)
+    m.face("deck", [(x, y, H) for x, y in oc], out=Z)
+
+
+def lm3_crown():
+    m = Mod("lm3_crown")
+    prism(m, "paint", octagon(TW_A + 0.22, TW_C + 0.09), 0, 0.3, top=False)
+    prism_sides(m, "railglass", octagon(TW_A, TW_C), 0.3, 3.2)
+    m.face("deck", [(x, y, 0.5) for x, y in octagon(TW_A, TW_C)], out=Z)
+    # Fins rise from the corners and lean in to the spire.
+    for x, y in octagon(TW_A, TW_C):
+        m.strut("metal", (x, y, 0.3), (x * 0.25, y * 0.25, 11.0), 0.2)
+    for z, k in ((3.2, 0.79), (6.5, 0.55)):
+        prism(m, "led", octagon(TW_A * k + 0.05, TW_C * k), z, z + 0.18, top=False)
+    m.cyl("metal", 0, 0, 0.5, 1.4, 0.9, 11.0, seg=8, smooth=False)
+    m.cyl("metal", 0, 0, 11.5, 0.3, 0.04, 12.0, seg=8)
+    m.cyl("led", 0, 0, 13.0, 0.26, 0.26, 0.3, seg=8)
+    m.anchor("beacon", (0, 0, 23.8))
+    return m
+
+
+TV_R = 1.65
+
+
+def tvt_base():
+    S, H = LANDMARK
+    m = Mod("tvt_base", ground=True)
+    R = S / 2 - 0.3
+    ringwall(m, "lobby", R - 0.4, R - 0.4, 0.2, H - 0.5, 16)
+    mullions(m, "metal", R - 0.4, 0.2, H - 0.5, 16, t=0.08, out=0.06)
+    m.cyl("concrete", 0, 0, H - 0.5, R + 0.1, R + 0.1, 0.5, seg=32, smooth=False)
+    m.cyl("stone", 0, 0, 0, R + 0.4, R + 0.4, 0.2, seg=32, smooth=False)
+    disk(m, "deck", R, H, 32)
+    m.cyl("concrete", 0, 0, H, TV_R * 1.55, TV_R, 3.5, seg=16)
+    m.box("metal", -2.0, -R - 1.4, 2.6, 2.0, -R + 0.4, 2.8, bevel=0.03)
+    m.box("shopfront", -1.9, -R - 1.35, 2.56, 1.9, -R + 0.3, 2.6)
+
+
+def tvt_shaft():
+    _, H = LANDMARK
+    m = Mod("tvt_shaft")
+    m.cyl("concrete", 0, 0, 0, TV_R, TV_R, H, seg=16)
+    # Lift shafts glazed front and back: lit lines up the tower at night.
+    for s in (-1, 1):
+        y = s * (TV_R + 0.02)
+        m.face("window", [(-0.28, y, 0), (0.28, y, 0), (0.28, y, H), (-0.28, y, H)], out=(0, s, 0), cell=True)
+        m.box("metal", -0.36, y - 0.05, 0, -0.28, y + 0.05, H)
+        m.box("metal", 0.28, y - 0.05, 0, 0.36, y + 0.05, H)
+
+
+def tvt_pod():
+    """The observation pod, two storeys tall; the shaft runs through it."""
+    m = Mod("tvt_pod")
+    R = 5.6
+    ringwall(m, "concrete", TV_R + 0.1, R, 0.0, 2.4, 24)
+    annulus(m, "concrete", TV_R, TV_R + 0.1, 0.0, 24, up=False)
+    ringwall(m, "glass", R, R + 0.35, 2.4, 4.6, 24, cell=True)
+    mullions(m, "metal", R + 0.17, 2.4, 4.6, 24, t=0.08, out=0.06)
+    m.cyl("metal", 0, 0, 4.6, R + 0.55, R + 0.55, 0.4, seg=48, smooth=False)
+    ringwall(m, "window", R - 1.1, R - 1.1, 5.0, 6.4, 24, cell=True)
+    annulus(m, "metal", R - 1.1, R + 0.55, 5.0, 48)
+    ringwall(m, "railglass", R + 0.45, R + 0.45, 5.0, 5.9, 48)
+    ringwall(m, "concrete", R - 1.0, TV_R + 0.2, 6.4, 7.2, 24)
+    m.cyl("led", 0, 0, 4.2, R + 0.4, R + 0.4, 0.1, seg=48, smooth=False)
+
+
+def tvt_spire():
+    m = Mod("tvt_spire")
+    m.cyl("concrete", 0, 0, 0, TV_R, TV_R * 0.8, 3.0, seg=16)
+    m.cyl("metal", 0, 0, 3.0, 2.6, 2.6, 0.35, seg=24, smooth=False)
+    ringwall(m, "railglass", 2.5, 2.5, 3.35, 4.2, 24)
+    m.cyl("paint", 0, 0, 3.35, 0.8, 0.45, 10.0, seg=10)
+    for i in range(6):
+        z = 4.5 + i * 1.6
+        r = 0.8 - 0.35 * (z - 3.35) / 10.0 + 0.03
+        m.cyl("accent", 0, 0, z, r, r - 0.04, 0.8, seg=10, smooth=False)
+    m.cyl("metal", 0, 0, 13.35, 0.28, 0.06, 13.0, seg=8)
+    m.anchor("beacon", (0, 0, 26.5))
+    return m
+
+
+# ---- parks ------------------------------------------------------------------
+
+
+def fountain():
+    m = Mod("fountain", ground=True, ao=2.0)
+    m.cyl("stone", 0, 0, 0, 3.2, 3.2, 0.25, seg=16, smooth=False)
+    ringwall(m, "stone", 2.6, 2.6, 0.25, 0.75, 16)
+    ringwall(m, "stone", 2.3, 2.3, 0.75, 0.25, 16)
+    annulus(m, "stone", 2.3, 2.6, 0.75, 16)
+    disk(m, "water", 2.3, 0.6, 16)
+    m.cyl("stone", 0, 0, 0.6, 0.45, 0.3, 1.4, seg=10)
+    m.cyl("stone", 0, 0, 1.9, 0.3, 1.25, 0.35, seg=14, smooth=False)
+    disk(m, "water", 1.15, 2.22, 14)
+    m.cyl("stone", 0, 0, 2.25, 0.18, 0.12, 0.8, seg=8)
+    m.cyl("stone", 0, 0, 3.0, 0.15, 0.5, 0.2, seg=10, smooth=False)
+    m.cyl("water", 0, 0, 3.2, 0.12, 0.02, 1.2, seg=8)
+    for i in range(8):
+        a = TAU * i / 8
+        x, y, _ = around(0.95, a, 0)
+        m.strut("water", (x * 0.3, y * 0.3, 2.3), (x * 1.6, y * 1.6, 0.6), 0.07)
+
+
+def bandstand():
+    m = Mod("bandstand", ground=True, ao=2.0)
+    m.cyl("stone", 0, 0, 0, 3.2, 3.2, 0.6, seg=6, smooth=False)
+    m.cyl("wood", 0, 0, 0.6, 3.0, 3.0, 0.06, seg=6, smooth=False)
+    for i in range(6):
+        x, y, _ = around(2.75, TAU * i / 6, 0)
+        m.cyl("paint", x, y, 0.6, 0.1, 0.1, 2.7, seg=6)
+        x2, y2, _ = around(2.75, TAU * (i + 1) / 6, 0)
+        if i != 4:
+            m.strut("paint", (x, y, 1.45), (x2, y2, 1.45), 0.07)
+    m.cyl("roof", 0, 0, 3.3, 3.5, 0.3, 1.7, seg=6, smooth=False)
+    m.cyl("paint", 0, 0, 3.2, 3.5, 3.5, 0.12, seg=6, smooth=False)
+    m.cyl("gold", 0, 0, 5.0, 0.15, 0.02, 0.8, seg=6)
+
+
+def bench():
+    m = Mod("bench", ground=True, ao=0.6)
+    for x in (-0.75, 0.75):
+        m.box("metal", x - 0.04, -0.25, 0, x + 0.04, 0.25, 0.45)
+        m.box("metal", x - 0.04, 0.2, 0.45, x + 0.04, 0.26, 0.9)
+    for i in range(3):
+        y = -0.22 + i * 0.15
+        m.box("wood", -0.9, y, 0.45, 0.9, y + 0.12, 0.5)
+    for z in (0.6, 0.78):
+        m.box("wood", -0.9, 0.24, z, 0.9, 0.29, z + 0.1)
+
+
+def goal():
+    m = Mod("goal", ground=True, ao=1.0)
+    w, h, d = 7.3, 2.44, 1.8
+    for x in (-w / 2, w / 2):
+        m.box("paint", x - 0.06, -0.06, 0, x + 0.06, 0.06, h)
+        m.strut("paint", (x, 0, h), (x, d, 0), 0.05)
+        m.box("paint", x - 0.03, d - 0.03, 0, x + 0.03, d + 0.03, 0.06)
+    m.box("paint", -w / 2 - 0.06, -0.06, h, w / 2 + 0.06, 0.06, h + 0.12)
+    m.box("paint", -w / 2, d - 0.03, 0, w / 2, d + 0.03, 0.06)
+
+
+def bleachers():
+    """A small stand of seats beside the pitch, 14 m long."""
+    m = Mod("bleachers", ground=True, ao=2.0)
+    L = 14.0
+    for i in range(5):
+        y0 = i * 0.8
+        m.box("concrete", -L / 2, y0, 0, L / 2, y0 + 0.8, 0.45 * (i + 1))
+        m.box("accent", -L / 2 + 0.2, y0 + 0.1, 0.45 * (i + 1), L / 2 - 0.2, y0 + 0.4, 0.45 * (i + 1) + 0.25)
+    for x in (-L / 2 + 0.2, 0, L / 2 - 0.2):
+        m.box("metal", x - 0.08, 4.0, 0, x + 0.08, 4.16, 4.6)
+    m.box("roof", -L / 2 - 0.3, -0.6, 4.6, L / 2 + 0.3, 4.4, 4.75)
+
+
 # ---- tower crane ------------------------------------------------------------
 
 CR = "crane"
@@ -1733,6 +2393,33 @@ def build():
     rock("rock_a", (1.2, 1.0, 0.8))
     rock("rock_b", (0.9, 1.3, 1.1))
     bridge()
+    cottage_body_e()
+    cottage_roof_e()
+    cottage_body_f()
+    cottage_roof_f()
+    shop_ground_d()
+    shop_roof_d()
+    factory_ground()
+    factory_roof()
+    town_ground()
+    town_floor()
+    town_roof()
+    round_ground()
+    round_floor()
+    round_setback()
+    round_roof()
+    lm3_ground()
+    lm3_floor()
+    lm3_crown()
+    tvt_base()
+    tvt_shaft()
+    tvt_pod()
+    tvt_spire()
+    fountain()
+    bandstand()
+    bench()
+    goal()
+    bleachers()
 
 
 def preview(objs, path):

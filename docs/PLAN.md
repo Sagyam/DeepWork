@@ -466,8 +466,27 @@ TypeScript + three.js frontend, built with bun.
     (balconies, water tank), office tower (glass, setback, antenna),
     landmark (three tiers, gold trim and crown, spire, beacon). Empty lots
     of a block are staked out with tape; countryside trees grow with the tier.
+    Roomy layout (2026-11-03, the full city felt cramped): 16 m lots, 12 m
+    streets with 2 m pavements, zebra crossings, kerbside lamps and street
+    trees. Blocks fill grid cells by distance in metres (`cells()`), so the
+    city grows as a disc, and every fourth cell from the third is a park
+    block, shown once the city has grown past it: plaza with a fountain,
+    park with a pond, paths and a bandstand, or a football ground with
+    stands and floodlights. Each grade has styles picked from the seed
+    (`STYLES`, drawn after the older randomness so sizes did not change):
+    cottage classic / modern house with garage / A-frame cabin; shop classic
+    / diner / brick factory with sawtooth roof and smokestack; apartment
+    classic / brownstone townhouse row; office classic / round glass tower;
+    landmark art deco / glass / twisting supertall (each storey turned, a
+    quarter turn in all) / TV tower with an observation pod. Buildings stand
+    back from the street by type (`yard`) with what the type needs behind:
+    hedged gardens, drives and parked cars, shoppers' and residents' parking,
+    a factory loading yard, office plazas with planters. A yard is baked
+    into vertex colours and drawn with one material (`Parts` tint), which
+    kept draw calls below the old layout's (~3.3k vs ~3.7k a frame for the
+    120-plot metropolis, incl. shadows; triangles ~3.6M vs ~2.7M).
   - Kit (`ui/blender/city_kit.py`, run with `bun run kit`; made with
-    Blender 5.2): writes `ui/public/city-kit.glb` (74 pieces, ~3.4 MB). Modular
+    Blender 5.2): writes `ui/public/city-kit.glb` (101 pieces, ~4.8 MB). Modular
     pieces per kind: ground storey, floor storeys, roof. Styles: four
     cottages (gable, hip, front gable with porch, bay window under a gambrel
     with dormers); shops (two shopfronts with awnings, a café with arched
