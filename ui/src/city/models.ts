@@ -14,6 +14,8 @@ export const ACCENTS = [0xb5483a, 0x3a6fb5, 0x3a9a6a, 0xc9902a, 0x7a4ab5, 0x2f3a
 /** Cottage roofs, by accent: terracotta, slate, moss, clay, plum, charcoal. */
 const ROOFS = [0xa8503c, 0x56606e, 0x5e6e4a, 0xb8764a, 0x6e4a5a, 0x3e4044];
 const LEAVES = [0x4f7a3a, 0x5d8a42, 0x3f6a34, 0x6a8f3e, 0x48703f];
+const BLOSSOMS = [0xf2a5c0, 0xf7c6d6, 0xe88aa8, 0xf5e0ea];
+const BRICKS = [0x8a4e3c, 0x9a5a44, 0x7a4636, 0xa0664a, 0x6e3e30, 0x94604c];
 
 /** Things the scene animates on a model. Positions are model-local. */
 export interface ModelInfo {
@@ -25,6 +27,8 @@ export interface ModelInfo {
   night: THREE.MeshStandardMaterial[];
   /** The concrete colour for debris when it collapses. */
   debris: number;
+  /** Beacons on the crane's jib, which turns (jib-local). */
+  jibBeacons?: THREE.Vector3[];
 }
 
 const shared = new Map<string, THREE.MeshStandardMaterial>();
@@ -107,7 +111,7 @@ const ROLES: Record<string, RoleLook> = {
   canvas: { color: 0xf2ede0, rough: 0.9, double: true },
   board: { color: 0x1d2024, rough: 0.6 },
   shopfront: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xffd9a0, night: 0.9 },
-  lobby: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xfff0d8, night: 1 },
+  lobby: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xffe2b8, night: 0.5 },
   crownlight: { color: 0x8a6a3a, rough: 0.3, metal: 0.3, emissive: 0xffc870, night: 1.6 },
   door: { color: 0x4a2f20, rough: 0.6 },
   metal: { color: 0x8c9298, rough: 0.4, metal: 0.6 },
@@ -118,6 +122,12 @@ const ROLES: Record<string, RoleLook> = {
   bark: { color: 0x5a4030, rough: 1 },
   paint: { color: 0xf0e8d0, rough: 0.7 },
   railglass: { color: 0x5a7080, rough: 0.15, metal: 0.4 },
+  crane: { color: 0xe8b020, rough: 0.5, metal: 0.3 },
+  concrete: { color: 0x9a9890, rough: 0.95 },
+  grate: { color: 0x4a4c50, rough: 0.6, metal: 0.5 },
+  birch: { color: 0xe8e4dc, rough: 0.9 },
+  carglass: { color: 0x1a2028, rough: 0.1, metal: 0.6 },
+  led: { color: 0x9ab0c8, rough: 0.3, metal: 0.2, emissive: 0xd8ecff, night: 2 },
 };
 
 const kitShared = new Map<string, THREE.MeshStandardMaterial>();
@@ -183,6 +193,7 @@ function looks(s: Spec, info: ModelInfo): Look {
     sign: { color: ACCENTS[s.accent], emissive: new THREE.Color(ACCENTS[s.accent]).lerp(new THREE.Color(0xffffff), 0.35).getHex(), night: 1.8 },
     spandrel: { color: new THREE.Color(office ? GLASS[s.wall] : 0x4a4e58).multiplyScalar(0.45).getHex(), rough: 0.3, metal: 0.5 },
     leaf: { color: LEAVES[s.seed % LEAVES.length], rough: 0.9 },
+    brick: { color: BRICKS[s.wall % BRICKS.length], rough: 0.9 },
   };
   const glass = office ? GLASS[s.wall] : s.kind === "landmark" ? 0xb4c0cc : 0xa8bccc;
   const seen = new Set<THREE.MeshStandardMaterial>();
@@ -216,7 +227,7 @@ function put(p: Parts, name: string, y: number, sx: number, sz: number, look: Lo
  */
 function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
   const r = rng(s.seed * 13 + 7);
-  const variant = (n: number) => "abc"[Math.floor(r() * n)];
+  const variant = (n: number) => "abcd"[Math.floor(r() * n)];
   const [W0, D0] = NOMINAL[s.kind];
   const sx = s.w / W0;
   const sz = s.d / D0;
@@ -230,22 +241,25 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
   };
   switch (s.kind) {
     case "cottage": {
-      const v = variant(3);
+      const v = variant(4);
       if (floors > 0) place(`cottage_body_${v}`, 0);
       if (roof) place(`cottage_roof_${v}`, fh);
       break;
     }
     case "shop":
     case "apartment": {
-      const pre = s.kind === "shop" ? "shop" : "apt";
-      const fv = variant(2);
+      const shop = s.kind === "shop";
+      const pre = shop ? "shop" : "apt";
+      const fv = variant(3);
       const rv = variant(2);
-      for (let f = 0; f < floors; f++) place(f === 0 ? `${pre}_ground${s.kind === "shop" ? `_${fv}` : ""}` : `${pre}_floor_${fv}`, f * fh);
-      if (roof) place(`${pre}_roof_${rv}`, floors * fh);
+      // Brick walk-ups (apartment c) have their own ground storey and roof.
+      const ground = shop ? `shop_ground_${fv}` : fv === "c" ? "apt_ground_c" : "apt_ground";
+      for (let f = 0; f < floors; f++) place(f === 0 ? ground : `${pre}_floor_${fv}`, f * fh);
+      if (roof) place(!shop && fv === "c" ? "apt_roof_c" : `${pre}_roof_${rv}`, floors * fh);
       break;
     }
     case "office": {
-      const fv = variant(2);
+      const fv = variant(3);
       const rv = variant(2);
       const lower = Math.max(1, Math.round(s.floors * 0.68));
       for (let f = 0; f < floors; f++) {
@@ -259,16 +273,18 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
       break;
     }
     case "landmark": {
+      // Art deco stone and gold, or a modern glass tower with sky gardens.
+      const pre = r() < 0.5 ? "lm" : "lm2";
       const e1 = Math.round(s.floors * 0.5);
       const e2 = Math.round(s.floors * 0.8);
       let tier = 1;
       for (let f = 0; f < floors; f++) {
         const t = f < e1 ? 1 : f < e2 ? 2 : 3;
-        if (t !== tier) place(`lm_ledge_${tier}`, f * fh);
+        if (t !== tier) place(`${pre}_ledge_${tier}`, f * fh);
         tier = t;
-        place(f === 0 ? "lm_ground" : `lm_floor_${t}`, f * fh);
+        place(f === 0 ? `${pre}_ground` : `${pre}_floor_${t}`, f * fh);
       }
-      if (roof) place("lm_crown", floors * fh);
+      if (roof) place(`${pre}_crown`, floors * fh);
       // Landmark tiers are modelled at their own sizes; k is only the top's.
       k = [1, 0.78, 0.56][tier - 1];
       break;
@@ -292,16 +308,21 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
   }
 }
 
-const TREES = ["tree_a", "tree_a", "tree_b", "tree_c", "tree_d", "tree_d", "tree_b"];
+const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
 
 export function tree(p: Parts, x: number, z: number, s: number, seed: number) {
   const r = rng(seed);
   const name = TREES[Math.floor(r() * TREES.length)];
   const leaf = kitMat({ color: LEAVES[Math.floor(r() * LEAVES.length)], rough: 0.9 }, 0);
-  const bark = kitMat(ROLES.bark, 0);
+  const roles: Record<string, THREE.MeshStandardMaterial> = {
+    leaf,
+    blossom: kitMat({ color: BLOSSOMS[Math.floor(r() * BLOSSOMS.length)], rough: 0.9 }, 0),
+    birch: kitMat(ROLES.birch, 0),
+    bark: kitMat(ROLES.bark, 0),
+  };
   const scale = new THREE.Vector3(s, s * (0.85 + r() * 0.3), s);
   const ry = r() * Math.PI * 2;
-  for (const { role, geo } of piece(name).parts) p.add(role === "leaf" ? leaf : bark, geo, x, 0, z, 0, ry, 0, scale);
+  for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, 0, z, 0, ry, 0, scale);
 }
 
 export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
@@ -428,38 +449,49 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   ghost.add(edges);
   g.add(ghost);
 
-  // Tower crane.
-  const yellow = mat(0xe8b020, { metalness: 0.3, roughness: 0.5 });
+  // Tower crane from the kit: base and mast sections, then a jib that turns
+  // with its cab, counter-jib, pendant ties, trolley, hook and a load of steel.
+  const crane = (p: Parts, name: string, x: number, y: number, z: number) => {
+    for (const { role, geo } of piece(name).parts) p.add(kitMat(ROLES[role] ?? ROLES.metal, 0), geo, x, y, z);
+    return piece(name).anchors;
+  };
   const cp = new Parts();
-  const mastH = Math.max(s.height + 8, 18);
-  const mx = s.w / 2 + 2.6;
-  const mz = -s.d / 2 - 1.5;
-  for (const [cx, cz] of [[-0.6, -0.6], [0.6, -0.6], [-0.6, 0.6], [0.6, 0.6]]) cp.box(yellow, 0.16, mastH, 0.16, mx + cx, 0, mz + cz);
-  for (let y = 0; y < mastH; y += 2.4) {
-    cp.box(yellow, 1.3, 0.1, 0.1, mx, y, mz - 0.6, 0, 0, 0.9);
-    cp.box(yellow, 1.3, 0.1, 0.1, mx, y, mz + 0.6, 0, 0, -0.9);
-    cp.box(yellow, 0.1, 0.1, 1.3, mx - 0.6, y, mz, 0, 0.9);
-    cp.box(yellow, 0.1, 0.1, 1.3, mx + 0.6, y, mz, 0, -0.9);
-  }
-  cp.box(mat(0x4d4f55), 1.6, 0.6, 1.6, mx, 0, mz);
+  const mx = s.w / 2 + 2.8;
+  const mz = -s.d / 2 - 1.8;
+  const sections = Math.ceil((Math.max(s.height + 8, 18) - 0.6) / 3);
+  const mastH = 0.6 + sections * 3;
+  crane(cp, "crane_base", mx, 0, mz);
+  for (let i = 0; i < sections; i++) crane(cp, "crane_mast", mx, 0.6 + i * 3, mz);
   cp.into(g);
   const jib = new THREE.Group();
   jib.position.set(mx, mastH, mz);
   const jp = new Parts();
-  const reach = Math.max(16, s.w * 2.2);
-  jp.box(yellow, reach, 0.7, 0.8, -reach / 2 + 3, 0, 0);
-  jp.box(yellow, 7, 0.6, 0.8, 5.5, 0, 0);
-  jp.box(mat(0x55585e, { roughness: 0.9 }), 2.2, 1.6, 1.4, 8, -0.8, 0);
-  jp.box(mat(0xf0f0f0), 1.4, 1.3, 1.3, 0.2, -1.4, 0.9);
-  jp.box(yellow, 0.3, 4, 0.3, 0, 0.7, 0);
-  // Hook and a load of steel hanging over the site.
+  const slew = crane(jp, "crane_slew", 0, 0, 0);
+  const n = Math.max(4, Math.round((Math.max(16, s.w * 2.2) - 2) / 3));
+  for (let i = 0; i < n; i++) crane(jp, "crane_jib", -1 - i * 3, 0, 0);
+  const tipX = -1 - n * 3;
+  const tip = crane(jp, "crane_jib_tip", tipX, 0, 0);
+  const end = crane(jp, "crane_counter", 0, 0, 0).end;
+  const reach = -tipX;
+  const steel = mat(0x3a3c40, { metalness: 0.6, roughness: 0.4 });
+  const tie = (a: THREE.Vector3, b: THREE.Vector3, t = 0.06) => {
+    const d = b.clone().sub(a);
+    const mid = a.clone().add(b).multiplyScalar(0.5);
+    jp.box(steel, d.length(), t, t, mid.x, mid.y - t / 2, mid.z, 0, 0, Math.atan2(d.y, d.x));
+  };
+  tie(slew.apex, new THREE.Vector3(-reach * 0.62, 1.25, 0));
+  tie(slew.apex, new THREE.Vector3(-reach * 0.3, 1.25, 0));
+  tie(slew.apex, end);
   const hookX = -reach * 0.55;
-  const drop = Math.max(4, mastH - builtH - 4);
-  jp.box(mat(0x222222), 0.05, drop, 0.05, hookX, -drop, 0);
-  jp.box(mat(0x6a6e75, { metalness: 0.6 }), 3.2, 0.4, 0.8, hookX, -drop - 0.5, 0);
+  const drop = Math.max(4, mastH - builtH - 6);
+  crane(jp, "crane_trolley", hookX, 0, 0);
+  const rope = mat(0x222222);
+  for (const dx of [-0.12, 0.12]) jp.box(rope, 0.04, drop - 0.45, 0.04, hookX + dx, -drop, 0);
+  crane(jp, "crane_hook", hookX, -drop, 0);
+  crane(jp, "crane_load", hookX, -drop, 0);
   jp.into(jib);
   g.add(jib);
-  info.beacons.push(new THREE.Vector3(mx, mastH + 4.8, mz), new THREE.Vector3(mx - reach + 3, mastH + 0.4, mz));
+  info.jibBeacons = [slew.beacon.clone(), tip.beacon.clone().add(new THREE.Vector3(tipX, 0, 0))];
   if (s.surrendering) info.emitters.push({ pos: new THREE.Vector3(0, builtH, 0), kind: "smoke", rate: 4 });
   else info.emitters.push({ pos: new THREE.Vector3(s.w * 0.3, builtH + 0.4, 0), kind: "smoke", rate: 0.6 });
 

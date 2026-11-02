@@ -194,3 +194,46 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
 
   return { blocks, buildings, site, emptyLots, trees, bounds, tier: w.tier };
 }
+
+/** A closed path that can be sampled by distance travelled. */
+export interface Loop {
+  length: number;
+  /** Position and heading (rotation about y that turns +z to the direction of travel) at distance d. */
+  at(d: number): { x: number; z: number; heading: number };
+}
+
+/**
+ * A loop around a block centre, `hx` / `hz` out from it, with rounded
+ * corners. Travel keeps the block on the right (right-hand traffic: a car
+ * in the lane next to its block drives with the kerb on its right).
+ */
+export function blockLoop(cx: number, cz: number, hx: number, hz: number, r: number): Loop {
+  const pts: [number, number][] = [];
+  const arc = (ox: number, oz: number, a0: number) => {
+    for (let i = 0; i <= 6; i++) {
+      const a = a0 + (Math.PI / 2) * (i / 6);
+      pts.push([ox + r * Math.cos(a), oz + r * Math.sin(a)]);
+    }
+  };
+  arc(cx + hx - r, cz - hz + r, -Math.PI / 2);
+  arc(cx + hx - r, cz + hz - r, 0);
+  arc(cx - hx + r, cz + hz - r, Math.PI / 2);
+  arc(cx - hx + r, cz - hz + r, Math.PI);
+  pts.push(pts[0]);
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+  const length = cum[cum.length - 1];
+  return {
+    length,
+    at(d: number) {
+      const t = ((d % length) + length) % length;
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < t) i++;
+      const seg = cum[i] - cum[i - 1] || 1;
+      const k = (t - cum[i - 1]) / seg;
+      const [x0, z0] = pts[i - 1];
+      const [x1, z1] = pts[i];
+      return { x: x0 + (x1 - x0) * k, z: z0 + (z1 - z0) * k, heading: Math.atan2(x1 - x0, z1 - z0) };
+    },
+  };
+}

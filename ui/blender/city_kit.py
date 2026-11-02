@@ -49,7 +49,12 @@ PREVIEW_COLORS = {
     "door": (0.28, 0.16, 0.09), "metal": (0.5, 0.52, 0.55), "dark": (0.16, 0.15, 0.14),
     "spandrel": (0.1, 0.12, 0.15), "gold": (0.85, 0.6, 0.2), "brick": (0.48, 0.22, 0.15),
     "wood": (0.42, 0.27, 0.17), "leaf": (0.22, 0.42, 0.16), "bark": (0.28, 0.18, 0.11),
-    "paint": (0.95, 0.95, 0.9), "railglass": (0.28, 0.36, 0.42),
+    "paint": (0.95, 0.95, 0.9), "railglass": (0.28, 0.36, 0.42), "crane": (0.9, 0.65, 0.08),
+    "concrete": (0.6, 0.6, 0.58), "grate": (0.3, 0.31, 0.32), "birch": (0.88, 0.86, 0.82),
+    "blossom": (0.95, 0.65, 0.75), "led": (0.8, 0.9, 1.0), "body": (0.7, 0.1, 0.1),
+    "carglass": (0.08, 0.1, 0.13), "tyre": (0.05, 0.05, 0.05), "chrome": (0.8, 0.8, 0.82),
+    "headlight": (1, 0.95, 0.8), "taillight": (0.8, 0.05, 0.05), "taxisign": (1, 0.85, 0.2),
+    "skin": (0.8, 0.6, 0.45), "shirt": (0.2, 0.4, 0.7), "pants": (0.15, 0.15, 0.2), "hair": (0.15, 0.1, 0.05),
 }
 CELL_ROLES = {"window", "glass"}
 
@@ -163,10 +168,23 @@ class Mod:
                         e.smooth = False
         return faces
 
-    def cyl(self, role, x, y, z0, r0, r1, h, seg=10, smooth=True, M=None):
+    def cyl(self, role, x, y, z0, r0, r1, h, seg=10, smooth=True, M=None, jitter=0.0):
         M = (M or Matrix()) @ Matrix.Translation((x, y, z0 + h / 2))
         verts = bmesh.ops.create_cone(self.bm, cap_ends=True, cap_tris=False, segments=seg, radius1=r0, radius2=r1, depth=h, matrix=M)["verts"]
-        return self._faces_of(verts, role, smooth)
+        for v in verts if jitter else ():
+            v.co += Vector((self.r.uniform(-1, 1), self.r.uniform(-1, 1), self.r.uniform(-0.6, 0.6))) * jitter
+        faces = self._faces_of(verts, role, smooth)
+        for f in faces:
+            f.normal_update()
+        return faces
+
+    def strut(self, role, a, b, t=0.08):
+        """A square bar from a to b."""
+        a, b = Vector(a), Vector(b)
+        d = (b - a).normalized()
+        u = d.orthogonal().normalized()
+        w = d.cross(u)
+        return self.hexa(role, lambda i, j, k: (a, b)[i] + u * ((j - 0.5) * t) + w * ((k - 0.5) * t))
 
     def blob(self, role, c, s, sub=1, jitter=0.0):
         M = Matrix.Translation(c) @ Matrix.Diagonal((*s, 1))
@@ -183,7 +201,7 @@ class Side:
     """One side of a W x D footprint: u runs left to right seen from outside,
     v up from z0, k outwards (negative is into the wall)."""
 
-    def __init__(self, m, side, W, D, z0=0.0):
+    def __init__(self, m, side, W, D, z0=0.0, at=(0.0, 0.0)):
         self.m = m
         o, self.u, self.n, self.L = {
             "n": (Vector((-W / 2, -D / 2, 0)), Vector((1, 0, 0)), Vector((0, -1, 0)), W),
@@ -191,7 +209,7 @@ class Side:
             "s": (Vector((W / 2, D / 2, 0)), Vector((-1, 0, 0)), Vector((0, 1, 0)), W),
             "w": (Vector((-W / 2, D / 2, 0)), Vector((0, -1, 0)), Vector((-1, 0, 0)), D),
         }[side]
-        self.o = o + Z * z0
+        self.o = o + Z * z0 + Vector((at[0], at[1], 0))
 
     def P(self, u, v, k=0.0):
         return self.o + self.u * u + Z * v + self.n * k
@@ -232,12 +250,12 @@ def spaced(L, n, w, margin=0.0):
     return [(margin + step * (i + 0.5) - w / 2, margin + step * (i + 0.5) + w / 2) for i in range(n)]
 
 
-def punched(m, W, D, z0, H, layout, role="wall", depth=0.16, reveal="wall", sill="trim", lintel="trim", pane="window"):
+def punched(m, W, D, z0, H, layout, role="wall", depth=0.16, reveal="wall", sill="trim", lintel="trim", pane="window", at=(0.0, 0.0)):
     """Four walls with punched openings: layout maps side -> holes
     (u0, u1, v0, v1[, pane role])."""
     sides = {}
     for side, holes in layout.items():
-        sd = sides[side] = Side(m, side, W, D, z0)
+        sd = sides[side] = Side(m, side, W, D, z0, at)
         sd.wall(role, 0, H, holes)
         for h in holes:
             p = h[4] if len(h) > 4 else pane
@@ -594,9 +612,9 @@ def shop_roof(v):
 # ---- apartments -------------------------------------------------------------
 
 
-def apt_ground():
+def apt_ground(v=None, wall="wall"):
     W, D, H = APT
-    m = Mod("apt_ground", ground=True)
+    m = Mod("apt_ground" if v is None else f"apt_ground_{v}", ground=True)
     dc = W / 2
     door = (dc - 0.85, dc + 0.85, 0, 2.45, "door")
     win = lambda c: (c - 0.55, c + 0.55, 1.0, 2.4)  # noqa: E731
@@ -604,7 +622,7 @@ def apt_ground():
     sides = punched(
         m, W, D, 0, H,
         {"n": front, "e": [win(a + 0.55) for a, _ in spaced(D, 3, 1.1)], "s": [win(a + 0.55) for a, _ in spaced(W, 4, 1.1)], "w": [win(a + 0.55) for a, _ in spaced(D, 3, 1.1)]},
-        depth=0.18, lintel=None,
+        role=wall, depth=0.18, lintel=None,
     )
     n = sides["n"]
     # Recessed entrance: deeper reveal in stone, glass door with a transom.
@@ -672,13 +690,13 @@ def stair_house(m, x, y, z, w=2.4, d=2.6, h=2.6):
     sd.quad("door", w / 2 - 0.45, w / 2 + 0.45, 0, 2.05, 0.01)
 
 
-def apt_roof(v):
+def apt_roof(v, wall="wall"):
     W, D, _ = APT
     m = Mod(f"apt_roof_{v}")
-    ring(m, W, D, 0, 0.9, 0.22, "wall")
+    ring(m, W, D, 0, 0.9, 0.22, wall)
     ring(m, W, D, 0.9, 1.02, 0.32, "trim", out=0.05, bevel=0.02)
     roof_deck(m, W, D, 0.12)
-    if v == "a":
+    if v in "ac":
         x, y = W * 0.2, D * 0.12
         for lx, ly in ((-0.7, -0.7), (0.7, -0.7), (-0.7, 0.7), (0.7, 0.7)):
             m.box("dark", x + lx - 0.07, y + ly - 0.07, 0.12, x + lx + 0.07, y + ly + 0.07, 1.4)
@@ -941,42 +959,522 @@ def lm_crown():
     m.anchor("beacon", (0, 0, 23.7))
 
 
+# ---- more styles --------------------------------------------------------------
+
+
+def cottage_body_d():
+    """Stone-based cottage with a bay window."""
+    W, D, H = COTTAGE
+    m = Mod("cottage_body_d", ground=True)
+    m.box("stone", -W / 2 - 0.06, -D / 2 - 0.06, 0, W / 2 + 0.06, D / 2 + 0.06, 0.5, skip="b", bevel=0.02)
+    win = lambda c, w=1.0: (c - w / 2, c + w / 2, 1.05, 2.4)  # noqa: E731
+    dc = W * 0.76
+    front = [(dc - 0.5, dc + 0.5, 0.5, 2.6, "door")]
+    side = [win(D * 0.3), win(D * 0.7)]
+    back = [win(W * 0.2), win(W * 0.5), win(W * 0.8)]
+    sides = punched(m, W, D, 0, H, {"n": front, "e": side, "s": back, "w": side}, depth=0.14, reveal="frame", lintel=None)
+    # The bay: three glazed faces on a stone base, its own little roof.
+    bx, bw, bd = -W / 2 + W * 0.32, 2.3, 0.8
+    at = (bx, -D / 2 - bd / 2)
+    m.box("stone", bx - bw / 2 - 0.05, -D / 2 - bd - 0.05, 0, bx + bw / 2 + 0.05, -D / 2, 0.55, skip="bs", bevel=0.02)
+    punched(m, bw, bd, 0.55, 2.2, {"n": [(0.2, bw - 0.2, 0.25, 1.9)], "e": [(0.15, bd - 0.15, 0.25, 1.9)], "w": [(0.15, bd - 0.15, 0.25, 1.9)]},
+            depth=0.08, reveal="frame", lintel=None, sill=None, at=at)
+    m.box("trim", bx - bw / 2 - 0.12, -D / 2 - bd - 0.12, 2.75, bx + bw / 2 + 0.12, -D / 2, 2.87, bevel=0.02)
+    m.hexa("roof", lambda a, b, c: (bx + (a - 0.5) * (bw + 0.2 - c * 0.5 * b * 0), (-D / 2 - bd - 0.15, -D / 2)[b], 2.87 + c * 0.12 + b * 0.35))
+    n = sides["n"]
+    n.box("stone", dc - 0.75, dc + 0.75, 0, 0.25, 0, 0.95, skip="n")
+    n.box("stone", dc - 0.75, dc + 0.75, 0.25, 0.5, 0, 0.5, skip="n")
+    n.box("trim", dc - 0.85, dc + 0.85, 2.82, 2.94, 0, 0.75, skip="n", bevel=0.02)
+    m.cyl("shopfront", 0, 0, 0, 0.09, 0.09, 0.25, seg=8, M=Matrix.Translation(n.P(dc + 0.75, 2.1, 0.12)))
+    band(m, W, D, H - 0.34, H - 0.12, 0.06, "trim", bevel=0.0)
+    cap(m, W, D, H)
+
+
+def cottage_roof_d():
+    """A gambrel roof with two dormers on the front."""
+    W, D, _ = COTTAGE
+    m = Mod("cottage_roof_d")
+    rise, oe, og, t = 2.7, 0.35, 0.3, 0.16
+    hd = D / 2
+    ky, kz = 0.45 * hd, 0.72 * rise
+    s1 = kz / (hd - ky)
+    for s in (-1, 1):
+        for (y0, z0), (y1, z1) in (((hd + oe, -oe * s1), (ky, kz)), ((ky, kz), (0, rise))):
+            Y0, Y1 = s * y0, s * y1
+            n = Vector((0, -(z1 - z0), Y1 - Y0)).normalized()
+            if n.z < 0:
+                n = -n
+
+            def corner(a, b, c, Y0=Y0, Y1=Y1, z0=z0, z1=z1, n=n):
+                p = Vector(((-W / 2 - og, W / 2 + og)[a], (Y0, Y1)[b], (z0, z1)[b]))
+                return p - n * t if c == 0 else p
+
+            m.hexa("roof", corner)
+    for x in (-W / 2, W / 2):
+        m.face("wall", [(x, -hd, 0), (x, -ky, kz), (x, 0, rise - 0.1), (x, ky, kz), (x, hd, 0)], out=(x, 0, 0))
+    m.box("trim", -W / 2 - og - 0.02, -0.16, rise - 0.05, W / 2 + og + 0.02, 0.16, rise + 0.1)
+    for x in (-W * 0.22, W * 0.22):
+        yf = -hd * 0.78
+        m.box("wall", x - 0.6, yf, 0.2, x + 0.6, -hd * 0.25, 1.55, skip="b")
+        m.box("frame", x - 0.42, yf - 0.05, 0.62, x + 0.42, yf, 1.4)
+        m.face("window", [(x - 0.32, yf - 0.06, 0.72), (x + 0.32, yf - 0.06, 0.72), (x + 0.32, yf - 0.06, 1.3), (x - 0.32, yf - 0.06, 1.3)], out=(0, -1, 0), cell=True)
+        m.face("wall", [(x - 0.6, yf, 1.55), (x + 0.6, yf, 1.55), (x, yf, 1.95)], out=(0, -1, 0))
+        for sx in (-1, 1):
+            m.hexa("roof", lambda a, b, c, sx=sx, x=x, yf=yf: (x + sx * 0.78 * (1 - b), (yf - 0.18, -hd * 0.2)[a], 1.45 + 0.55 * b - 0.1 * (1 - c)))
+    chimney(m, W * 0.3, hd * 0.25, 3.1)
+
+
+def fanlight(m, sd, u0, u1, v, ry):
+    c, rx = (u0 + u1) / 2, (u1 - u0) / 2
+    for role, grow, k in (("trim", 0.12, 0.02), ("shopfront", 0.0, 0.04)):
+        pts = [sd.P(c + (rx + grow) * math.cos(math.pi * i / 10), v + (ry + grow) * math.sin(math.pi * i / 10), k) for i in range(11)]
+        m.face(role, pts, out=sd.n)
+
+
+def umbrella_table(m, sd, u, k, role):
+    p = sd.P(u, 0, k)
+    m.cyl("metal", p.x, p.y, 0, 0.04, 0.04, 0.72, seg=6)
+    m.cyl("trim", p.x, p.y, 0.72, 0.42, 0.42, 0.04, seg=12, smooth=False)
+    m.cyl("metal", p.x, p.y, 0.76, 0.03, 0.03, 1.5, seg=6)
+    m.cyl(role, p.x, p.y, 2.0, 1.05, 0.05, 0.42, seg=8, smooth=False)
+    for du in (-0.6, 0.6):
+        q = sd.P(u + du, 0, k)
+        m.box("wood", q.x - 0.18, q.y - 0.18, 0.42, q.x + 0.18, q.y + 0.18, 0.47)
+        for lx in (-0.14, 0.14):
+            m.box("metal", q.x + lx - 0.02, q.y - 0.02, 0, q.x + lx + 0.02, q.y + 0.02, 0.42)
+
+
+def shop_ground_c():
+    """A corner café: arched windows and tables out front."""
+    W, D, H = SHOP
+    m = Mod("shop_ground_c", ground=True)
+    n = Side(m, "n", W, D)
+    dc = W / 2
+    holes = [(0.7, dc - 1.0, 0.45, 2.2, "shopfront"), (dc - 0.6, dc + 0.6, 0, 2.2, "door"), (dc + 1.0, W - 0.7, 0.45, 2.2, "shopfront")]
+    n.wall("wall", 0, H, holes)
+    for h in holes:
+        n.opening(h, 0.25, pane=h[4], reveal="trim")
+        fanlight(m, n, h[0], h[1], 2.2, 0.5)
+        if h[4] == "shopfront":
+            n.box("wood", h[0], h[1], 0.75, 0.8, -0.25, -0.2, skip="n")
+    n.box("board", 0.5, W - 0.5, 2.92, 3.32, 0, 0.08, skip="n")
+    lettering(m, n, W / 2, 3.12, 0.08, 5, px=0.065)
+    for u0, u1 in ((0, 0.4), (W - 0.4, W)):
+        n.box("trim", u0, u1, 0, H, 0, 0.14, skip="n", bevel=0.02)
+    for i, u in enumerate((W * 0.16, W * 0.35, W * 0.65, W * 0.84)):
+        umbrella_table(m, n, u, 1.25, "accent" if i % 2 == 0 else "canvas")
+    for u in (0.35, W - 0.35):
+        p = n.P(u, 0, 0.45)
+        m.box("wood", p.x - 0.3, p.y - 0.3, 0, p.x + 0.3, p.y + 0.3, 0.5, bevel=0.02)
+        m.blob("leaf", (p.x, p.y, 0.85), (0.38, 0.38, 0.45), sub=2, jitter=0.05)
+    punched(
+        m, W, D, 0, H,
+        {"e": [(D * 0.6 - 0.5, D * 0.6 + 0.5, 1.4, 2.5)], "s": [(W * 0.3 - 0.5, W * 0.3 + 0.5, 0, 2.2, "door"), (W * 0.7 - 0.6, W * 0.7 + 0.6, 1.2, 2.5)], "w": [(D * 0.4 - 0.5, D * 0.4 + 0.5, 1.4, 2.5)]},
+        depth=0.15,
+    )
+    m.box("stone", -W / 2 - 0.04, -D / 2 + 0.01, 0, W / 2 + 0.04, D / 2 + 0.04, 0.35, skip="bn")
+    cap(m, W, D, H)
+
+
+def shop_floor_c():
+    """Upper storey with an oriel window."""
+    W, D, H = SHOP
+    m = Mod("shop_floor_c")
+    front = [(a, b, 0.75, 2.65) for a, b in ((W * 0.13 - 0.55, W * 0.13 + 0.55), (W * 0.87 - 0.55, W * 0.87 + 0.55))]
+    side = [(a, b, 0.8, 2.6) for a, b in spaced(D, 2, 1.1)]
+    back = [(a, b, 0.8, 2.6) for a, b in spaced(W, 3, 1.0)]
+    punched(m, W, D, 0, H, {"n": front, "e": side, "s": back, "w": side}, depth=0.2)
+    band(m, W, D, 0, 0.2, 0.08)
+    bw, bd = 3.0, 0.75
+    at = (0, -D / 2 - bd / 2)
+    punched(m, bw, bd, 0.45, 2.5, {"n": [(0.3, 1.4, 0.3, 2.1), (1.6, 2.7, 0.3, 2.1)], "e": [(0.15, bd - 0.15, 0.3, 2.1)], "w": [(0.15, bd - 0.15, 0.3, 2.1)]},
+            depth=0.1, sill=None, lintel=None, at=at)
+    m.hexa("trim", lambda a, b, c: ((a - 0.5) * (bw + 0.1 - (1 - c) * 0.6), (-D / 2 - bd - 0.05 + (1 - c) * 0.45, -D / 2)[b], 0.15 + c * 0.3))
+    m.box("trim", -bw / 2 - 0.12, -D / 2 - bd - 0.12, 2.95, bw / 2 + 0.12, -D / 2, 3.1, bevel=0.03)
+    cap(m, W, D, H)
+
+
+def apt_floor_c():
+    """Brick walk-up storey with a fire escape."""
+    W, D, H = APT
+    m = Mod("apt_floor_c")
+    win = lambda c, w=1.0: (c - w / 2, c + w / 2, 0.75, 2.4)  # noqa: E731
+    front = [win(W * f) for f in (0.13, 0.37, 0.63, 0.87)]
+    side = [win(a + 0.5) for a, _ in spaced(D, 3, 1.0)]
+    back = [win(a + 0.5) for a, _ in spaced(W, 4, 1.0)]
+    sides = punched(m, W, D, 0, H, {"n": front, "e": side, "s": back, "w": side}, role="brick", depth=0.18)
+    n = sides["n"]
+    u0, u1, k1 = W * 0.24, W * 0.76, 1.15
+    n.box("grate", u0, u1, 0.02, 0.1, 0, k1, skip="n")
+    n.box("dark", u0, u1, 1.0, 1.05, k1 - 0.05, k1, skip="n")
+    for u in (u0, u1 - 0.05):
+        n.box("dark", u, u + 0.05, 1.0, 1.05, 0, k1, skip="n")
+    for u in (u0, (u0 + u1) / 2, u1 - 0.04):
+        n.box("dark", u, u + 0.04, 0.1, 1.0, k1 - 0.04, k1, skip="nbt")
+    n.m.hexa("grate", lambda a, b, c: n.P((W * 0.3, W * 0.68)[a], (0.1, H)[a] + c * 0.08, (0.25, 0.85)[b]))
+    for k in (0.25, 0.85):
+        m.strut("dark", n.P(W * 0.3, 0.9, k), n.P(W * 0.68, H + 0.8, k), 0.04)
+    cap(m, W, D, H)
+
+
+def office_floor_c():
+    """Concrete storey with deep punched windows."""
+    W, D, H = OFFICE
+    m = Mod("office_floor_c")
+    for side in "nesw":
+        sd = Side(m, side, W, D)
+        holes = [(a, b, 0.75, H - 0.55) for a, b in spaced(sd.L, 5, 1.2)]
+        sd.wall("wall", 0, H, holes)
+        for h in holes:
+            sd.opening(h, 0.5, pane="glass", reveal="wall")
+        sd.box("wall", 0, sd.L, H - 0.3, H, 0, 0.25, skip="n")
+    cap(m, W, D, H)
+
+
+def lm2_ground():
+    S, H = LANDMARK
+    m = Mod("lm2_ground", ground=True)
+    inset = 0.7
+    for side in "nesw":
+        sd = Side(m, side, S - 2 * inset, S - 2 * inset)
+        L, n = sd.L, 6
+        for i in range(n):
+            sd.quad("lobby", L * i / n, L * (i + 1) / n, 0, H - 0.4)
+        for i in range(n + 1):
+            sd.box("metal", max(0, L * i / n - 0.05), min(L, L * i / n + 0.05), 0, H - 0.4, 0, 0.1, skip="nbt")
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            x, y = sx * (S / 2 - 0.35), sy * (S / 2 - 0.35)
+            m.box("metal", x - 0.35, y - 0.35, 0, x + 0.35, y + 0.35, H, skip="b", bevel=0.04)
+    m.box("metal", -S / 2, -S / 2, H - 0.45, S / 2, S / 2, H, bevel=0.03)
+    Side(m, "n", S, S).box("metal", S / 2 - 3, S / 2 + 3, 2.6, 2.8, 0, 2.6, skip="n", bevel=0.03)
+    Side(m, "n", S, S).box("led", S / 2 - 2.8, S / 2 + 2.8, 2.56, 2.6, 0.2, 2.4)
+    m.box("deck", -S / 2 + inset, -S / 2 + inset, H - 0.5, S / 2 - inset, S / 2 - inset, H - 0.45, skip="t")
+
+
+def lm2_floor(t):
+    S0, H = LANDMARK
+    S = S0 * LM_TIERS[t - 1]
+    m = Mod(f"lm2_floor_{t}")
+    n = (6, 5, 4)[t - 1]
+    for side in "nesw":
+        sd = Side(m, side, S, S)
+        L = sd.L
+        sd.quad("spandrel", 0, L, 0, 0.45)
+        for i in range(n):
+            sd.quad("glass", L * i / n, L * (i + 1) / n, 0.45, H, cell=True)
+        for i in range(1, n):
+            u = L * i / n
+            sd.box("metal", u - 0.04, u + 0.04, 0, H, 0, 0.42, skip="nbt")
+        sd.box("metal", 0, 0.2, 0, H, 0, 0.2, skip="nbt")
+        sd.box("metal", L - 0.2, L, 0, H, 0, 0.2, skip="nbt")
+    band(m, S, S, 0, 0.12, 0.06, "metal", bevel=0.0)
+    cap(m, S, S, H)
+
+
+def lm2_ledge(t):
+    S0, _ = LANDMARK
+    S = S0 * LM_TIERS[t - 1]
+    m = Mod(f"lm2_ledge_{t}")
+    band(m, S, S, -0.1, 0.35, 0.15, "metal", bevel=0.03)
+    ring(m, S, S, 0.35, 1.3, 0.05, "railglass", out=0.1)
+    ring(m, S, S, 1.3, 1.36, 0.09, "metal", out=0.12)
+    roof_deck(m, S, S, 0.45, 0.05)
+    for x, y in ((-1, -1), (1, -1), (-1, 1), (1, 1), (0, -1), (0, 1), (-1, 0), (1, 0)):
+        px, py = x * (S / 2 - 0.6), y * (S / 2 - 0.6)
+        m.box("concrete", px - 0.32, py - 0.32, 0.45, px + 0.32, py + 0.32, 0.85, bevel=0.02)
+        m.cyl("bark", px, py, 0.85, 0.06, 0.04, 0.6, seg=5)
+        m.blob("leaf", (px, py, 1.65), (0.5, 0.5, 0.6), sub=2, jitter=0.07)
+
+
+def lm2_crown():
+    S0, _ = LANDMARK
+    S = S0 * LM_TIERS[2]
+    m = Mod("lm2_crown")
+    band(m, S, S, -0.1, 0.3, 0.12, "metal", bevel=0.03)
+    m.box("led", -S / 2 - 0.03, -S / 2 - 0.03, 0.3, S / 2 + 0.03, S / 2 + 0.03, 0.55)
+    a, b, h = S, S * 0.32, 7.5
+    m.hexa("railglass", lambda i, j, k: ((i - 0.5) * (a, b)[k], (j - 0.5) * (a, b)[k], 0.55 + k * h), skip="b")
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.strut("metal", (sx * a / 2, sy * a / 2, 0.55), (sx * b / 2, sy * b / 2, 0.55 + h), 0.14)
+    for z in (2.5, 4.6):
+        k = (z - 0.55) / h
+        w = a + (b - a) * k + 0.06
+        m.box("led", -w / 2, -w / 2, z, w / 2, w / 2, z + 0.12)
+    m.box("metal", -b / 2 - 0.1, -b / 2 - 0.1, 0.55 + h, b / 2 + 0.1, b / 2 + 0.1, 0.85 + h, bevel=0.03)
+    m.cyl("metal", 0, 0, 0.85 + h, 0.22, 0.04, 11.0, seg=8)
+    m.cyl("led", 0, 0, 3.5 + h, 0.2, 0.2, 0.25, seg=8)
+    m.anchor("beacon", (0, 0, 0.85 + h + 11.3))
+
+
+# ---- tower crane ------------------------------------------------------------
+
+CR = "crane"
+
+
+def crane_base():
+    m = Mod("crane_base", ground=True, ao=1.5)
+    m.box("concrete", -1.7, -1.7, 0, 1.7, 1.7, 0.6, skip="b", bevel=0.04)
+    for sx in (-1, 1):
+        m.box("concrete", sx * 1.25 - 0.4, -1.3, 0.6, sx * 1.25 + 0.4, 1.3, 1.1, bevel=0.03)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.strut(CR, (sx * 0.75, sy * 0.75, 0.6), (sx * 1.2, sy * 1.2, 0.6), 0.12)
+
+
+def crane_mast():
+    m = Mod("crane_mast", ao=1.0)
+    h, a = 3.0, 0.75
+    cs = [(-a, -a), (a, -a), (a, a), (-a, a)]
+    for x, y in cs:
+        m.box(CR, x - 0.07, y - 0.07, 0, x + 0.07, y + 0.07, h, skip="bt")
+    for i in range(4):
+        (x0, y0), (x1, y1) = cs[i], cs[(i + 1) % 4]
+        m.strut(CR, (x0, y0, 0.08), (x1, y1, h - 0.08), 0.06)
+        m.strut(CR, (x0, y0, h - 0.06), (x1, y1, h - 0.06), 0.06)
+
+
+def crane_slew():
+    """Turntable, cab and tower head; turns with the jib."""
+    m = Mod("crane_slew", ao=1.5)
+    m.cyl("dark", 0, 0, 0, 1.0, 1.0, 0.35, seg=16)
+    m.box(CR, -1.1, -0.9, 0.35, 1.1, 0.9, 0.8, bevel=0.03)
+    # Operator's cab on the front side, glazed on three faces.
+    m.box("trim", -0.2, -2.1, -0.6, 1.2, -0.95, 0.75, bevel=0.04)
+    m.face("carglass", [(-0.21, -2.0, -0.4), (-0.21, -1.05, -0.4), (-0.21, -1.05, 0.6), (-0.21, -2.0, 0.6)], out=(-1, 0, 0))
+    m.face("carglass", [(-0.1, -2.11, -0.4), (1.1, -2.11, -0.4), (1.1, -2.11, 0.6), (-0.1, -2.11, 0.6)], out=(0, -1, 0))
+    m.face("carglass", [(1.21, -2.0, 0.0), (1.21, -1.05, 0.0), (1.21, -1.05, 0.6), (1.21, -2.0, 0.6)], out=(1, 0, 0))
+    apex = (0, 0, 5.2)
+    for x, y in ((-0.8, -0.6), (0.8, -0.6), (0.8, 0.6), (-0.8, 0.6)):
+        m.strut(CR, (x, y, 0.8), apex, 0.12)
+    m.strut(CR, (-0.5, -0.38, 2.4), (0.5, -0.38, 2.4), 0.06)
+    m.strut(CR, (-0.5, 0.38, 2.4), (0.5, 0.38, 2.4), 0.06)
+    m.box(CR, -0.25, -0.25, 5.0, 0.25, 0.25, 5.45)
+    m.anchor("apex", apex)
+    m.anchor("beacon", (0, 0, 5.75))
+
+
+def crane_jib():
+    """One 3 m section of the jib, from x = 0 to x = -3."""
+    m = Mod("crane_jib", ao=1.0)
+    w, h, L = 0.55, 1.25, 3.0
+    m.strut(CR, (0, -w, 0), (-L, -w, 0), 0.11)
+    m.strut(CR, (0, w, 0), (-L, w, 0), 0.11)
+    m.strut(CR, (0, 0, h), (-L, 0, h), 0.11)
+    for y in (-w, w):
+        m.strut(CR, (0, y, 0), (-L / 2, 0, h), 0.06)
+        m.strut(CR, (-L / 2, 0, h), (-L, y, 0), 0.06)
+    m.strut(CR, (0, -w, 0), (0, w, 0), 0.06)
+    m.strut(CR, (0, -w, 0), (-L, w, 0), 0.05)
+
+
+def crane_jib_tip():
+    m = Mod("crane_jib_tip", ao=1.0)
+    w, h = 0.55, 1.25
+    for a in ((0, -w, 0), (0, w, 0), (0, 0, h)):
+        m.strut(CR, a, (-1.2, 0, 0.3), 0.08)
+    m.box(CR, -1.4, -0.2, 0.1, -1.0, 0.2, 0.5)
+    m.anchor("beacon", (-1.2, 0, 0.75))
+
+
+def crane_counter():
+    """Counter-jib with walkway, winch and counterweights (x from 0.8 to 9.5)."""
+    m = Mod("crane_counter", ao=1.2)
+    for y in (-0.6, 0.6):
+        m.box(CR, 0.8, y - 0.08, -0.25, 9.5, y + 0.08, 0.05)
+        m.strut(CR, (0.8, y * 1.1, 1.0), (9.5, y * 1.1, 1.0), 0.04)
+        for x in (1.0, 3.0, 5.0, 7.0, 9.3):
+            m.strut(CR, (x, y * 1.1, 0.05), (x, y * 1.1, 1.0), 0.04)
+    for x in (1.5, 3.5, 5.5, 7.5):
+        m.strut(CR, (x, -0.6, -0.1), (x, 0.6, -0.1), 0.06)
+    m.box("grate", 0.8, -0.55, 0.0, 7.6, 0.55, 0.05)
+    m.box("dark", 4.6, -0.5, 0.05, 6.4, 0.5, 1.0, bevel=0.03)
+    m.cyl("metal", 0, 0, -0.45, 0.35, 0.35, 0.9, seg=12, M=Matrix.Translation((4.2, 0, 0.45)) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+    for i in range(3):
+        x0 = 7.75 + i * 0.58
+        m.box("concrete", x0, -0.85, -1.9, x0 + 0.52, 0.85, 0.05, bevel=0.03)
+    m.anchor("end", (9.3, 0, 0.05))
+
+
+def crane_trolley():
+    m = Mod("crane_trolley", ao=0.8)
+    m.box(CR, -0.55, -0.72, -0.45, 0.55, 0.72, -0.12, bevel=0.03)
+    for x in (-0.35, 0.35):
+        for y in (-0.55, 0.55):
+            m.cyl("dark", 0, 0, -0.06, 0.12, 0.12, 0.12, seg=8, M=Matrix.Translation((x, y, -0.05)) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+
+
+def crane_hook():
+    """Hook block; its origin is where the hoist rope ends."""
+    m = Mod("crane_hook", ao=0.8)
+    m.box(CR, -0.3, -0.22, -0.9, 0.3, 0.22, 0, bevel=0.04)
+    m.cyl("dark", 0, 0, -0.26, 0.25, 0.25, 0.52, seg=12, M=Matrix.Translation((0, 0, -0.35)) @ Matrix.Rotation(math.pi / 2, 4, "X"))
+    pts = [(0, 0, -0.9), (0, 0, -1.35), (0.12, 0, -1.6), (0.32, 0, -1.55), (0.36, 0, -1.35)]
+    for a, b in zip(pts, pts[1:]):
+        m.strut("dark", a, b, 0.09)
+
+
+def i_beam(m, x0, x1, y, z):
+    m.box("metal", x0, y - 0.15, z, x1, y + 0.15, z + 0.04)
+    m.box("metal", x0, y - 0.02, z + 0.04, x1, y + 0.02, z + 0.36)
+    m.box("metal", x0, y - 0.15, z + 0.36, x1, y + 0.15, z + 0.4)
+
+
+def crane_load():
+    """Steel beams in slings; origin at the hook."""
+    m = Mod("crane_load", ao=1.0)
+    for y in (-0.18, 0.18):
+        for z in (-2.45, -2.05):
+            i_beam(m, -1.6, 1.6, y, z)
+    for x in (-1.1, 1.1):
+        m.box("dark", x - 0.05, -0.38, -2.5, x + 0.05, 0.38, -1.6)
+        for y in (-0.36, 0.36):
+            m.strut("dark", (0, 0, -1.55), (x, y, -1.65), 0.035)
+
+
+# ---- traffic ----------------------------------------------------------------
+
+
+def wheel(m, x, y, r=0.33, w=0.24):
+    M = Matrix.Translation((x, y, r)) @ Matrix.Rotation(math.pi / 2, 4, "Y")
+    m.cyl("tyre", 0, 0, -w / 2, r, r, w, seg=10, M=M)
+    m.cyl("chrome", 0, 0, -w / 2 - 0.01, r * 0.55, r * 0.55, w + 0.02, seg=8, smooth=False, M=M)
+
+
+def lights(m, L, Wd, z, s=1.0):
+    for sx in (-1, 1):
+        x = sx * (Wd / 2 - 0.32 * s)
+        m.box("headlight", x - 0.2 * s, -L / 2 - 0.03, z, x + 0.2 * s, -L / 2 + 0.05, z + 0.14 * s)
+        m.box("taillight", x - 0.18 * s, L / 2 - 0.05, z, x + 0.18 * s, L / 2 + 0.03, z + 0.14 * s)
+
+
+def car(name, L, Wd, body_h, c0, c1, roof_h=0.5, sign=False):
+    """A car: front at -y, cabin glazed from y = c0 to c1."""
+    m = Mod(name, ground=True, ao=1.0)
+    x = Wd / 2
+    m.box("body", -x, -L / 2, 0.3, x, L / 2, body_h, bevel=0.07)
+    top0, top1 = c0 + 0.55, c1 - 0.3
+    m.hexa("carglass", lambda a, b, c: ((a - 0.5) * (Wd - 0.12 - c * 0.22), (c0, c1)[b] + c * (top0 - c0, top1 - c1)[b], body_h + c * roof_h), skip="b")
+    m.box("body", -(Wd - 0.36) / 2, top0 - 0.02, body_h + roof_h, (Wd - 0.36) / 2, top1 + 0.02, body_h + roof_h + 0.06, bevel=0.02)
+    for y in (-L / 2, L / 2):
+        s = -1 if y < 0 else 1
+        m.box("dark", -x - 0.02, min(y, y + s * 0.08), 0.28, x + 0.02, max(y, y + s * 0.08), 0.46)
+    lights(m, L, Wd, body_h - 0.24)
+    for sy in (-1, 1):
+        for sx in (-1, 1):
+            wheel(m, sx * (x - 0.1), sy * (L / 2 - 0.78))
+    if sign:
+        m.box("taxisign", -0.3, (top0 + top1) / 2 - 0.12, body_h + roof_h + 0.06, 0.3, (top0 + top1) / 2 + 0.12, body_h + roof_h + 0.26, bevel=0.02)
+
+
+def van():
+    m = Mod("car_van", ground=True, ao=1.0)
+    L, Wd = 4.9, 1.95
+    x = Wd / 2
+    m.box("body", -x, -L / 2, 0.32, x, L / 2, 2.05, bevel=0.09)
+    m.face("carglass", [(-x + 0.12, -L / 2 - 0.01, 1.2), (x - 0.12, -L / 2 - 0.01, 1.2), (x - 0.15, -L / 2 - 0.01, 1.9), (-x + 0.15, -L / 2 - 0.01, 1.9)], out=(0, -1, 0))
+    for sx in (-1, 1):
+        m.face("carglass", [(sx * (x + 0.01), -L / 2 + 0.25, 1.2), (sx * (x + 0.01), -L / 2 + 1.3, 1.2), (sx * (x + 0.01), -L / 2 + 1.3, 1.85), (sx * (x + 0.01), -L / 2 + 0.25, 1.85)], out=(sx, 0, 0))
+    for y in (-L / 2, L / 2):
+        s = -1 if y < 0 else 1
+        m.box("dark", -x - 0.02, min(y, y + s * 0.08), 0.3, x + 0.02, max(y, y + s * 0.08), 0.5)
+    lights(m, L, Wd, 0.8)
+    for sy in (-1, 1):
+        for sx in (-1, 1):
+            wheel(m, sx * (x - 0.1), sy * (L / 2 - 0.85), r=0.36)
+
+
+def bus():
+    m = Mod("bus", ground=True, ao=1.2)
+    L, Wd = 10.5, 2.5
+    x = Wd / 2
+    m.box("body", -x, -L / 2, 0.38, x, L / 2, 3.05, bevel=0.12)
+    for sx in (-1, 1):
+        m.face("carglass", [(sx * (x + 0.01), -L / 2 + 1.4, 1.55), (sx * (x + 0.01), L / 2 - 0.6, 1.55), (sx * (x + 0.01), L / 2 - 0.6, 2.6), (sx * (x + 0.01), -L / 2 + 1.4, 2.6)], out=(sx, 0, 0))
+    m.face("carglass", [(-x + 0.1, -L / 2 - 0.01, 1.0), (x - 0.1, -L / 2 - 0.01, 1.0), (x - 0.1, -L / 2 - 0.01, 2.55), (-x + 0.1, -L / 2 - 0.01, 2.55)], out=(0, -1, 0))
+    m.face("carglass", [(-0.95, L / 2 + 0.01, 1.8), (0.95, L / 2 + 0.01, 1.8), (0.95, L / 2 + 0.01, 2.6), (-0.95, L / 2 + 0.01, 2.6)], out=(0, 1, 0))
+    m.box("led", -0.9, -L / 2 - 0.04, 2.65, 0.9, -L / 2 + 0.02, 2.92)
+    lights(m, L, Wd, 0.75, 1.2)
+    for y in (-L / 2 + 2.0, L / 2 - 2.3):
+        for sx in (-1, 1):
+            wheel(m, sx * (x - 0.15), y, r=0.5, w=0.32)
+
+
+def person():
+    m = Mod("person", ground=True, ao=0.5)
+    for x in (-1, 1):
+        m.box("pants", x * 0.02 if x > 0 else -0.17, -0.09, 0.0, 0.17 if x > 0 else -0.02, 0.09, 0.86)
+        m.box("shirt", x * 0.3 - 0.05 * x - 0.045, -0.07, 0.82, x * 0.3 - 0.05 * x + 0.045, 0.07, 1.4)
+        m.box("skin", x * 0.25 - 0.04, -0.05, 0.7, x * 0.25 + 0.04, 0.05, 0.82)
+    m.box("shirt", -0.2, -0.12, 0.84, 0.2, 0.12, 1.42, bevel=0.03)
+    m.box("skin", -0.05, -0.05, 1.42, 0.05, 0.05, 1.48)
+    m.blob("skin", (0, 0, 1.6), (0.11, 0.12, 0.14), sub=1)
+    m.blob("hair", (0, 0.025, 1.66), (0.12, 0.125, 0.1), sub=1)
+
+
 # ---- trees ------------------------------------------------------------------
 
 
-def trunk(m, h, r=0.17):
-    m.cyl("bark", 0, 0, 0, r, r * 0.6, h, seg=7)
+def trunk(m, h, r=0.17, role="bark"):
+    m.cyl(role, 0, 0, 0, r, r * 0.6, h, seg=7)
+
+
+def branch(m, role, a, b, r=0.07):
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    M = Matrix.Translation(a) @ d.to_track_quat("Z", "Y").to_matrix().to_4x4()
+    m.cyl(role, 0, 0, 0, r, r * 0.6, d.length, seg=5, M=M)
 
 
 def tree_round():
     m = Mod("tree_a", ground=True, ao=2.0)
     trunk(m, 2.4)
-    for M in (Matrix.Translation((0, 0, 1.4)) @ Matrix.Rotation(0.7, 4, "Y"), Matrix.Translation((0, 0, 1.6)) @ Matrix.Rotation(-0.6, 4, "X")):
-        m.cyl("bark", 0, 0, 0, 0.08, 0.05, 1.0, seg=5, M=M)
-    blobs = [((0, 0, 3.2), 1.35), ((0.75, 0.3, 2.7), 0.95), ((-0.7, 0.25, 2.8), 1.0), ((0.1, -0.75, 2.75), 0.95), ((0.2, 0.7, 3.6), 0.85), ((-0.3, -0.2, 4.0), 0.8)]
-    for c, r in blobs:
-        m.blob("leaf", c, (r, r, r * 0.9), sub=1, jitter=0.1)
+    branch(m, "bark", (0, 0, 1.6), (0.8, 0.3, 2.6))
+    branch(m, "bark", (0, 0, 1.8), (-0.7, -0.3, 2.8))
+    for c, r in (((0, 0, 3.3), 1.3), ((0.8, 0.35, 2.75), 0.95), ((-0.75, -0.2, 2.85), 1.0), ((0.1, -0.8, 2.9), 0.9), ((-0.15, 0.6, 3.85), 0.85)):
+        m.blob("leaf", c, (r, r, r * 0.88), sub=2, jitter=0.11)
 
 
 def tree_conifer():
     m = Mod("tree_b", ground=True, ao=2.0)
     trunk(m, 1.2, 0.15)
-    for i, (r, z) in enumerate(((1.5, 0.8), (1.18, 1.95), (0.85, 3.0), (0.5, 3.9))):
-        m.cyl("leaf", 0, 0, z, r, 0.0, 1.75 - i * 0.15, seg=9, smooth=False, M=Matrix.Rotation(i * 0.7, 4, "Z"))
+    for i, (r, z) in enumerate(((1.55, 0.7), (1.3, 1.6), (1.05, 2.45), (0.8, 3.25), (0.52, 4.0))):
+        m.cyl("leaf", 0, 0, z, r, 0.05, 1.5 - i * 0.12, seg=10, smooth=False, M=Matrix.Rotation(i * 0.6, 4, "Z"), jitter=0.1)
 
 
 def tree_poplar():
     m = Mod("tree_c", ground=True, ao=2.0)
     trunk(m, 1.6, 0.14)
     m.blob("leaf", (0, 0, 3.4), (0.95, 0.95, 2.4), sub=2, jitter=0.12)
-    m.blob("leaf", (0.25, 0.1, 2.2), (0.7, 0.7, 1.1), sub=1, jitter=0.08)
+    m.blob("leaf", (0.25, 0.1, 2.2), (0.7, 0.7, 1.1), sub=2, jitter=0.08)
 
 
 def tree_bush():
     m = Mod("tree_d", ground=True, ao=2.0)
     trunk(m, 1.6, 0.2)
-    for c, s in (((0, 0, 2.5), (1.6, 1.5, 1.0)), ((0.9, 0.4, 2.2), (1.0, 0.9, 0.75)), ((-0.8, -0.5, 2.3), (1.1, 1.0, 0.8)), ((0.1, 0.2, 3.1), (1.0, 1.0, 0.7))):
-        m.blob("leaf", c, s, sub=1, jitter=0.1)
+    branch(m, "bark", (0, 0, 1.3), (0.9, 0.4, 2.1))
+    branch(m, "bark", (0, 0, 1.4), (-0.8, -0.4, 2.2))
+    for c, s in (((0, 0, 2.55), (1.6, 1.5, 0.95)), ((0.95, 0.45, 2.25), (1.0, 0.9, 0.72)), ((-0.85, -0.5, 2.35), (1.1, 1.0, 0.78)), ((0.1, 0.2, 3.15), (1.0, 1.0, 0.68))):
+        m.blob("leaf", c, s, sub=2, jitter=0.1)
+
+
+def tree_birch():
+    m = Mod("tree_e", ground=True, ao=2.0)
+    trunk(m, 3.8, 0.11, "birch")
+    branch(m, "birch", (0, 0, 2.2), (0.6, 0.2, 3.2), 0.05)
+    branch(m, "birch", (0, 0, 2.6), (-0.5, -0.3, 3.5), 0.05)
+    for c, r in (((0, 0, 4.1), 0.7), ((0.6, 0.25, 3.4), 0.55), ((-0.5, -0.3, 3.6), 0.6), ((0.1, 0.45, 3.0), 0.5), ((-0.2, -0.1, 4.7), 0.45)):
+        m.blob("leaf", c, (r, r, r * 1.2), sub=2, jitter=0.08)
+
+
+def tree_cherry():
+    m = Mod("tree_f", ground=True, ao=2.0)
+    trunk(m, 1.5, 0.18)
+    for end in ((1.1, 0.3, 2.3), (-1.0, 0.4, 2.4), (0.2, -1.0, 2.3), (0.1, 0.5, 2.8)):
+        branch(m, "bark", (0, 0, 1.3), end, 0.08)
+    for c, s in (((0, 0, 2.7), (1.5, 1.5, 0.85)), ((1.1, 0.35, 2.45), (0.9, 0.85, 0.6)), ((-1.0, 0.4, 2.55), (0.95, 0.9, 0.62)), ((0.2, -0.95, 2.45), (0.85, 0.85, 0.6)), ((0.0, 0.2, 3.25), (0.9, 0.9, 0.55))):
+        m.blob("blossom", c, s, sub=2, jitter=0.1)
 
 
 # ---- ambient occlusion and export --------------------------------------------
@@ -1090,6 +1588,34 @@ def build():
         office_floor(v)
         office_roof(v)
     apt_ground()
+    apt_ground("c", wall="brick")
+    apt_floor_c()
+    apt_roof("c", wall="brick")
+    cottage_body_d()
+    cottage_roof_d()
+    shop_ground_c()
+    shop_floor_c()
+    office_floor_c()
+    lm2_ground()
+    for t in (1, 2, 3):
+        lm2_floor(t)
+    lm2_ledge(1)
+    lm2_ledge(2)
+    lm2_crown()
+    crane_base()
+    crane_mast()
+    crane_slew()
+    crane_jib()
+    crane_jib_tip()
+    crane_counter()
+    crane_trolley()
+    crane_hook()
+    crane_load()
+    for name, L, Wd, bh, c0, c1, sign in (("car_sedan", 4.4, 1.8, 0.95, -0.9, 1.25, False), ("car_hatch", 3.8, 1.75, 0.95, -0.7, 1.6, False), ("car_taxi", 4.5, 1.82, 0.95, -0.9, 1.3, True)):
+        car(name, L, Wd, bh, c0, c1, sign=sign)
+    van()
+    bus()
+    person()
     office_ground()
     office_setback()
     lm_ground()
@@ -1102,6 +1628,8 @@ def build():
     tree_conifer()
     tree_poplar()
     tree_bush()
+    tree_birch()
+    tree_cherry()
 
 
 def preview(objs, path):
@@ -1124,19 +1652,19 @@ def preview(objs, path):
 
     put("cottage_body_a", -40, 0, 0)
     put("cottage_roof_a", -40, 0, COTTAGE[2])
-    put("cottage_body_c", -40, 12, 0)
-    put("cottage_roof_c", -40, 12, COTTAGE[2])
+    put("cottage_body_d", -40, 12, 0)
+    put("cottage_roof_d", -40, 12, COTTAGE[2])
     put("cottage_body_b", -40, -12, 0)
     put("cottage_roof_b", -40, -12, COTTAGE[2])
     tower(-28, "shop_ground_a", ["shop_floor_a"], "shop_roof_a", 3, SHOP[2])
-    put("shop_ground_b", -28, -12, 0)
-    put("shop_floor_b", -28, -12, SHOP[2])
+    put("shop_ground_c", -28, -12, 0)
+    put("shop_floor_c", -28, -12, SHOP[2])
     put("shop_roof_b", -28, -12, 2 * SHOP[2])
     tower(-16, "apt_ground", ["apt_floor_a"], "apt_roof_a", 6, APT[2])
-    put("apt_ground", -16, -12, 0)
+    put("apt_ground_c", -16, -12, 0)
     for f in range(1, 5):
-        put("apt_floor_b", -16, -12, f * APT[2])
-    put("apt_roof_b", -16, -12, 5 * APT[2])
+        put("apt_floor_c", -16, -12, f * APT[2])
+    put("apt_roof_c", -16, -12, 5 * APT[2])
     fh = OFFICE[2]
     put("office_ground", -3, 0, 0)
     for f in range(1, 9):

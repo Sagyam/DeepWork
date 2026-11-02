@@ -333,11 +333,19 @@ TypeScript + three.js frontend, built with bun.
     landmark (three tiers, gold trim and crown, spire, beacon). Empty lots
     of a block are staked out with tape; countryside trees grow with the tier.
   - Kit (`ui/blender/city_kit.py`, run with `bun run kit`; made with
-    Blender 5.2): writes `ui/public/city-kit.glb` (34 pieces, ~1.7 MB). Modular
-    pieces per kind: ground storey, floor storeys, roof (cottages: body +
-    roof, three variants; landmarks: three tiers, setback ledges with gold
-    finials, a lit stepped crown with sunburst chevrons and spire), plus four
-    trees. Bevelled trim, recessed windows with sills, cornices with brackets,
+    Blender 5.2): writes `ui/public/city-kit.glb` (66 pieces, ~3.2 MB). Modular
+    pieces per kind: ground storey, floor storeys, roof. Styles: four
+    cottages (gable, hip, front gable with porch, bay window under a gambrel
+    with dormers); shops (two shopfronts with awnings, a café with arched
+    fanlights, an oriel and umbrella tables); apartments (balconies, Juliet
+    balconies, brick walk-up with fire escapes); offices (curtain wall, fins,
+    brutalist punched concrete; setback, plant room or helipad); landmarks
+    in two styles picked per building: art deco (stone piers, gold ledges
+    and finials, a lit stepped crown with sunburst chevrons and spire) and
+    modern glass (fins, sky-garden ledges, LED bands, tapered glass crown).
+    Also six trees (incl. birch and pink cherry), a lattice tower crane
+    (mast sections, jib sections, cab, counter-jib with weights, trolley,
+    hook, steel load), four cars and a bus, and a pedestrian. Bevelled trim, recessed windows with sills, cornices with brackets,
     quoins, striped awnings and glowing shop lettering, balconies, water
     tanks, roof gardens, curtain walls, a helipad. Ambient occlusion is baked
     per corner into vertex colours (BVH ray casts, ground plane for ground
@@ -357,13 +365,20 @@ TypeScript + three.js frontend, built with bun.
     Rubble is a heap of concrete, wall and burnt chunks with bent beams,
     bigger for a bigger building. The site: concrete floors up to its
     progress, the finished lower storeys from the kit, columns, scaffolding a
-    floor above the work, a translucent
+    floor above the work, the kit crane (mast stacked to height, jib length
+    from the lot, pendant ties, hook and load), a translucent
     blueprint of the finished building (red while surrendering, when the
     site also trembles), and a tower crane that swings.
   - `city/scene.ts`: Sky shader with the sun by local time, stars and
     moonlight at night, shadows, ACES tone mapping, bloom on lit windows,
     lamps and beacons, fog. Orbit camera (drag / zoom), slow auto-rotate after
     30s idle, framed to the city's size.
+  - Street life (`city/traffic.ts`): cars, vans, taxis and buses (tier 2+)
+    loop each block in the right-hand lane, evenly spaced at one speed per
+    loop so they never collide; pedestrians walk the pavement both ways.
+    Counts grow with the tier (cars 1-4, people 2-11 per block). One
+    InstancedMesh per model part; head / tail lights and signs light at
+    night. The loop path (`blockLoop` in `plan.ts`) is unit tested.
   - Transitions are animated: collapse (the building shakes, tilts and sinks
     into a dust cloud while debris rains down; rubble appears as it clears),
     completion (the building rises out of dust, gold sparks at the top),
@@ -374,7 +389,8 @@ TypeScript + three.js frontend, built with bun.
     is watched, not just counted.
   - Performance on the host's Radeon 610M: 60 fps (vsync) in the app for the
     real hamlet; the 120-plot metropolis at night ~100 fps uncapped in
-    GPU Chromium with the old box models, ~90 with the Blender kit (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
+    GPU Chromium with the old box models, ~90 with the Blender kit and traffic
+    (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
   phrase typed by hand: paste and drop are refused); idle card (nudge, next
@@ -410,8 +426,8 @@ phase 3 item: timer, routines and stats screens in the app. The session card
 already starts, stops and surrenders; missing are a routines view with
 skips, a stats view over past sessions (needs a daemon request for session
 history) and the pending config change. Then tune the city on real use
-(sizes, damage looks, replay pacing); ideas: cars and people on the streets
-at higher tiers, sound for collapse / completion, weather.
+(sizes, damage looks, replay pacing); ideas: sound for collapse / completion,
+weather.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -491,6 +507,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Ledger → theme-agnostic world model in the daemon (`world.rs`, `Request::World`, `deepwork world`)
 - [x] Tauri 2 app with a 3D city (three.js) renderer (`ui/`), animated losses and builds
 - [x] Building and tree kit generated in Blender (`ui/blender/city_kit.py`): modular storeys, baked AO, window atlas
+- [x] More styles (second landmark style, café, brick walk-up, brutalist office, gambrel cottage), lattice crane, traffic and pedestrians
 - [ ] Timer, routines and stats screens (timer, start / stop / surrender are in the session card)
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 

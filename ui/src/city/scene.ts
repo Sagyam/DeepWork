@@ -14,6 +14,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
+import { Traffic } from "./traffic";
 import { building, mat, Parts, rubble, site, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
@@ -57,6 +58,7 @@ export class City {
   private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x4a5a3a, 1);
   private grass: THREE.Mesh;
   private fx = new Fx();
+  private traffic = new Traffic();
 
   private world: World | null = null;
   private plan: CityPlan | null = null;
@@ -142,7 +144,7 @@ export class City {
     this.grass = new THREE.Mesh(new THREE.CircleGeometry(2500, 48), new THREE.MeshStandardMaterial({ color: 0x5f8a45, roughness: 1 }));
     this.grass.rotation.x = -Math.PI / 2;
     this.grass.receiveShadow = true;
-    this.scene.add(this.grass, this.base, this.fx.group);
+    this.scene.add(this.grass, this.base, this.fx.group, this.traffic.group);
     this.scene.fog = new THREE.Fog(0xb8c8d8, 400, 1800);
 
     this.composer = new EffectComposer(r);
@@ -231,6 +233,11 @@ export class City {
       const mesh = new THREE.Mesh(this.beaconGeo, this.beaconMat);
       mesh.position.copy(b);
       e.group.add(mesh);
+    }
+    for (const b of e.info.jibBeacons ?? []) {
+      const mesh = new THREE.Mesh(this.beaconGeo, this.beaconMat);
+      mesh.position.copy(b);
+      e.jib?.add(mesh);
     }
     e.acc = e.info.emitters.map(() => Math.random());
     this.applyNight(e.info);
@@ -454,6 +461,7 @@ export class City {
     });
     this.scene.add(this.base);
     this.applyNight({ height: 0, emitters: [], beacons: [], night: this.lampMats, debris: 0 });
+    this.traffic.build(p);
     this.fitShadows(p);
   }
 
@@ -492,6 +500,7 @@ export class City {
     this.hour = hour;
     const d = daylight(hour);
     this.night = d.night;
+    this.traffic.setNight(d.night);
     this.fx.night = d.night;
     const u = this.sky.material.uniforms;
     u.sunPosition.value.copy(d.sun);
@@ -600,6 +609,7 @@ export class City {
       return true;
     });
     this.fx.update(dt, wind);
+    this.traffic.update(dt);
 
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 0.8);

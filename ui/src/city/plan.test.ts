@@ -1,5 +1,5 @@
 import { describe as group, expect, test } from "bun:test";
-import { BLOCK_X, BLOCK_Z, KINDS, lot, plan, rng, shape, spiral } from "./plan";
+import { BLOCK_X, BLOCK_Z, KINDS, PITCH_X, blockLoop, lot, plan, rng, shape, spiral } from "./plan";
 import { clock, describe, hm } from "../format";
 import type { Plot, World } from "../proto";
 
@@ -111,4 +111,24 @@ test("format", () => {
     "surrendered: plot 3 collapsed, fire spread to plot 2",
   );
   expect(describe(w, { ts: 0, kind: "built", cause: "completed", session_id: 2, plots: [1], ruined: [] })).toBe("built a landmark tower (plot 2)");
+});
+
+test("traffic loops keep the block on the right and stay in their lane", () => {
+  const hx = BLOCK_X / 2 + 2.85;
+  const hz = BLOCK_Z / 2 + 2.85;
+  const loop = blockLoop(PITCH_X, 0, hx, hz, 3);
+  expect(loop.length).toBeGreaterThan(2 * (hx + hz));
+  for (let d = 0; d < loop.length; d += 1.7) {
+    const p = loop.at(d);
+    // Inside the lane: no further out than the loop, never onto the pavement.
+    expect(Math.abs(p.x - PITCH_X)).toBeLessThanOrEqual(hx + 1e-6);
+    expect(Math.abs(p.z)).toBeLessThanOrEqual(hz + 1e-6);
+    expect(Math.max(Math.abs(p.x - PITCH_X) - BLOCK_X / 2, Math.abs(p.z) - BLOCK_Z / 2)).toBeGreaterThan(1.2);
+    // The block centre is on the right of the direction of travel.
+    const f = { x: Math.sin(p.heading), z: Math.cos(p.heading) };
+    const right = { x: -f.z, z: f.x };
+    expect(right.x * (PITCH_X - p.x) + right.z * (0 - p.z)).toBeGreaterThan(0);
+  }
+  // Wraps around.
+  expect(loop.at(loop.length + 5).x).toBeCloseTo(loop.at(5).x, 6);
 });
