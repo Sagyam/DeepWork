@@ -1,0 +1,71 @@
+# Runs as root inside the pacman transaction.
+
+post_install() {
+    systemctl daemon-reload &>/dev/null || true
+
+    # Same hook as dist/install.sh, and just as fallible: pam_exec asks the
+    # daemon and fails open, so a missing gate or a stopped daemon never locks
+    # you out of sudo.
+    if [[ -x /usr/lib/deepwork/deepwork-pam-gate ]]; then
+        python3 -I /usr/share/deepwork/pam.py apply ||
+            printf 'warning: could not hook PAM; run: sudo python3 -I /usr/share/deepwork/pam.py apply\n'
+    fi
+
+    cat <<'EOF'
+DeepWork is installed. To put it to work:
+
+  sudo systemctl enable --now deepworkd.service     # the daemon (root)
+  systemctl --user enable --now deepwork-agent.service   # notifications
+  deepwork start 25m                                 # a first session
+
+  deepwork-ui                         opens the city and the settings sheet
+  /etc/deepwork/config.toml           settings (the app edits this for you)
+  /usr/share/doc/deepwork/PLAN.md     how it works and what it enforces
+
+sudo, pkexec and systemctl are refused while a session runs. That lock comes
+from the PAM and polkit hooks dist/install.sh installs too; it fails open.
+Both hooks are removed when the package is removed. To undo it now:
+  sudo python3 -I /usr/share/deepwork/pam.py remove
+EOF
+}
+
+post_upgrade() {
+    systemctl daemon-reload &>/dev/null || true
+    # Re-hook in case /etc/pam.d was restored by a package update. Idempotent.
+    [[ -x /usr/lib/deepwork/deepwork-pam-gate ]] &&
+        python3 -I /usr/share/deepwork/pam.py apply &>/dev/null || true
+
+    # A running session sets RefuseManualStop, so this aborts and the old
+    # daemon keeps enforcing. Otherwise the new binary takes over now.
+    systemctl try-restart deepworkd.service &>/dev/null ||
+        printf 'note: deepworkd was not restarted (a session may be running); it will use the new build after the session ends or at reboot\n'
+}
+
+pre_remove() {
+    # Unhook PAM first, so sudo never points at a missing gate.
+    if [[ -f /usr/share/deepwork/pam.py ]]; then
+        python3 -I /usr/share/deepwork/pam.py remove &>/dev/null ||
+            printf 'warning: could not unhook PAM; check /etc/pam.d/sudo\n'
+    fi
+
+    if systemctl is-active --quiet deepworkd.service; then
+        # Refused during a session; the safety rail wins over a clean removal.
+        if systemctl stop deepworkd.service &>/dev/null; then
+            /usr/bin/deepworkd --browser-policies remove &>/dev/null || true
+            nft destroy table inet deepwork &>/dev/null || true
+            rm -f /run/systemd/resolved.conf.d/zz-deepwork.conf
+            systemctl restart systemd-resolved.service &>/dev/null || true
+        else
+            printf 'warning: a focus session is running; deepworkd stays up until it ends or the machine reboots\n'
+        fi
+    else
+        /usr/bin/deepworkd --browser-policies remove &>/dev/null || true
+        nft destroy table inet deepwork &>/dev/null || true
+    fi
+
+    printf 'note: settings and history are kept in /etc/deepwork and /var/lib/deepwork\n'
+}
+
+post_remove() {
+    systemctl daemon-reload &>/dev/null || true
+}

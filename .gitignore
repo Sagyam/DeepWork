@@ -1,3 +1,8 @@
 /target
 /dist/*.local.toml
+# makepkg scratch (VCS clone cache, sources, packages)
+/dist/deepwork-git/
+/dist/src/
+/dist/pkg/
+/dist/*.pkg.tar*
 __pycache__/

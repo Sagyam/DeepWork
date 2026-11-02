@@ -7,8 +7,8 @@ slows distracting sites down at the network layer (DNS-informed nftables sets +
 tc/netem). Your browser keeps working for real work. Routines start sessions on
 their own, and quitting early costs you progress in a small virtual world.
 
-Status: phases 1–3 done (daemon, routines, hardening, the world and the app);
-phase 4 (deeper enforcement, settings and backups) nearly done. See
+Status: phases 1–4 done (daemon, routines, hardening, the world, the app,
+deeper enforcement, settings and backups, and an Arch package). See
 [docs/PLAN.md](docs/PLAN.md).
 
 ## Layout
@@ -32,6 +32,17 @@ cargo run -p deepworkd -- --print-rules      # show the exact nft ruleset and tc
 ```
 
 ## Install
+
+On Arch, as a package (`bun` is a makedepend, for the window):
+
+```sh
+cd dist
+makepkg -si                 # installs to /usr, then:
+sudo systemctl enable --now deepworkd.service
+systemctl --user enable --now deepwork-agent.service
+```
+
+Or build and install straight from the source tree, into `/usr/local`:
 
 ```sh
 ./dist/install.sh            # builds, installs to /usr/local, enables deepworkd.service

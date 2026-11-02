@@ -161,6 +161,32 @@ rules (stopwatch minimum, surrender).
 - IPC: newline-delimited JSON over `/run/deepwork/deepworkd.sock` (mode 0666),
   caller identified with `SO_PEERCRED`.
 
+### Packaging (phase 4)
+
+`dist/PKGBUILD` builds the Arch package `deepwork-git`. It is a VCS package
+because there are no tags yet: it follows `main`, and a release `deepwork`
+package can be cut from the same file once a tag exists. `makepkg -si` in
+`dist/`:
+
+- builds the frontend with bun (`bun-bin`, a makedepend) and then
+  `cargo build --release --locked` plus `-p deepwork-ui --features
+  custom-protocol`, so the window's city kit is embedded in the binary and no
+  `ui/` tree is installed;
+- installs to `/usr`, not `/usr/local` like `install.sh`: a `sed` in
+  `prepare()` rewrites the paths carried by the units, the polkit rule, the
+  pacman hook, the desktop file and `pam.py`;
+- ships `deepworkd`, `deepwork`, `deepwork-agent` and `deepwork-ui` in
+  `/usr/bin`, the PAM gate in `/usr/lib/deepwork/`, the system and user units,
+  the polkit rule in `/usr/share/polkit-1/rules.d/`, the browser-policy hook in
+  `/usr/share/libalpm/hooks/`, the desktop entry and icon;
+- seeds `/etc/deepwork/config.toml` from the example and marks it a pacman
+  `backup` file, so settings changed in the app survive upgrades (a `.pacnew`
+  appears instead of being overwritten);
+- hooks PAM and polkit on install and unhooks PAM on removal (same gate
+  `install.sh` uses, and it fails open), prints the two `systemctl enable`
+  commands instead of starting the services itself, and leaves the daemon
+  running if a session is active when the package is removed.
+
 ### Network enforcement
 
 1. `deepworkd` runs a DNS forwarder (default `127.0.0.1:5454` and `[::1]:5454`)
@@ -599,7 +625,10 @@ remove one (shows the 24h reasons and the pending banner), add an allow entry
 in Sites, export a backup, import it again (0 new sessions), and start a
 session from the new card.
 
-Next in phase 4: packaging (PKGBUILD).
+Next in phase 4: the host checks listed above, then tuning on real use. Packaging
+is in (`dist/PKGBUILD`, package `deepwork-git`, see "Packaging"); `makepkg`
+builds and the package contents were inspected, but it has not been installed
+over the /usr/local install yet.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -699,4 +728,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `deepwork config export|import`, native file dialogs in the app)
 - [x] Timer start card rebuilt around one choice (mode, length, profile,
       Start) instead of a row of haphazard buttons
-- [ ] Packaging (PKGBUILD)
+- [x] Packaging (PKGBUILD): `dist/PKGBUILD` builds `deepwork-git` for /usr,
+      with the PAM / polkit hooks in its install scriptlet. Built and inspected
+      with `makepkg` on 2026-11-02 (see "Packaging"); `!lto` is required so the
+      bundled SQLite archive stays readable by rust-lld

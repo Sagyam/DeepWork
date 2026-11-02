@@ -1,0 +1,135 @@
+# Maintainer: Sagyam Thapa <sagyamthapa32@gmail.com>
+#
+# VCS package: the project has no tagged releases yet, so this builds the tip of
+# main. Once releases are tagged, copy this file over a `deepwork` PKGBUILD and
+# replace the source with the release tarball (then fill in sha256sums) and drop
+# pkgver().
+#
+# The install script hooks PAM and polkit (same as dist/install.sh) so sudo,
+# pkexec and systemctl are refused while a focus session runs. Both fail open:
+# a missing daemon or gate never locks you out, and TTY root is never blocked.
+
+pkgname=deepwork-git
+pkgver=r30.g0ec5536
+pkgrel=1
+pkgdesc="Focus sessions enforced at the network layer, with a virtual city that remembers early quits"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Sagyam/DeepWork"
+license=('MIT')
+depends=(
+    'gcc-libs'
+    'glibc'
+    'gtk3'
+    'hicolor-icon-theme'
+    'iproute2'          # tc and ip
+    'librsvg'
+    'libsoup3'
+    'nftables'
+    'python'            # the PAM helper in the install script
+    'systemd'
+    'webkit2gtk-4.1'    # the Tauri window
+)
+makedepends=(
+    'bun'               # builds the Vite frontend embedded in deepwork-ui
+    'cargo'
+    'clang'
+    'pkgconf'
+    'rust'
+)
+optdepends=(
+    'firefox: managed DNS-over-HTTPS and ECH policies'
+    'chromium: managed DNS-over-HTTPS and ECH policies'
+    'zen-browser-bin: managed DNS-over-HTTPS and ECH policies'
+)
+provides=('deepwork')
+conflicts=('deepwork')
+# -flto=auto makes GCC write LTO bytecode into the bundled SQLite archive,
+# which rust-lld cannot link against. Rust does not use LTO here anyway.
+options=('!lto')
+# The app edits this file; keep user settings on upgrades (pacman writes a
+# .pacnew instead of overwriting).
+backup=('etc/deepwork/config.toml')
+install="$pkgname.install"
+source=("$pkgname::git+$url.git")
+sha256sums=('SKIP')
+
+pkgver() {
+    cd "$pkgname"
+    local desc
+    desc=$(git describe --long --tags --abbrev=7 --match 'v*' 2>/dev/null) || desc=""
+    if [[ -n $desc ]]; then
+        sed 's/^v//; s/\([^-]*-g\)/r\1/; s/-/./g' <<<"$desc"
+    else
+        printf 'r%s.g%s' "$(git rev-list --count HEAD)" "$(git rev-parse --short=7 HEAD)"
+    fi
+}
+
+prepare() {
+    cd "$pkgname"
+
+    # Packages live in /usr, not /usr/local (dist/install.sh keeps the latter
+    # for source installs). Rewrite the paths the units, rules and helper carry.
+    sed -i \
+        -e 's|/usr/local/bin|/usr/bin|g' \
+        -e 's|/usr/local/lib/deepwork|/usr/lib/deepwork|g' \
+        -e 's|/usr/local/share/doc|/usr/share/doc|g' \
+        dist/deepworkd.service \
+        dist/deepwork-agent.service \
+        dist/deepwork-browser-policies.hook \
+        dist/10-deepwork.rules \
+        dist/deepwork-ui.desktop \
+        dist/pam.py
+
+    # pacman hooks moved from /etc/pacman.d/hooks to /usr/share/libalpm/hooks.
+    sed -i 's|/etc/pacman.d/hooks|/usr/share/libalpm/hooks|' \
+        dist/deepwork-browser-policies.hook
+}
+
+build() {
+    cd "$pkgname"
+
+    # Keep downloads inside $srcdir so makepkg can clean them up.
+    export CARGO_HOME="$srcdir/cargo-home"
+    export BUN_INSTALL_CACHE_DIR="$srcdir/bun-cache"
+
+    # Frontend first: tauri-build embeds ui/dist at compile time.
+    (
+        cd ui
+        bun install --frozen-lockfile
+        bun run build
+    )
+
+    cargo build --release --locked
+    cargo build --release --locked -p deepwork-ui --features custom-protocol
+}
+
+package() {
+    cd "$pkgname"
+
+    install -Dm755 target/release/deepworkd "$pkgdir/usr/bin/deepworkd"
+    install -Dm755 target/release/deepwork "$pkgdir/usr/bin/deepwork"
+    install -Dm755 target/release/deepwork-agent "$pkgdir/usr/bin/deepwork-agent"
+    install -Dm755 target/release/deepwork-ui "$pkgdir/usr/bin/deepwork-ui"
+    install -Dm755 target/release/deepwork-pam-gate \
+        "$pkgdir/usr/lib/deepwork/deepwork-pam-gate"
+
+    install -Dm644 dist/deepworkd.service \
+        "$pkgdir/usr/lib/systemd/system/deepworkd.service"
+    install -Dm644 dist/deepwork-agent.service \
+        "$pkgdir/usr/lib/systemd/user/deepwork-agent.service"
+    install -Dm644 dist/deepwork-browser-policies.hook \
+        "$pkgdir/usr/share/libalpm/hooks/deepwork-browser-policies.hook"
+    install -Dm644 dist/10-deepwork.rules \
+        "$pkgdir/usr/share/polkit-1/rules.d/10-deepwork.rules"
+    install -Dm644 dist/deepwork-ui.desktop \
+        "$pkgdir/usr/share/applications/deepwork-ui.desktop"
+    install -Dm644 ui/src-tauri/icons/icon.png \
+        "$pkgdir/usr/share/icons/hicolor/512x512/apps/deepwork.png"
+
+    install -Dm644 dist/config.example.toml "$pkgdir/etc/deepwork/config.toml"
+    install -Dm755 dist/pam.py "$pkgdir/usr/share/deepwork/pam.py"
+
+    install -Dm644 docs/PLAN.md "$pkgdir/usr/share/doc/deepwork/PLAN.md"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/deepwork/README.md"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

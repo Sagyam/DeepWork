@@ -1,0 +1,62 @@
+name: package
+
+# Builds the Arch package from dist/PKGBUILD and keeps the built package as an
+# artifact you can download and install with `pacman -U`. No signing yet.
+#
+# AUR publishing is off the table for now (registrations closed); when they
+# open, the same package can be pushed as `deepwork-git` and this workflow can
+# keep attaching builds to tags.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: package-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Arch package
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The image ships a stale keyring, and makepkg needs git.
+      - name: Prepare the container
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git sudo
+
+      # makepkg refuses to run as root; the runner is root inside the container.
+      - name: Build
+        run: |
+          useradd --create-home builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          sudo -u builder env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
+            bash -lc 'cd "$GITHUB_WORKSPACE/dist" && makepkg --syncdeps --noconfirm --force'
+
+      # Catch a PKGBUILD edited without regenerating dist/.SRCINFO.
+      - name: Check .SRCINFO is current
+        working-directory: dist
+        run: makepkg --printsrcinfo | diff -u .SRCINFO -
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: deepwork-git-x86_64
+          path: |
+            dist/*.pkg.tar.zst
+            !dist/*-debug-*.pkg.tar.zst
+          if-no-files-found: error
