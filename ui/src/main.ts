@@ -1,9 +1,8 @@
-import { DaemonRefusal, Unreachable, call, status as getStatus, history, pendingConfig, routines, world as getWorld } from "./daemon";
-import { BUILDINGS, TIERS, ago, clock, describe, escapeHtml, hhmm, hm, isLoss } from "./format";
-import { dayTip, notice, routinesPanel, skippable, statsPanel } from "./panels";
-import { SURRENDER_PHRASE, type Finished, type RoutineInfo, type SessionInfo, type Status, type World } from "./proto";
-import { midnight, summarize, type Stats } from "./stats";
-import { openSettings, type SettingsSection } from "./settings";
+import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, world as getWorld } from "./daemon";
+import { BUILDINGS, TIERS, clock, escapeHtml, hm } from "./format";
+import { notice } from "./panels";
+import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
+import { confirmSkip, hudUpdate, openSettings, type SettingsSection } from "./settings";
 import { City } from "./city/scene";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -61,17 +60,6 @@ function renderCity(w: World) {
     <div class="small muted">${condition.join(" · ")}</div>`;
 }
 
-function renderHistory(w: World) {
-  const now = Math.floor(Date.now() / 1000);
-  const items = w.history
-    .slice(-5)
-    .reverse()
-    .map((e) => `<li class="${isLoss(e) ? "loss" : ""}"><time>${ago(now - e.ts)}</time>${escapeHtml(describe(w, e))}</li>`);
-  $("#history").innerHTML = items.length
-    ? `<strong>Recent</strong><ul>${items.join("")}</ul>`
-    : `<span>Empty land. Complete a session to put up the first building.</span>`;
-}
-
 function building(w: World | null): string {
   const c = w?.construction;
   if (!c) return "";
@@ -122,16 +110,55 @@ function liveIdle(st: Status): string {
   return parts.join("");
 }
 
+// ---------------------------------------------------------------------------
+// Starting a session: a mode, a ring dial in 5-minute steps, a profile, go.
+
 type StartMode = "timer" | "stopwatch";
-const PRESETS = [25, 50, 90];
+/** One full turn of the ring is 3 hours, zero at 12 o'clock. The daemon caps
+ * sessions at 6 h; the dial stays well inside that. */
+const STEP_MINS = 5;
+const MIN_MINS = 5;
+const MAX_MINS = 180;
 let startMode: StartMode = "timer";
-let startMins = 25;
+let startMins = 30;
 let startProfile: string | null = null;
 
-function startLabel(): string {
-  if (startMode === "stopwatch") return "Start stopwatch";
-  if (!(startMins >= 1)) return "Start focus";
-  return `Start ${startMins}-minute focus`;
+function snapMins(mins: number): number {
+  return Math.min(MAX_MINS, Math.max(MIN_MINS, Math.round(mins / STEP_MINS) * STEP_MINS));
+}
+
+/** The readout in the middle: minutes, with hours only once there are any. */
+function dialReadout(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  const num = (v: number | string, cls = "") => `<tspan class="num${cls}">${v}</tspan>`;
+  const unit = (u: string) => `<tspan class="unit">${u}</tspan>`;
+  if (h === 0) return `${num(m, " min")}${unit(" min")}`;
+  return `${num(h)}${unit("h ")}${num(String(m).padStart(2, "0"), " min")}${unit("m")}`;
+}
+
+/** The timer dial as inline SVG: a pale ring that fills in deeper as it is
+ * dragged round. Stopwatch mode keeps the same box, so nothing shifts. */
+function clockDial(): string {
+  const dim = startMode === "stopwatch";
+  const c = 95;
+  const r = 84;
+  const len = 2 * Math.PI * r;
+  const filled = dim ? 0 : (startMins / MAX_MINS) * len;
+  // Rotated so the stroke starts at 12 o'clock and runs clockwise.
+  const fill = filled > 0
+    ? `<circle cx="${c}" cy="${c}" r="${r}" class="fill" transform="rotate(-90 ${c} ${c})"
+        stroke-dasharray="${filled.toFixed(2)} ${len.toFixed(2)}"/>`
+    : "";
+  const readout = dim ? `<tspan class="num">0</tspan><tspan class="unit"> min</tspan>` : dialReadout(startMins);
+  return `<svg class="clockdial${dim ? " dim" : ""}" viewBox="0 0 190 190" width="190" height="190" role="slider"
+      aria-label="Focus length" aria-valuemin="${MIN_MINS}" aria-valuemax="${MAX_MINS}"
+      aria-valuenow="${dim ? 0 : startMins}" aria-valuetext="${dim ? "0 minutes, stopwatch" : hm(startMins * 60)}"
+      aria-disabled="${dim}" tabindex="${dim ? -1 : 0}">
+      <circle cx="${c}" cy="${c}" r="${r}" class="track"/>
+      ${fill}
+      <text x="${c}" y="${c}" class="readout">${readout}</text>
+    </svg>`;
 }
 
 function controls(st: Status): string {
@@ -145,25 +172,16 @@ function controls(st: Status): string {
     const skip = next && st.skip_tokens_left > 0
       ? `<div class="start-extra"><button class="link" data-action="skip" data-routine="${escapeHtml(next.routine)}">Skip ${escapeHtml(next.routine)} (${st.skip_tokens_left} left this week)</button></div>`
       : "";
-    const chips = PRESETS.map(
-      (m) =>
-        `<button class="chip${startMode === "timer" && startMins === m ? " on" : ""}" data-action="mins" data-mins="${m}"><b>${m}</b><span>min</span></button>`,
-    ).join("");
-    const custom = !PRESETS.includes(startMins);
     return `<div class="start-block">
         <div class="seg start-mode">
           <button class="${startMode === "timer" ? "on" : ""}" data-action="mode" data-mode="timer">Focus timer</button>
           <button class="${startMode === "stopwatch" ? "on" : ""}" data-action="mode" data-mode="stopwatch">Stopwatch</button>
         </div>
-        <div class="chips"${startMode === "stopwatch" ? " hidden" : ""}>
-          ${chips}
-          <label class="chip custom${custom ? " on" : ""}">
-            <input id="mins" type="number" min="1" max="360" value="${startMins}" aria-label="Custom minutes" />
-            <span>min</span>
-          </label>
+        ${clockDial()}
+        <div class="start-row">
+          <select id="profile" aria-label="Profile" title="Profile">${profiles}</select>
+          <button class="start-button primary" data-action="start-selected">${startMode === "stopwatch" ? "Start stopwatch" : "Start focus"}</button>
         </div>
-        <label class="start-profile"><span>Profile</span><select id="profile">${profiles}</select></label>
-        <button class="start-button primary" data-action="start-selected">${startLabel()}</button>
       </div>
       ${skip}${freeControls(st)}`;
   }
@@ -222,20 +240,25 @@ function redrawControls() {
   renderSession(status);
 }
 
-$("#session").addEventListener("click", (ev) => {
+function setMins(next: number) {
+  const snapped = snapMins(next);
+  if (snapped === startMins) return;
+  startMins = snapped;
+  redrawControls();
+}
+
+const sessionCard = $("#session");
+
+sessionCard.addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (!btn) return;
   switch (btn.dataset.action) {
     case "mode":
       startMode = btn.dataset.mode as StartMode;
       return redrawControls();
-    case "mins":
-      startMode = "timer";
-      startMins = Number(btn.dataset.mins);
-      return redrawControls();
     case "start-selected":
       if (startMode === "stopwatch") return start({ type: "stopwatch" });
-      if (!(startMins >= 1)) return actionError("Enter the length in minutes.");
+      if (!(startMins >= MIN_MINS)) return actionError("Pick a length on the clock.");
       return start({ type: "countdown", secs: Math.round(startMins * 60) });
     case "stop":
       return act(() => call({ type: "stop" }));
@@ -250,22 +273,75 @@ $("#session").addEventListener("click", (ev) => {
   }
 });
 
-// The custom length updates the button in place, so typing never loses focus.
-$("#session").addEventListener("change", (ev) => {
+sessionCard.addEventListener("change", (ev) => {
   const el = ev.target as HTMLSelectElement;
   if (el.id === "profile") startProfile = el.value;
 });
 
-$("#session").addEventListener("input", (ev) => {
-  const el = ev.target as HTMLInputElement;
-  if (el.id !== "mins") return;
-  startMins = Number(el.value);
-  const button = document.querySelector<HTMLButtonElement>(".start-button");
-  if (button) button.textContent = startLabel();
-  for (const chip of document.querySelectorAll<HTMLElement>(".chip[data-mins]")) {
-    chip.classList.toggle("on", Number(chip.dataset.mins) === startMins);
+// The ring dial: click or drag round it, scroll or use the arrow keys. All of
+// them land on the nearest 5-minute step.
+function dialFromEvent(ev: MouseEvent, dragging: boolean) {
+  if (startMode !== "timer") return;
+  const dial = sessionCard.querySelector(".clockdial");
+  if (!dial) return;
+  const rect = dial.getBoundingClientRect();
+  const dx = ev.clientX - (rect.left + rect.width / 2);
+  const dy = ev.clientY - (rect.top + rect.height / 2);
+  let deg = (Math.atan2(dx, -dy) * 180) / Math.PI; // 0 at 12 o'clock, clockwise
+  if (deg < 0) deg += 360;
+  let mins = (deg / 360) * MAX_MINS;
+  // A drag that crosses 12 o'clock sticks to the end it came from instead of
+  // jumping between 3 h and nothing.
+  if (dragging && Math.abs(mins - startMins) > MAX_MINS / 2) {
+    mins = startMins > MAX_MINS / 2 ? MAX_MINS : MIN_MINS;
   }
-  document.querySelector(".chip.custom")?.classList.toggle("on", !PRESETS.includes(startMins));
+  setMins(mins);
+}
+
+let dialDrag = false;
+sessionCard.addEventListener("pointerdown", (ev) => {
+  const dial = (ev.target as Element).closest<SVGElement>(".clockdial");
+  if (!dial || startMode !== "timer") return;
+  dialDrag = true;
+  // Capture on the card, not the dial: the dial is rebuilt on every change.
+  sessionCard.setPointerCapture(ev.pointerId);
+  ev.preventDefault();
+  dial.focus();
+  dialFromEvent(ev, false);
+});
+sessionCard.addEventListener("pointermove", (ev) => {
+  if (dialDrag) dialFromEvent(ev, true);
+});
+const endDialDrag = (ev: PointerEvent) => {
+  if (!dialDrag) return;
+  dialDrag = false;
+  try {
+    sessionCard.releasePointerCapture(ev.pointerId);
+  } catch {
+    // The pointer was already released.
+  }
+};
+sessionCard.addEventListener("pointerup", endDialDrag);
+sessionCard.addEventListener("pointercancel", endDialDrag);
+
+sessionCard.addEventListener(
+  "wheel",
+  (ev) => {
+    const dial = (ev.target as Element).closest(".clockdial");
+    if (!dial || startMode !== "timer") return;
+    ev.preventDefault();
+    setMins(startMins + (ev.deltaY < 0 ? STEP_MINS : -STEP_MINS));
+  },
+  { passive: false },
+);
+
+sessionCard.addEventListener("keydown", (ev) => {
+  const dial = (ev.target as Element).closest(".clockdial");
+  if (!dial || startMode !== "timer") return;
+  const step = ev.key === "ArrowUp" || ev.key === "ArrowRight" ? STEP_MINS : ev.key === "ArrowDown" || ev.key === "ArrowLeft" ? -STEP_MINS : 0;
+  if (!step) return;
+  ev.preventDefault();
+  setMins(startMins + step);
 });
 
 // Surrender: the phrase has to be typed, so paste and drop are refused.
@@ -287,79 +363,8 @@ dialog.addEventListener("close", () => {
   }
 });
 
-// Skipping costs a token and can't be undone, so it is confirmed (the CLI
-// asks at a terminal for the same reason).
-const skipDialog = $("#skip") as HTMLDialogElement;
-let skipRoutine = "";
-function confirmSkip(routine: string) {
-  const u = status && skippable(status, routine);
-  if (!status || !u) return;
-  skipRoutine = routine;
-  const left = status.skip_tokens_left;
-  $("#skip-title").textContent = `Skip ${routine}?`;
-  $("#skip-text").textContent =
-    `The run at ${hhmm(u.starts_at)} (${hm(u.ends_at - u.starts_at)}) won't start. ` +
-    `This uses one of your ${left} skip token${left === 1 ? "" : "s"} left this week, and can't be undone.`;
-  skipDialog.returnValue = "";
-  skipDialog.showModal();
-}
-skipDialog.addEventListener("close", () => {
-  if (skipDialog.returnValue === "confirm") void act(() => call({ type: "skip", routine: skipRoutine }));
-});
-
-// Routines and Stats panels. Their data is fetched when opened and refreshed
-// with the world; the panel is redrawn from it on every poll.
-type View = "routines" | "stats" | null;
-let view: View = null;
-let routineList: { routines: RoutineInfo[]; skip_tokens_per_week: number } | null = null;
-let past: Finished[] = [];
-let stats: Stats | null = null;
-let panelKey = "";
-const STATS_DAYS = 28;
-
-async function loadPanel() {
-  const now = Math.floor(Date.now() / 1000);
-  if (view === "routines") routineList = await routines();
-  if (view === "stats") {
-    past = await history(midnight(now, STATS_DAYS - 1));
-    stats = summarize(past, now, STATS_DAYS);
-  }
-}
-
-function renderPanel() {
-  const panel = $("#panel");
-  for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.classList.toggle("on", b.dataset.view === view);
-  const now = Math.floor(Date.now() / 1000);
-  let html = "";
-  if (view === "routines" && routineList && status) html = routinesPanel(routineList.routines, routineList.skip_tokens_per_week, status, now);
-  if (view === "stats" && stats) html = statsPanel(stats, past, world, now);
-  panel.hidden = !html;
-  // Only touched when the text changes, so hover and scroll survive polls.
-  if (html !== panelKey) {
-    panelKey = html;
-    panel.innerHTML = html;
-  }
-}
-
-async function open(next: View) {
-  view = view === next ? null : next;
-  try {
-    await loadPanel();
-  } catch (e) {
-    banner(e instanceof Error ? e.message : String(e));
-  }
-  renderPanel();
-}
-
-$("#tabs").addEventListener("click", (ev) => {
-  const btn = (ev.target as HTMLElement).closest("button");
-  if (!btn) return;
-  if (btn.dataset.settings) {
-    void openSettings(btn.dataset.settings as SettingsSection);
-    return;
-  }
-  void open(btn.dataset.view as View);
-});
+// The cog: everything the app can configure or show lives in the one sheet.
+$("#menu").addEventListener("click", () => void openSettings("session"));
 
 // Settings and imports can change the world or the pending config.
 window.addEventListener("deepwork:changed", () => {
@@ -372,30 +377,6 @@ $("#notice").addEventListener("click", (ev) => {
     void openSettings((btn.dataset.section as SettingsSection) ?? "session");
   }
 });
-$("#panel").addEventListener("click", (ev) => {
-  const btn = (ev.target as HTMLElement).closest("button");
-  if (btn?.dataset.action === "close") void open(view);
-  if (btn?.dataset.action === "skip") confirmSkip(btn.dataset.routine!);
-  if (btn?.dataset.action === "settings") {
-    void openSettings((btn.dataset.section as SettingsSection) ?? "session");
-  }
-});
-document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && view && !document.querySelector("dialog[open]")) void open(view);
-});
-
-// Chart tooltip.
-const tip = $("#tip");
-$("#panel").addEventListener("mousemove", (ev) => {
-  const col = (ev.target as HTMLElement).closest<HTMLElement>(".col");
-  const day = col && stats?.days.slice(-14)[Number(col.dataset.day)];
-  tip.hidden = !day;
-  if (!day) return;
-  tip.innerHTML = dayTip(day);
-  tip.style.left = `${Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8)}px`;
-  tip.style.top = `${ev.clientY + 14}px`;
-});
-$("#panel").addEventListener("mouseleave", () => (tip.hidden = true));
 
 let skyline: City | null = null;
 let rendererError: string | null = null;
@@ -414,12 +395,10 @@ async function poll() {
       lastWorldFetch = now;
       world = await getWorld();
       renderCity(world);
-      renderHistory(world);
       $("#notice").innerHTML = notice(await pendingConfig());
-      if (view) await loadPanel();
     }
     renderSession(status);
-    renderPanel();
+    hudUpdate(status, world);
     banner(rendererError);
     if (world) skyline?.update(world, localHour(), s?.elapsed_secs ?? 0);
   } catch (e) {

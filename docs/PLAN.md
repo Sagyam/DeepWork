@@ -534,29 +534,50 @@ TypeScript + three.js frontend, built with bun.
     (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
-  phrase typed by hand: paste and drop are refused); the last five world
-  events.
+  phrase typed by hand: paste and drop are refused).
 - Starting a session is one card, not a scatter of buttons: a
-  Focus timer / Stopwatch switch, 25 / 50 / 90 min chips with a custom minutes
-  field, a profile picker and one primary Start button whose label follows the
-  choice. The profile and length survive the one-second polls. Skip and free
-  time sit below as secondary actions.
-- **Settings sheet** (the `Settings` tab, or `Sites` for the lists): every key
-  in `config.toml` is editable, with no file hunting.
+  Focus timer / Stopwatch switch, a ring dial (no ticks or needle: a pale
+  track that fills in deeper clockwise from 12 o'clock, one turn = 3 h, in
+  5-minute steps; click, drag, wheel or arrow keys; the centre shows minutes,
+  and hours only once there are any), a small profile dropdown next to
+  the one primary Start button. Stopwatch keeps the dial — same box, so
+  nothing shifts — dimmed and empty. The profile and length
+  survive the one-second polls. Skip and free time sit below as secondary
+  actions.
+- One cog under the city card opens the settings sheet; there are no other
+  tabs or panels on the HUD, and no log hanging under the session card.
+- **Settings sheet** (the cog): every key in `config.toml` is editable, with
+  no file hunting, and the read-only views live in the same left nav.
   - Session: default profile, stopwatch minimum, surrender wait, routine
     heads-up, skip tokens, nudges (days, hours, delay, repeat).
   - Site lists per profile: Block list / Allow only mode, and three grouped
     lists (Allow, Slow, Block) with add / edit / remove. `music.youtube.com`
     allowed inside a slowed `youtube.com` is one row. Throttle numbers,
     escalation stages, QUIC / SNI / Docker toggles.
-  - Routines: name, days, start, length, profile, add / remove.
+  - Routines: the next 24 hours of runs with a Skip per routine's next run
+    and tokens left (confirmed in a dialog, as the CLI insists on a
+    terminal), then the editor (name, days, start, length, profile, add /
+    remove). The runs list refreshes from the poll without rebuilding the
+    editor underneath.
+  - Stats (`Request::History`, ended sessions since a time, newest first, at
+    most 2000; folded in the pure `stats.ts`, unit tested): today / this
+    week / 28 days focused, completed, surrendered, streak; focused time per
+    local day for 14 days (bars with a tooltip, a red dot under days with a
+    surrender); the last 10 sessions.
+  - Session logs: the world's event log (builds, repairs, collapses,
+    quakes), newest first, straight from `Request::World` — this replaced the
+    five-entry "Recent" card that used to hang below the timer.
   - Inverted mode: on/off, profile, earn rate, bank cap.
   - DNS: port, upstreams (plain or DNS-over-TLS), forward zones, resolved and
     container DNS, with a note that DNS waits for a daemon restart.
+  - Read-only sections refresh from the poll (stats refetches with the
+    world, ~5s) and only rewrite the DOM when their HTML changed, so scroll
+    and hover survive. Section switching, closing and skipping work even if
+    the config failed to load.
   - Save sends the whole config; the daemon validates and answers with what
     happened ("applied", or the loosening reasons and the 24h delay). A pending
-    banner stays at the top of every section. Unsaved edits are guarded on
-    close.
+    banner stays at the top of every config section. Unsaved edits are guarded
+    on close.
 - **Backup** (Settings → Backup, and `deepwork config export|import`): one
   JSON bundle with the settings, ended sessions, penalty events, routine runs
   and free-minute bank. Import merges; a session already present (same profile
@@ -564,16 +585,10 @@ TypeScript + three.js frontend, built with bun.
   merged twice, so the same file can be imported again. Import is refused
   while a session runs. The native file dialog comes from
   `tauri-plugin-dialog`; a plain browser dev page downloads / uploads instead.
-- Routines and Stats panels (tabs under the city card, Esc closes). Routines:
-  the configured routines (`Request::Routines`), the next 24 hours of runs
-  with a Skip per routine's next run, tokens left. Skips are confirmed in a
-  dialog, as the CLI insists on a terminal. Stats (`Request::History`, ended
-  sessions since a time, newest first, at most 2000; folded in the pure
-  `stats.ts`, unit tested): today / this week / 28 days focused, completed,
-  surrendered, streak; focused time per local day for 14 days (bars with a
-  tooltip, a red dot under days with a surrender); the last 10 sessions.
-  Panels refetch with the world (5s). A loosening config change waiting
-  behind its delay (`ConfigStatus`) shows as a card with its reasons.
+- Routines and Stats used to be inline panels under tabs (removed 2026-11-02:
+  the cog sheet took them in, along with the new Session logs section).
+  A loosening config change waiting behind its delay (`ConfigStatus`) still
+  shows as a card with its reasons.
 - A renderer failure only loses the picture: the HUD keeps working and the
   error shows in a banner.
 - Dev: `cd ui && bun run dev`, then `http://localhost:5173/?mock=city` in a
@@ -598,9 +613,20 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+UI rework (2026-11-02): the four HUD tabs (Routines / Stats / Sites /
+Settings) are now one cog that opens the settings sheet, whose left nav gained
+Stats and Session logs (the world event log that used to hang under the
+timer); Routines holds the next-24-hours runs and skips above its editor. The
+start card's 25/50/90 chips became a ring dial (pale track that fills in
+as it's dragged, one turn = 3 h, 5-minute steps, minutes in the centre and
+hours only when non-zero; stopwatch keeps it dimmed, no layout shift), with a small profile
+dropdown beside the Start button. Checked headless with the mock: dial
+click/drag/wheel/keys, skip flow, stats/logs refresh without losing scroll,
+`bun run build` and `bun test` clean.
+
 Phase 3 (2026-11-02): world model, penalties and the Tauri app with the
 3D city are in (see "World model" and "The app" above), and so are the
-Routines and Stats panels (2026-11-02, checked with the mock and against a
+Routines and Stats views (2026-11-02, checked with the mock and against a
 dry-run daemon; the installed daemon needs `./dist/install.sh` to answer the
 new `history` / `routines` requests). Phase 3 code is complete. Still to do on real
 use: tune the city (sizes, damage looks, replay pacing); ideas: sound for
@@ -718,7 +744,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Tauri 2 app with a 3D city (three.js) renderer (`ui/`), animated losses and builds
 - [x] Building and tree kit generated in Blender (`ui/blender/city_kit.py`): modular storeys, baked AO, window atlas
 - [x] More styles (second landmark style, café, brick walk-up, brutalist office, gambrel cottage), lattice crane, traffic and pedestrians
-- [x] Timer, routines and stats screens: timer, start / stop / surrender in the session card; Routines and Stats panels;
+- [x] Timer, routines and stats screens: timer, start / stop / surrender in the session card; Routines and Stats
+      (now sections of the settings sheet, along with Session logs — the 2026-11-02 cog rework);
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 

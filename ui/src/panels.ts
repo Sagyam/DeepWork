@@ -1,35 +1,17 @@
-// The Routines and Stats panels and the pending-config notice, as HTML.
-// Read-only views: skips go through the daemon like everything else.
-import { DAY_NAMES, dayName, escapeHtml, hhmm, hm, weekday } from "./format";
-import type { Finished, PendingConfig, RoutineInfo, Status, Upcoming, World } from "./proto";
+// The read-only views shown inside the settings sheet (upcoming routine runs,
+// Stats, Session logs) and the pending-config notice, as HTML. The HUD poll
+// pushes fresh data in; skips still go through the daemon like everything else.
+import { dayName, describe, escapeHtml, hhmm, hm, isLoss, weekday } from "./format";
+import type { Finished, PendingConfig, Status, Upcoming, World } from "./proto";
 import type { Day, Stats } from "./stats";
-
-const head = (title: string) =>
-  `<div class="head"><h2>${title}</h2><button class="close" data-action="close" title="Close (Esc)">×</button></div>`;
-
-function days(r: RoutineInfo): string {
-  if (r.days.length === 0) return "Every day";
-  const set = r.days.join(",");
-  if (set === "mon,tue,wed,thu,fri") return "Weekdays";
-  if (set === "sat,sun") return "Weekends";
-  return r.days.map((d) => DAY_NAMES[d] ?? d).join(" ");
-}
 
 /** The run a skip would spend a token on: the routine's next unskipped run that has not started. */
 export function skippable(st: Status, routine: string): Upcoming | undefined {
   return st.upcoming.find((u) => u.routine === routine && !u.skipped && u.starts_in_secs > 0);
 }
 
-export function routinesPanel(list: RoutineInfo[], perWeek: number, st: Status, now: number): string {
-  const defs = list.length
-    ? `<ul class="list">${list
-        .map(
-          (r) => `<li><span class="grow"><strong>${escapeHtml(r.name)}</strong>
-            <div class="small muted">${days(r)} · ${escapeHtml(r.start)} · ${hm(r.duration_mins * 60)} · ${escapeHtml(r.profile)}</div></span></li>`,
-        )
-        .join("")}</ul>`
-    : `<p class="muted">No routines yet. Routines start sessions on their own at set times.</p>`;
-
+/** Next 24 hours of routine runs, with a Skip per run. Sits above the editor in Settings → Routines. */
+export function runsPanel(st: Status, perWeek: number, now: number): string {
   const runs = st.upcoming.length
     ? `<ul class="list">${st.upcoming
         .map((u) => {
@@ -46,13 +28,9 @@ export function routinesPanel(list: RoutineInfo[], perWeek: number, st: Status, 
         .join("")}</ul>`
     : `<p class="muted small">Nothing scheduled in the next 24 hours.</p>`;
 
-  return `${head("Routines")}
-    ${defs}
-    <h3>Next 24 hours</h3>
+  return `<h3>Next 24 hours</h3>
     ${runs}
-    <p class="small muted">${st.skip_tokens_left} of ${perWeek} skip token${perWeek === 1 ? "" : "s"} left this week.
-      Edit routines in <button class="link" data-action="settings" data-section="routines">Settings → Routines</button>.
-      Loosening changes wait 24 hours.</p>`;
+    <p class="small muted">${st.skip_tokens_left} of ${perWeek} skip token${perWeek === 1 ? "" : "s"} left this week. Loosening changes wait 24 hours.</p>`;
 }
 
 function tile(label: string, value: string, loss = false): string {
@@ -104,6 +82,7 @@ function outcome(f: Finished): string {
   }
 }
 
+/** The Stats section. Rendered inside the settings sheet; the sheet adds the title. */
 export function statsPanel(stats: Stats, sessions: Finished[], world: World | null, now: number): string {
   const n = stats.days.length;
   const tiles = [
@@ -127,13 +106,26 @@ export function statsPanel(stats: Stats, sessions: Finished[], world: World | nu
     return `<li><span class="num">${dayName(s.started_at, now)} ${hhmm(s.started_at)}</span>
       <span class="grow small muted">${label}</span><span class="num">${hm(s.elapsed_secs)}</span>${outcome(f)}</li>`;
   });
-  return `${head("Stats")}
-    <div class="tiles">${tiles}</div>
+  return `<div class="tiles">${tiles}</div>
     ${facts}
     <h3>Focused per day, last ${Math.min(14, n)} days</h3>
     ${chart(stats.days.slice(-14))}
     <h3>Recent sessions</h3>
     ${recent.length ? `<ul class="list">${recent.join("")}</ul>` : `<p class="muted small">No sessions yet.</p>`}`;
+}
+
+/** The Session logs section: the city's event log, newest first. */
+export function logsPanel(w: World | null, now: number): string {
+  if (!w) return `<p class="muted">Loading…</p>`;
+  const items = w.history
+    .slice()
+    .reverse()
+    .map(
+      (e) =>
+        `<li class="${isLoss(e) ? "loss" : ""}"><time>${dayName(e.ts, now)} ${hhmm(e.ts)}</time><span class="grow">${escapeHtml(describe(w, e))}</span></li>`,
+    )
+    .join("");
+  return items ? `<ul class="list">${items}</ul>` : `<p class="muted">Nothing yet. Complete a session to put up the first building.</p>`;
 }
 
 export function notice(p: PendingConfig | null): string {

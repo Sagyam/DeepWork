@@ -56,6 +56,11 @@ export async function routines(): Promise<{ routines: RoutineInfo[]; skip_tokens
   return r;
 }
 
+export async function skip(routine: string): Promise<void> {
+  const r = await call({ type: "skip", routine });
+  if (r.type !== "skipped") throw new Error(`unexpected reply ${r.type}`);
+}
+
 export async function pendingConfig(): Promise<PendingConfig | null> {
   const r = await call({ type: "config_status" });
   if (r.type !== "config") throw new Error(`unexpected reply ${r.type}`);

@@ -1,18 +1,23 @@
-// The settings sheet: every key in /etc/deepwork/config.toml, editable here.
-// The daemon is still the authority: it validates, writes the file, and holds
-// back loosening changes for 24 hours. This module only holds the draft.
-import { exportBackup, getConfig, importBackup, saveConfig } from "./daemon";
+// The settings sheet: every key in /etc/deepwork/config.toml, editable here,
+// plus the read-only Stats and Session logs sections. The daemon is still the
+// authority: it validates, writes the file, and holds back loosening changes
+// for 24 hours. This module only holds the draft.
+import { exportBackup, getConfig, history, importBackup, saveConfig, skip as skipRun } from "./daemon";
 import { confirmAction, openText, saveText } from "./files";
-import { escapeHtml, hm } from "./format";
+import { escapeHtml, hhmm, hm } from "./format";
+import { dayTip, logsPanel, runsPanel, skippable, statsPanel } from "./panels";
+import { midnight, summarize, type Stats } from "./stats";
 import { cleanDomain, defaultProfileName, putPath } from "./settings-model";
-import type { Config, ListMode, PendingConfig, Profile, RuleAction, Throttle } from "./proto";
+import type { Config, Finished, ListMode, PendingConfig, Profile, RuleAction, Status, Throttle, World } from "./proto";
 
-export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup";
+export type SettingsSection = "session" | "lists" | "routines" | "stats" | "logs" | "inverted" | "dns" | "backup";
 
 const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "session", label: "Session", blurb: "Timer defaults and nudges" },
   { key: "lists", label: "Site lists", blurb: "Allow, slow and block" },
   { key: "routines", label: "Routines", blurb: "Sessions that start on their own" },
+  { key: "stats", label: "Stats", blurb: "Focused time and outcomes" },
+  { key: "logs", label: "Session logs", blurb: "Every build, collapse and quake" },
   { key: "inverted", label: "Inverted mode", blurb: "Throttle between sessions" },
   { key: "dns", label: "DNS", blurb: "Resolver and upstreams" },
   { key: "backup", label: "Backup", blurb: "Export and import everything" },
@@ -44,10 +49,21 @@ let dirty = false;
 let busy = false;
 let pending: PendingConfig | null = null;
 
+/** Live data for the read-only sections, pushed in from the HUD poll. */
+const live: { status: Status | null; world: World | null } = { status: null, world: null };
+let past: Finished[] = [];
+let stats: Stats | null = null;
+let statsFetchedAt = 0;
+let statsBusy = false;
+/** Last HTML written for a read-only section, so polls only touch changed text. */
+let viewKey = "";
+const STATS_DAYS = 28;
+
 const dialog = () => document.querySelector<HTMLDialogElement>("#settings")!;
 const main = () => document.querySelector<HTMLElement>("#settings-main")!;
 const nav = () => document.querySelector<HTMLElement>("#settings-nav")!;
 const footMessage = () => document.querySelector<HTMLElement>("#settings-message")!;
+const skipDialog = () => document.querySelector<HTMLDialogElement>("#skip")!;
 
 /** The first profile if the remembered one disappeared. */
 /** The daemon omits optional keys (null in Rust), so fill them in once. */
@@ -279,6 +295,9 @@ function listsSection(c: Config): string {
 }
 
 function routinesSection(c: Config): string {
+  const runs = live.status
+    ? `<div id="runs">${runsPanel(live.status, c.schedule.skip_tokens_per_week, Math.floor(Date.now() / 1000))}</div>`
+    : "";
   const rows = c.routines
     .map(
       (r, i) => `<div class="routine-card">
@@ -295,6 +314,7 @@ function routinesSection(c: Config): string {
     .join("");
   return `<div class="sheet-title"><h2>Routines</h2>
       <p class="muted">A routine starts a countdown on its own. If the machine was asleep, it starts late with what is left of its window. Each run happens once.</p></div>
+    ${runs}
     ${rows || `<p class="empty">No routines. Focus only starts when you do.</p>`}
     <button class="primary" data-action="routine-add">Add a routine</button>`;
 }
@@ -386,7 +406,22 @@ function pendingBanner(): string {
     <span class="hint">The form shows the settings that will apply. Cancel goes back to the ones in effect now.</span></div>`;
 }
 
+function statsSection(): string {
+  const title = `<div class="sheet-title"><h2>Stats</h2>
+    <p class="muted">Focused time per day, completed and surrendered sessions, streak.</p></div>`;
+  if (!stats) return `${title}<p class="muted">Loading stats…</p>`;
+  return title + statsPanel(stats, past, live.world, Math.floor(Date.now() / 1000));
+}
+
+function logsSection(): string {
+  const title = `<div class="sheet-title"><h2>Session logs</h2>
+    <p class="muted">The city's event log, newest first: what every session — or bypass — did.</p></div>`;
+  return title + logsPanel(live.world, Math.floor(Date.now() / 1000));
+}
+
 function body(): string {
+  if (section === "stats") return statsSection();
+  if (section === "logs") return logsSection();
   if (!draft) return `<p class="muted">Loading settings…</p>`;
   return pendingBanner() + sectionBody(draft);
 }
@@ -405,19 +440,77 @@ function sectionBody(c: Config): string {
       return dnsSection(c);
     case "backup":
       return backupSection();
+    case "stats":
+    case "logs":
+      return ""; // rendered by body(); these sections have no config form
   }
 }
 
 function render() {
-  if (!draft) return;
+  if (!draft && section !== "stats" && section !== "logs") return;
   nav().innerHTML = SECTIONS.map(
     (s) =>
       `<button class="nav-item${s.key === section ? " on" : ""}" data-action="section" data-section="${s.key}">
         <span class="nav-label">${s.label}</span><span class="nav-blurb">${s.blurb}</span>
       </button>`,
   ).join("");
-  main().innerHTML = body();
+  viewKey = body();
+  main().innerHTML = viewKey;
   updateFoot();
+}
+
+// ---------------------------------------------------------------------------
+// Live data: the HUD poll pushes status and world in; the read-only sections
+// refresh from them without disturbing scroll or hover.
+
+/** Refetches history and re-renders the Stats section if it is showing. */
+async function refreshStats() {
+  if (statsBusy) return;
+  statsBusy = true;
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    past = await history(midnight(now, STATS_DAYS - 1));
+    stats = summarize(past, now, STATS_DAYS);
+    statsFetchedAt = Date.now();
+    updateView();
+  } catch (e) {
+    setMessage(`Stats unavailable: ${e instanceof Error ? e.message : String(e)}`, true);
+  } finally {
+    statsBusy = false;
+  }
+}
+
+/** Rewrites a read-only section only when its HTML changed, so polls never
+ * reset scroll or hover. Config sections are untouched here. */
+function updateView() {
+  if (!dialog().open || (section !== "stats" && section !== "logs")) return;
+  const html = body();
+  if (html === viewKey) return;
+  viewKey = html;
+  main().innerHTML = html;
+}
+
+/** The runs list inside the Routines section, without rebuilding the editor. */
+function updateRuns() {
+  if (!live.status || !draft) return;
+  const div = main().querySelector("#runs");
+  if (!div) return;
+  const html = runsPanel(live.status, draft.schedule.skip_tokens_per_week, Math.floor(Date.now() / 1000));
+  if (html !== div.innerHTML) div.innerHTML = html;
+}
+
+/** Called by the HUD poll: keeps the open section's live data fresh. */
+export function hudUpdate(status: Status, world: World | null): void {
+  live.status = status;
+  if (world) live.world = world;
+  if (!dialog().open) return;
+  if (section === "stats") {
+    if (Date.now() - statsFetchedAt > 4000) void refreshStats();
+  } else if (section === "logs") {
+    updateView();
+  } else if (section === "routines") {
+    updateRuns();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -629,6 +722,27 @@ async function importAll() {
 }
 
 // ---------------------------------------------------------------------------
+// Skipping a routine run. It costs a token and can't be undone, so it is
+// confirmed in a dialog (the CLI asks at a terminal for the same reason).
+
+let skipRoutine = "";
+
+/** Offer the skip dialog for a routine's next unskipped run. Exported for the
+ * skip link in the session card. */
+export function confirmSkip(routine: string) {
+  const st = live.status;
+  const u = st && skippable(st, routine);
+  if (!st || !u) return;
+  skipRoutine = routine;
+  skipDialog().querySelector("#skip-title")!.textContent = `Skip ${routine}?`;
+  skipDialog().querySelector("#skip-text")!.textContent =
+    `The run at ${hhmm(u.starts_at)} (${hm(u.ends_at - u.starts_at)}) won't start. ` +
+    `This uses one of your ${st.skip_tokens_left} skip token${st.skip_tokens_left === 1 ? "" : "s"} left this week, and can't be undone.`;
+  skipDialog().returnValue = "";
+  skipDialog().showModal();
+}
+
+// ---------------------------------------------------------------------------
 // Wiring
 
 function commitInput(el: HTMLInputElement | HTMLSelectElement) {
@@ -662,7 +776,10 @@ export async function openSettings(at: SettingsSection = "session") {
     }
   }
   render();
-  if (!draft) main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
+  if (!draft && section !== "stats" && section !== "logs") {
+    main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
+  }
+  if (section === "stats") void refreshStats();
   if (!d.open) d.showModal();
 }
 
@@ -679,13 +796,20 @@ function start() {
     const target = ev.target as HTMLElement;
     const btn = target.closest<HTMLButtonElement>("button[data-action]");
     if (!btn) return;
-    if (!draft) return;
+    // These three work without a loaded config; the rest edit the draft.
     switch (btn.dataset.action) {
       case "close-settings":
         return void closeSettings();
       case "section":
         section = btn.dataset.section as SettingsSection;
-        return render();
+        render();
+        if (section === "stats") void refreshStats();
+        return;
+      case "skip":
+        return confirmSkip(btn.dataset.routine!);
+    }
+    if (!draft) return;
+    switch (btn.dataset.action) {
       case "save":
         return void save();
       case "revert":
@@ -784,6 +908,34 @@ function start() {
       addProfile();
     }
   });
+
+  // A confirmed skip goes through the daemon, then the HUD refetches.
+  skipDialog().addEventListener("close", () => {
+    if (skipDialog().returnValue !== "confirm") return;
+    void (async () => {
+      try {
+        await skipRun(skipRoutine);
+        setMessage(`${skipRoutine} skipped.`);
+        window.dispatchEvent(new CustomEvent("deepwork:changed"));
+      } catch (e) {
+        setMessage(e instanceof Error ? e.message : String(e), true);
+      }
+    })();
+  });
+
+  // Chart tooltip for the Stats section.
+  const tip = document.querySelector<HTMLElement>("#tip")!;
+  const mainEl = main();
+  mainEl.addEventListener("mousemove", (ev) => {
+    const col = (ev.target as Element).closest<HTMLElement>(".col");
+    const day = col && stats?.days.slice(-14)[Number(col.dataset.day)];
+    tip.hidden = !day;
+    if (!day) return;
+    tip.innerHTML = dayTip(day);
+    tip.style.left = `${Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8)}px`;
+    tip.style.top = `${ev.clientY + 14}px`;
+  });
+  mainEl.addEventListener("mouseleave", () => (tip.hidden = true));
 
   d.addEventListener("cancel", (ev) => {
     if (!dirty) return;

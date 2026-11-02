@@ -24,22 +24,18 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d18; col
   backdrop-filter: blur(6px);
 }
 .card:empty { display: none; }
-#left { position: absolute; top: 16px; left: 16px; bottom: 64px; width: 400px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+#left { position: absolute; top: 16px; left: 16px; width: 400px; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 #left .card { position: static; }
 #city { align-self: flex-start; min-width: 240px; }
-#tabs { align-self: flex-start; display: flex; gap: 4px; padding: 4px; }
-#tabs button { border: none; background: none; color: var(--dim); padding: 4px 10px; }
-#tabs button.on { background: rgba(255,255,255,0.12); color: var(--fg); }
-#panel { overflow-y: auto; min-height: 0; flex: 0 1 auto; }
-#panel[hidden] { display: none; }
-#panel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin: 14px 0 6px; font-weight: 600; }
-#panel .head { display: flex; justify-content: space-between; align-items: baseline; }
-#panel .close { background: none; border: none; color: var(--dim); font-size: 18px; padding: 0 4px; line-height: 1; }
+#menu { align-self: flex-start; display: flex; padding: 3px; }
+#menu button { display: flex; align-items: center; padding: 7px; border: none; background: none; color: var(--dim); border-radius: 8px; }
+#menu button:hover { background: rgba(255,255,255,0.12); color: var(--fg); }
 .list { list-style: none; padding: 0; margin: 0; }
 .list li { display: flex; gap: 10px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--edge); }
 .list li:first-child { border-top: none; }
 .list .grow { flex: 1; min-width: 0; }
 .list .num { font-variant-numeric: tabular-nums; color: var(--dim); white-space: nowrap; }
+.list time { flex: none; width: 104px; color: #7b8194; font-variant-numeric: tabular-nums; }
 .list button.link { padding: 0; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: var(--dim); }
 .tag.loss { background: rgba(255,107,90,0.14); color: var(--danger); }
@@ -65,7 +61,6 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d18; col
 #notice ul { margin: 4px 0 0; padding-left: 18px; color: var(--dim); }
 #side { position: absolute; top: 16px; right: 16px; width: 300px; display: flex; flex-direction: column; gap: 10px; }
 #side .card { position: static; }
-#history { font-size: 12px; color: var(--dim); }
 #banner {
   position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%);
   pointer-events: auto; background: #3a1d1d; border: 1px solid #6b2a2a;
@@ -91,16 +86,11 @@ button:disabled { opacity: 0.45; cursor: default; }
 button.primary { background: #6a5520; border-color: #a08030; }
 button.danger { background: transparent; color: var(--danger); border-color: #6b2a2a; }
 button.link { background: none; border: none; color: var(--dim); padding: 4px 0; text-decoration: underline; }
-input.minutes { width: 64px; }
 .nudge { color: var(--accent); }
 .nudge.level-2 { color: #ffa860; }
 .nudge.level-3 { color: var(--danger); font-weight: 600; }
 .loss { color: var(--danger); }
 .gain { color: var(--ok); }
-#history ul { list-style: none; padding: 0; margin: 4px 0 0; }
-#history li { padding: 1px 0; }
-#history li { display: flex; gap: 8px; }
-#history time { flex: none; width: 48px; color: #7b8194; }
 dialog {
   background: #151827; color: var(--fg); border: 1px solid var(--edge);
   border-radius: 12px; max-width: 460px; padding: 18px 20px;
@@ -127,16 +117,24 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .seg button { border: none; background: none; color: var(--dim); padding: 5px 12px; border-radius: 7px; }
 .seg button.on { background: rgba(255,255,255,0.12); color: var(--fg); }
 .start-mode { align-self: flex-start; }
-.chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-.chips[hidden] { display: none; }
-.chip { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 8px 4px; border-radius: 10px; background: rgba(255,255,255,0.04); border: 1px solid var(--edge); }
-.chip b { font-size: 18px; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.chip span { font-size: 11px; color: var(--dim); }
-.chip.on { border-color: #a08030; background: rgba(255,207,122,0.12); }
-.chip.custom input { width: 100%; padding: 0; border: none; background: none; text-align: center; font: 600 18px/1.15 system-ui, sans-serif; color: var(--fg); }
-.chip.custom input::-webkit-inner-spin-button { display: none; }
-.start-profile { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
-.start-profile select { flex: 1; }
+
+/* The timer dial: a pale ring that fills in deeper, one turn = 3 hours. */
+.clockdial { display: block; margin: 2px auto 0; touch-action: none; user-select: none; cursor: pointer; }
+.clockdial.dim { cursor: default; }
+.clockdial .track { fill: none; stroke: color-mix(in srgb, var(--accent) 22%, transparent); stroke-width: 10; }
+.clockdial .fill { fill: none; stroke: #e0a63f; stroke-width: 10; stroke-linecap: round; }
+.clockdial .readout { fill: var(--fg); text-anchor: middle; dominant-baseline: central; font-variant-numeric: tabular-nums; }
+.clockdial .readout .num { font-size: 40px; font-weight: 300; }
+.clockdial .readout .num.min { fill: var(--accent); }
+.clockdial .readout .unit { font-size: 14px; fill: var(--dim); }
+.clockdial.dim .track { stroke: rgba(255,255,255,0.08); }
+.clockdial.dim .readout { opacity: 0.45; }
+.clockdial:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 50%; }
+
+/* Profile pick and the start button share a row. */
+.start-row { display: flex; gap: 8px; }
+.start-row select { flex: 0 1 auto; min-width: 0; max-width: 45%; }
+.start-row .start-button { flex: 1; }
 .start-button { width: 100%; padding: 10px; font-weight: 600; }
 .start-extra { margin-top: 8px; }
 
