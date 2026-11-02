@@ -38,7 +38,7 @@ cargo build --release --locked
 # The window (Tauri) needs bun for its frontend; skipped without it.
 if command -v bun >/dev/null; then
     (cd ui && bun install --frozen-lockfile && bun run build)
-    cargo build --release --locked -p deepwork-ui
+    cargo build --release --locked -p deepwork-ui --features custom-protocol
     sudo install -Dm755 target/release/deepwork-ui /usr/local/bin/deepwork-ui
     sudo install -Dm644 dist/deepwork-ui.desktop /usr/local/share/applications/deepwork-ui.desktop
     sudo install -Dm644 ui/src-tauri/icons/icon.png /usr/local/share/icons/hicolor/512x512/apps/deepwork.png

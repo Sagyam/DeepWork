@@ -11,3 +11,9 @@ tauri-build = { version = "2", features = [] }
 deepwork-proto.workspace = true
 serde_json.workspace = true
 tauri = { version = "2", features = [] }
+
+[features]
+# Serve the built frontend (`ui/dist`) from the binary. Without it the window
+# is a dev build that loads the Vite dev server on localhost:5173. The Tauri
+# CLI turns it on for `tauri build`; plain cargo builds must ask for it.
+custom-protocol = ["tauri/custom-protocol"]
