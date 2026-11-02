@@ -1,23 +1,31 @@
 import { DaemonRefusal, Unreachable, call, status as getStatus, world as getWorld } from "./daemon";
 import { BUILDINGS, TIERS, ago, clock, describe, escapeHtml, hm, isLoss } from "./format";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
-import { Skyline } from "./skyline";
+import { City } from "./city/scene";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const hourOverride = new URLSearchParams(location.search).get("hour");
-const openedAt = Math.floor(Date.now() / 1000);
 
 let status: Status | null = null;
 let world: World | null = null;
 let sessionKey = "";
 let controlsKey = "";
 let lastWorldFetch = 0;
-let seenHistory = -1;
 
 function localHour(): number {
   if (hourOverride !== null) return Number(hourOverride);
   const d = new Date();
   return d.getHours() + d.getMinutes() / 60;
+}
+
+let storyTimer = 0;
+/** One line narrating what the city is showing, e.g. a replayed loss. */
+function story(text: string) {
+  const el = $("#story");
+  el.textContent = text;
+  el.classList.add("show");
+  clearTimeout(storyTimer);
+  storyTimer = window.setTimeout(() => el.classList.remove("show"), 4200);
 }
 
 function banner(text: string | null) {
@@ -206,7 +214,7 @@ dialog.addEventListener("close", () => {
   }
 });
 
-let skyline: Skyline | null = null;
+let skyline: City | null = null;
 let rendererError: string | null = null;
 let busy = false;
 
@@ -222,10 +230,6 @@ async function poll() {
       sessionKey = key;
       lastWorldFetch = now;
       world = await getWorld();
-      // Shake for losses that land while the window is open.
-      const fresh = world.history.filter((e) => e.ts >= openedAt);
-      if (seenHistory >= 0 && fresh.length > seenHistory && fresh.slice(seenHistory).some(isLoss)) skyline?.quake(1);
-      seenHistory = fresh.length;
       renderCity(world);
       renderHistory(world);
     }
@@ -245,10 +249,18 @@ window.addEventListener("error", (e) => banner(`UI error: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) => banner(`UI error: ${e.reason}`));
 // The HUD works without the skyline, so a renderer failure only costs the picture.
 try {
-  skyline = await Skyline.create($("#stage"));
+  skyline = await City.create($("#stage"), story);
+  if (!("__TAURI_INTERNALS__" in window)) Object.assign(window, { city: skyline });
 } catch (e) {
   console.error(e);
   rendererError = `Skyline unavailable: ${e}`;
 }
 await poll();
 setInterval(poll, 1000);
+// `VITE_FPS=1 bun run build` adds a frame-rate readout, for tuning.
+if (import.meta.env.VITE_FPS && skyline) {
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;left:8px;bottom:8px;font:12px monospace;color:#9f9;z-index:9";
+  document.body.append(el);
+  setInterval(() => (el.textContent = `${skyline!.fps.toFixed(0)} fps`), 500);
+}

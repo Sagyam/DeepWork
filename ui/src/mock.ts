@@ -1,6 +1,9 @@
 // Canned daemon for developing the renderer in a browser: `bun run dev`, then
 // open http://localhost:5173/?mock=city (empty, hamlet, city, metropolis,
 // session, stopwatch, surrender, ruins). `&hour=22` fixes the time of day.
+// Each load replays the history (its timestamps are relative to now). In the
+// console, `city.demo("collapse" | "build" | "damage", plot?)` plays one
+// transition (the tallest building if no plot is given).
 import type { Construction, Plot, Request, Response, SessionInfo, Status, World, WorldEvent } from "./proto";
 import { SURRENDER_PHRASE } from "./proto";
 

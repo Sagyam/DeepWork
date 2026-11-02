@@ -134,7 +134,7 @@ rules (stopwatch minimum, surrender).
 | `crates/daemon` | `deepworkd` | Root daemon |
 | `crates/cli` | `deepwork` | CLI client |
 | `crates/agent` | `deepwork-agent` | User service: notifications, heads-ups, escalating nudges |
-| `ui/` | `deepwork-ui` | Tauri 2 + PixiJS window: skyline and session HUD |
+| `ui/` | `deepwork-ui` | Tauri 2 + three.js window: 3D city and session HUD |
 
 ### Tech choices
 
@@ -313,42 +313,64 @@ streak, and a history of the last 30 changes with their cause.
 
 `ui/`: Tauri 2 shell (`ui/src-tauri`, crate `deepwork-ui`, outside the
 workspace's default members so `cargo test` stays light) and a Vite +
-TypeScript + PixiJS 8 frontend, built with bun.
+TypeScript + three.js frontend, built with bun.
 
 - The shell has one command, `daemon`, which forwards a `Request` to the
   socket (`DEEPWORK_SOCKET` or the default) and returns the `Response`
   (`Gate` refused). No state, no policy: the daemon decides, as for the CLI.
 - The frontend polls `Status` every second and `World` every 5s (and at once
   when the session changes). `ui/src/proto.ts` mirrors `crates/proto` by hand.
-- Skyline theme in two halves, like the world model: `layout.ts` turns the
-  `World` into a `Scene` (positions, colours, windows, cracks; pure, seeded
-  per plot, unit tested with `bun test`); `skyline.ts` draws it. Grade sets
-  height and roof (house with pitched roof, shop with awning, tower block with
-  water tank, high-rise with antenna, landmark with spire), capped by an
-  aspect ratio so narrow slots don't make needles. Damage soots the facade,
-  breaks windows, adds cracks and smoke; damage 2 also breaks off a top
-  corner. Rubble is a heap with beams. The site is concrete floors up to its
-  progress inside scaffolding to the full height, with a crane; it shakes and
-  flashes red while surrendering. Districts are spaced apart; once they no
-  longer fit, older districts move to rows further back, smaller and hazier
-  (up to 4 rows). Distant silhouettes grow with the tier. Sky, sun / moon,
-  stars, lit windows and street lamps follow the local time. A loss that
-  lands while the window is open shakes the screen.
+- City theme in 3D (three.js, procedural: no asset files). The 2D Pixi
+  skyline was the first try; the user found it flat ("nothing to be proud
+  of, nothing to lose"), so it was replaced on the same day.
+  - `city/plan.ts` (pure, unit tested with `bun test`): the `World` as a city
+    plan. A district is a block of 8 lots (4 x 2) ringed by road; blocks go
+    in a square spiral from the centre, so the city grows outward. Grade
+    picks the kind and size: cottage (gable roof, chimney, hedge, garden
+    tree), shop (lit shop window, awning, neon sign), apartment block
+    (balconies, water tank), office tower (glass, setback, antenna),
+    landmark (three tiers, gold trim and crown, spire, beacon). Empty lots
+    of a block are staked out with tape; countryside trees grow with the tier.
+  - `city/models.ts`: meshes from boxes / prisms / cylinders, details merged
+    per material. Facades are canvas textures (`city/textures.ts`): window
+    grids with a lit-window emissive map that follows the night. Damage 1
+    darkens and smokes; damage 2 has smashed, scorched, partly burning
+    windows, the top quarter broken off with rebar, fire and heavy smoke.
+    Rubble is a heap of concrete, wall and burnt chunks with bent beams,
+    bigger for a bigger building. The site: concrete floors up to its
+    progress, columns, scaffolding a floor above the work, a translucent
+    blueprint of the finished building (red while surrendering, when the
+    site also trembles), and a tower crane that swings.
+  - `city/scene.ts`: Sky shader with the sun by local time, stars and
+    moonlight at night, shadows, ACES tone mapping, bloom on lit windows,
+    lamps and beacons, fog. Orbit camera (drag / zoom), slow auto-rotate after
+    30s idle, framed to the city's size.
+  - Transitions are animated: collapse (the building shakes, tilts and sinks
+    into a dust cloud while debris rains down; rubble appears as it clears),
+    completion (the building rises out of dust, gold sparks at the top),
+    damage (jolt and dust), repair (sparks). The camera turns to the plot.
+  - Replay: the last seen history time is kept in `localStorage`; on opening,
+    unseen events play one by one from a reconstructed earlier state, with a
+    line of narration ("You surrendered. Plot 5 collapsed ..."), so a loss
+    is watched, not just counted.
+  - Performance on the host's Radeon 610M: 60 fps (vsync) in the app for the
+    real hamlet; the 120-plot metropolis at night ~100 fps uncapped in
+    GPU Chromium. `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
   phrase typed by hand: paste and drop are refused); idle card (nudge, next
   routine, skip, start 25 / 50 / 90 min, custom, stopwatch, profile); the
   last five world events.
-- The CSP has no `unsafe-eval`, so `pixi.js/unsafe-eval` is imported. A
-  renderer failure only loses the picture: the HUD keeps working and the
+- A renderer failure only loses the picture: the HUD keeps working and the
   error shows in a banner.
 - Dev: `cd ui && bun run dev`, then `http://localhost:5173/?mock=city` in a
   browser (`empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
   `surrender`, `ruins`; `&hour=21` fixes the time of day). The mock daemon
-  answers whenever the page is not inside Tauri.
+  answers whenever the page is not inside Tauri; `city.demo("collapse")` in
+  the console plays a transition.
 - Verified on the host (2026-11-02) against the installed daemon: the real
   hamlet (5 houses), nudge and history render in the window. Mock scenarios
-  checked in headless Chromium.
+  and the collapse / completion animations checked in headless Chromium.
 
 ## Decisions taken (revisit if needed)
 
@@ -357,18 +379,20 @@ TypeScript + PixiJS 8 frontend, built with bun.
 | Docker during sessions | Not locked. The user doesn't need Docker now and won't go that far to bypass. Optional lock moved to phase 4 |
 | VMs (libvirt) | Not used; ignore |
 | Throttle vs block | Throttle by default ("painfully slow"), block per domain |
-| Theme | City skyline prototype; may change. World model stays theme-agnostic |
+| Theme | City, in 3D (three.js, procedural). World model stays theme-agnostic |
 | UI order | CLI + bar module first, Tauri UI in phase 3 |
 | Bar | The user's bar is the Omarchy shell (quickshell), not Waybar. `deepwork bar` serves both |
 
 ## Next session: start here
 
 Phase 3 (2026-11-02): world model, penalties and the Tauri app with the
-skyline are in (see "World model" and "The app" above). Next is the other
+3D city are in (see "World model" and "The app" above). Next is the other
 phase 3 item: timer, routines and stats screens in the app. The session card
 already starts, stops and surrenders; missing are a routines view with
 skips, a stats view over past sessions (needs a daemon request for session
-history) and the pending config change. Then tune the skyline on real use.
+history) and the pending config change. Then tune the city on real use
+(sizes, damage looks, replay pacing); ideas: cars and people on the streets
+at higher tiers, sound for collapse / completion, weather.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -392,7 +416,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 5. After reinstalling: `deepwork world` shows the city built from past
    sessions; `deepwork-agent` (restart the user unit) notifies losses;
    `deepwork-ui` (installed when bun is present, with a desktop entry) shows
-   the skyline and a running session's construction site.
+   the 3D city and a running session's construction site.
 
 ## Phases
 
@@ -446,7 +470,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 ### Phase 3: The world
 
 - [x] Ledger → theme-agnostic world model in the daemon (`world.rs`, `Request::World`, `deepwork world`)
-- [x] Tauri 2 app with a procedural PixiJS skyline renderer (`ui/`)
+- [x] Tauri 2 app with a procedural 3D city (three.js) renderer (`ui/`), animated losses and builds
 - [ ] Timer, routines and stats screens (timer, start / stop / surrender are in the session card)
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 
