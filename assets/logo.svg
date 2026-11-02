@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f2440"/>
+      <stop offset="1" stop-color="#0d0f1a"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffcf7a"/>
+      <stop offset="1" stop-color="#e0a63f"/>
+    </linearGradient>
+    <clipPath id="disc"><circle cx="128" cy="128" r="70"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <!-- the timer: a faint track and the focused part of it -->
+  <circle cx="128" cy="128" r="84" fill="none" stroke="#e0a63f" stroke-opacity="0.18" stroke-width="14"/>
+  <circle cx="128" cy="128" r="84" fill="none" stroke="url(#ring)" stroke-width="14" stroke-linecap="round"
+          stroke-dasharray="390 528" transform="rotate(-90 128 128)"/>
+  <!-- the city it builds -->
+  <g clip-path="url(#disc)">
+    <rect x="58" y="160" width="140" height="40" fill="#2b3150"/>
+    <rect x="70" y="128" width="24" height="72" fill="#c9ccd8"/>
+    <rect x="98" y="88" width="28" height="112" fill="#eef0f6"/>
+    <path d="M112 66 L120 88 L104 88 Z" fill="#ffcf7a"/>
+    <rect x="130" y="108" width="26" height="92" fill="#a7adbd"/>
+    <rect x="160" y="140" width="22" height="60" fill="#7b8194"/>
+    <g fill="#ffcf7a">
+      <rect x="104" y="98" width="5" height="7"/><rect x="115" y="98" width="5" height="7"/>
+      <rect x="104" y="114" width="5" height="7"/><rect x="115" y="130" width="5" height="7"/>
+      <rect x="104" y="146" width="5" height="7"/><rect x="115" y="162" width="5" height="7"/>
+      <rect x="136" y="118" width="5" height="7"/><rect x="146" y="134" width="5" height="7"/>
+      <rect x="136" y="150" width="5" height="7"/><rect x="76" y="140" width="5" height="7"/>
+      <rect x="84" y="156" width="5" height="7"/><rect x="166" y="152" width="4" height="6"/>
+    </g>
+  </g>
+</svg>

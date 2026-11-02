@@ -1,0 +1,86 @@
+# DeepWork: Development
+
+Implementation notes for contributors and agents. The design, threat model and
+checklists live in [PLAN.md](PLAN.md), which is the source of truth.
+
+## Layout
+
+| Path | What |
+|---|---|
+| `crates/daemon` | `deepworkd`, the root daemon: sessions, DNS forwarder, nft/tc enforcement, SQLite ledger |
+| `crates/cli` | `deepwork`, the CLI |
+| `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
+| `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
+| `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer and the full settings sheet |
+| `dist/` | systemd units, example config, PKGBUILD, install script |
+| `assets/` | README logo, screenshots and demo GIF |
+
+## How it works
+
+During a focus session the daemon slows distracting sites down at the network
+layer: a DNS forwarder fills nftables sets with the addresses of listed
+domains, tc/netem adds latency and caps bandwidth for them, and SNI inspection
+catches connections the DNS path misses. The browser keeps working for real
+work. Routines start sessions on their own, and quitting early costs progress
+in the city. See PLAN.md for the threat model and every countermeasure.
+
+## Develop without root
+
+```sh
+cargo test
+cargo run -p deepworkd -- --dry-run          # logs nft/tc commands instead of running them
+DEEPWORK_SOCKET=$XDG_RUNTIME_DIR/deepwork-dev.sock cargo run -p deepwork -- start 25m
+cargo run -p deepworkd -- --print-rules      # show the exact nft ruleset and tc script
+```
+
+UI in a browser against the mock daemon:
+
+```sh
+cd ui
+bun run dev        # then open http://localhost:5173/?mock=city
+```
+
+Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
+`surrender`, `ruins`; `&hour=16` fixes the time of day. In the console,
+`city.demo("collapse" | "build" | "damage")` plays one transition.
+
+## Install
+
+On Arch, as a package (`bun` is a makedepend, for the window):
+
+```sh
+cd dist
+makepkg -si                 # installs to /usr, then:
+sudo systemctl enable --now deepworkd.service
+systemctl --user enable --now deepwork-agent.service
+```
+
+Every push to `main` builds the package in Actions; download the
+`deepwork-git-x86_64` artifact from the latest `package` run and
+`sudo pacman -U` the tarball inside it.
+
+Or build and install straight from the source tree, into `/usr/local`:
+
+```sh
+./dist/install.sh            # builds, installs to /usr/local, enables deepworkd.service
+./dist/install.sh uninstall
+```
+
+## CLI
+
+```sh
+deepwork start 50m           # countdown
+deepwork start --stopwatch   # stopwatch, can be stopped after 10 minutes
+deepwork status
+deepwork surrender           # the only way out of a countdown; it takes 10 minutes
+deepwork world               # the city your sessions built, and what giving in cost
+deepwork config export backup.json   # settings + progress in one file
+deepwork config import backup.json
+```
+
+## README media
+
+The screenshots and `assets/demo.gif` come from the mock UI in headless
+Chromium (Playwright, SwiftShader), 1280x800, `&hour=16`. The GIF is
+`city.demo("build")` then `city.demo("collapse")` on `?mock=city`, encoded with
+ffmpeg at 8 fps, 640 px wide.

@@ -1,63 +1,87 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
+<div align="center">
+
+<img src="assets/logo.svg" width="160" height="160" alt="DeepWork logo">
 
 # DeepWork
 
-A focus app for Linux that is hard to get around. During a focus session it
-slows distracting sites down at the network layer (DNS-informed nftables sets +
-tc/netem). Your browser keeps working for real work. Routines start sessions on
-their own, and quitting early costs you progress in a small virtual world.
+### Focus builds a city. Giving in tears it down.
 
-Status: phases 1–4 done (daemon, routines, hardening, the world, the app,
-deeper enforcement, settings and backups, and an Arch package). See
-[docs/PLAN.md](docs/PLAN.md).
+[How it works](#how-it-works) · [Tour](#tour) · [Quick start](#quick-start) · [Docs](docs/PLAN.md)
 
-## Layout
+**A focus app for Linux that is hard to get around.**<br>
+Distracting sites slow to a crawl at the network layer, routines start sessions on their own, and every early quit costs you a building.
 
-| Path | What |
+[![Rust](https://img.shields.io/badge/Rust-2024-b7410e?logo=rust&logoColor=white)](Cargo.toml)
+[![Tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white)](ui/src-tauri)
+[![Three.js](https://img.shields.io/badge/Three.js-3D_city-000000?logo=threedotjs&logoColor=white)](ui/src/city)
+[![Arch Linux](https://img.shields.io/badge/Arch-PKGBUILD-1793d1?logo=archlinux&logoColor=white)](dist/PKGBUILD)
+[![Hyprland](https://img.shields.io/badge/Hyprland-Omarchy-58e1ff?logo=hyprland&logoColor=white)](https://omarchy.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
+
+[![package](https://github.com/Sagyam/DeepWork/actions/workflows/package.yml/badge.svg)](https://github.com/Sagyam/DeepWork/actions/workflows/package.yml)
+![tests](https://img.shields.io/badge/tests-137_passing-3fb950)
+![enforcement](https://img.shields.io/badge/enforcement-nftables_+_tc-e0a63f)
+![status](https://img.shields.io/badge/status-phases_1--4_done-e0a63f)
+
+<img src="assets/demo.gif" width="800" alt="A tower rises in the city, then collapses when a session is abandoned">
+
+</div>
+
+## How it works
+
+| | |
 |---|---|
-| `crates/daemon` | `deepworkd`, the root daemon: sessions, DNS forwarder, nft/tc enforcement, SQLite ledger |
-| `crates/cli` | `deepwork`, the CLI |
-| `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
-| `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
-| `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer and the full settings sheet |
-| `dist/` | systemd unit, example config, install script |
+| 🐢 **Throttle, don't kill** | Distracting sites buffer and load slowly; docs, mail and work sites run at full speed. |
+| 🛡️ **Root daemon** | `deepworkd` enforces with nftables, tc/netem, its own DNS and SNI checks. Closing the app changes nothing. |
+| ⏰ **Routines** | Focus slots start on their own. A few skips a week, no more. |
+| 🏙️ **A city that remembers** | Finished sessions raise buildings. Surrendering, tampering or bypassing cracks or levels them. |
+| 🚪 **A way out, never a lockout** | Surrender takes 10 minutes, sessions cap at 6 hours, and TTY root always works. |
 
-## Develop without root
+<details>
+<summary><b>What it holds up against</b></summary>
+
+| You try | DeepWork |
+|---|---|
+| Close the app or kill the daemon | Rules stay in place; the daemon restarts |
+| Reboot or suspend | Session resumes; time only counts while awake |
+| `dig @8.8.8.8`, DoH, QUIC | Redirected, dropped, or forced back to TCP |
+| `sudo nft flush ruleset` | Repaired within a second, and it costs you |
+| `sudo` / `pkexec` mid-session | Denied until the session ends |
+| Loosen the config | Waits 24 hours; tightening is instant |
+
+Full threat model: [docs/PLAN.md](docs/PLAN.md#threat-model).
+</details>
+
+## Tour
+
+| | |
+|:---:|:---:|
+| <img src="assets/session.webp" alt="A focus session in progress"> | <img src="assets/surrender.webp" alt="Surrendering: the building under construction is about to collapse"> |
+| **In session.** Each one raises a building. | **Surrender.** Ten minutes to change your mind. |
+| <img src="assets/metropolis.webp" alt="A metropolis after 260 focused hours"> | <img src="assets/ruins.webp" alt="Close-up of damaged buildings and rubble"> |
+| **260 hours in.** A metropolis. | **What giving in costs.** Cracks and rubble. |
+| <img src="assets/sheet-stats.webp" alt="Stats: focused time per day, completed and surrendered sessions"> | <img src="assets/sheet-lists.webp" alt="Site lists, with a loosening change waiting 24 hours"> |
+| **Stats.** Every session, kept or quit. | **Site lists.** Loosening them waits a day. |
+
+## Quick start
 
 ```sh
-cargo test
-cargo run -p deepworkd -- --dry-run          # logs nft/tc commands instead of running them
-DEEPWORK_SOCKET=$XDG_RUNTIME_DIR/deepwork-dev.sock cargo run -p deepwork -- start 25m
-cargo run -p deepworkd -- --print-rules      # show the exact nft ruleset and tc script
-```
-
-## Install
-
-On Arch, as a package (`bun` is a makedepend, for the window):
-
-```sh
-cd dist
-makepkg -si                 # installs to /usr, then:
+git clone https://github.com/Sagyam/DeepWork && cd DeepWork/dist
+makepkg -si
 sudo systemctl enable --now deepworkd.service
 systemctl --user enable --now deepwork-agent.service
+deepwork start 50m
 ```
 
-Every push to `main` builds the package in Actions; download the
-`deepwork-git-x86_64` artifact from the latest `package` run and
-`sudo pacman -U` the tarball inside it.
+| Requires | |
+|---|---|
+| OS | Arch Linux (built on Omarchy / Hyprland) |
+| Kernel | nftables, tc/netem |
+| DNS | systemd-resolved (works with DNS-over-TLS) |
 
-Or build and install straight from the source tree, into `/usr/local`:
+## Docs
 
-```sh
-./dist/install.sh            # builds, installs to /usr/local, enables deepworkd.service
-deepwork start 50m           # countdown
-deepwork start --stopwatch   # stopwatch, can be stopped after 10 minutes
-deepwork status
-deepwork surrender           # the only way out of a countdown; it takes 10 minutes
-deepwork world               # the city your sessions built, and what giving in cost
-deepwork config export backup.json   # settings + progress in one file
-deepwork config import backup.json
-./dist/install.sh uninstall
-```
+- [Development](docs/DEVELOPMENT.md): layout, building without root, CLI
+- [Plan](docs/PLAN.md): design, threat model, roadmap
 
-Created in [T3 Code](https://t3.codes).
+<div align="center"><sub>MIT · Created in <a href="https://t3.codes">T3 Code</a></sub></div>
