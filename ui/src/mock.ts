@@ -1,10 +1,12 @@
 // Canned daemon for developing the renderer in a browser: `bun run dev`, then
 // open http://localhost:5173/?mock=city (empty, hamlet, city, metropolis,
 // session, stopwatch, surrender, ruins). `&hour=22` fixes the time of day.
+// Every scenario but `empty` has two routines, a month of past sessions and a
+// pending config change, for the Routines and Stats panels.
 // Each load replays the history (its timestamps are relative to now). In the
 // console, `city.demo("collapse" | "build" | "damage", plot?)` plays one
 // transition (the tallest building if no plot is given).
-import type { Construction, Plot, Request, Response, SessionInfo, Status, World, WorldEvent } from "./proto";
+import type { Construction, Finished, PendingConfig, Plot, Request, Response, RoutineInfo, SessionInfo, Status, World, WorldEvent } from "./proto";
 import { SURRENDER_PHRASE } from "./proto";
 
 const scenario = new URLSearchParams(location.search).get("mock") ?? "city";
@@ -62,13 +64,45 @@ function session(kind: SessionInfo["kind"], elapsed: number, surrendering = fals
   };
 }
 
-function build(): { world: World; status: Status } {
+const routines: RoutineInfo[] = [
+  { name: "morning", days: ["mon", "tue", "wed", "thu", "fri"], start: "09:00", duration_mins: 90, profile: "deep" },
+  { name: "evening", days: [], start: "20:30", duration_mins: 50, profile: "deep" },
+];
+
+/** About a month of past sessions: mostly mornings, some evenings, a few surrenders. */
+function pastSessions(): Finished[] {
+  const r = rand(17);
+  const out: Finished[] = [];
+  for (let day = 27; day >= 0; day--) {
+    const midnight = new Date(new Date().setHours(0, 0, 0, 0) - day * 86400_000).getTime() / 1000;
+    for (const [hour, mins, routine] of [[9, 90, "morning"], [14, 50, null], [20.5, 50, "evening"]] as const) {
+      if (r() < 0.35) continue;
+      const surrendered = r() < 0.08;
+      const elapsed = (surrendered ? Math.floor(mins * r()) : mins) * 60;
+      const end = midnight + hour * 3600 + elapsed + (surrendered ? 600 : 0);
+      if (end > t0) continue;
+      const id = out.length + 1;
+      out.push({
+        ended_at: end,
+        session: {
+          ...session({ type: "countdown", secs: mins * 60 }, elapsed),
+          id, routine, state: surrendered ? "surrendered" : "completed", started_at: midnight + hour * 3600,
+          remaining_secs: mins * 60 - elapsed, stop_locked_secs: 0, distracted_secs: 0, escalation_stage: 0,
+        },
+      });
+    }
+  }
+  return out.reverse();
+}
+
+function build(): { world: World; status: Status; past: Finished[]; pending: PendingConfig | null } {
   const status: Status = {
     session: null,
     profiles: ["deep", "trial"],
     dry_run: false,
     upcoming: [
       { routine: "morning", profile: "deep", starts_at: t0 + 5400, ends_at: t0 + 5400 + 5400, starts_in_secs: 5400, skipped: false },
+      { routine: "evening", profile: "deep", starts_at: t0 + 30000, ends_at: t0 + 33000, starts_in_secs: 30000, skipped: false },
     ],
     heads_up_secs: 300,
     skip_tokens_left: 2,
@@ -122,7 +156,11 @@ function build(): { world: World; status: Status } {
       world.plots = plots(16, 5, [1, 2, 3], 0.7);
       break;
   }
-  return { world, status };
+  const empty = scenario === "empty";
+  const pending: PendingConfig | null = empty
+    ? null
+    : { applies_at: t0 + 61000, applies_in_secs: 61000, reasons: ["profile deep: youtube.com no longer throttled"] };
+  return { world, status, past: empty ? [] : pastSessions(), pending };
 }
 
 const state = build();
@@ -160,7 +198,19 @@ export function mockDaemon(req: Request): Response {
       s.surrender_remaining_secs = 600;
       if (state.world.construction) state.world.construction.surrendering = true;
       return { type: "session", ...s };
-    case "skip":
-      return { type: "error", message: "no routine to skip" };
+    case "skip": {
+      const u = state.status.upcoming.find((u) => !u.skipped && u.starts_in_secs > 0 && (req.routine === null || u.routine === req.routine));
+      if (!u) return { type: "error", message: "nothing to skip in the next 24 hours" };
+      if (state.status.skip_tokens_left === 0) return { type: "error", message: "no skip tokens left this week (2 per week)" };
+      u.skipped = true;
+      state.status.skip_tokens_left--;
+      return { type: "skipped", upcoming: u, tokens_left: state.status.skip_tokens_left };
+    }
+    case "history":
+      return { type: "history", sessions: state.past.filter((f) => f.ended_at >= req.since) };
+    case "routines":
+      return { type: "routines", routines, skip_tokens_per_week: 2 };
+    case "config_status":
+      return { type: "config", message: state.pending ? "a loosening change is waiting" : "no change waiting", pending: state.pending };
   }
 }

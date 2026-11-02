@@ -1,6 +1,8 @@
-import { DaemonRefusal, Unreachable, call, status as getStatus, world as getWorld } from "./daemon";
-import { BUILDINGS, TIERS, ago, clock, describe, escapeHtml, hm, isLoss } from "./format";
-import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
+import { DaemonRefusal, Unreachable, call, status as getStatus, history, pendingConfig, routines, world as getWorld } from "./daemon";
+import { BUILDINGS, TIERS, ago, clock, describe, escapeHtml, hhmm, hm, isLoss } from "./format";
+import { dayTip, notice, routinesPanel, skippable, statsPanel } from "./panels";
+import { SURRENDER_PHRASE, type Finished, type RoutineInfo, type SessionInfo, type Status, type World } from "./proto";
+import { midnight, summarize, type Stats } from "./stats";
 import { City } from "./city/scene";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
@@ -189,7 +191,7 @@ $("#session").addEventListener("click", (ev) => {
     case "stop":
       return act(() => call({ type: "stop" }));
     case "skip":
-      return act(() => call({ type: "skip", routine: btn.dataset.routine ?? null }));
+      return confirmSkip(btn.dataset.routine!);
     case "surrender":
       return openSurrender();
   }
@@ -214,6 +216,96 @@ dialog.addEventListener("close", () => {
   }
 });
 
+// Skipping costs a token and can't be undone, so it is confirmed (the CLI
+// asks at a terminal for the same reason).
+const skipDialog = $("#skip") as HTMLDialogElement;
+let skipRoutine = "";
+function confirmSkip(routine: string) {
+  const u = status && skippable(status, routine);
+  if (!status || !u) return;
+  skipRoutine = routine;
+  const left = status.skip_tokens_left;
+  $("#skip-title").textContent = `Skip ${routine}?`;
+  $("#skip-text").textContent =
+    `The run at ${hhmm(u.starts_at)} (${hm(u.ends_at - u.starts_at)}) won't start. ` +
+    `This uses one of your ${left} skip token${left === 1 ? "" : "s"} left this week, and can't be undone.`;
+  skipDialog.returnValue = "";
+  skipDialog.showModal();
+}
+skipDialog.addEventListener("close", () => {
+  if (skipDialog.returnValue === "confirm") void act(() => call({ type: "skip", routine: skipRoutine }));
+});
+
+// Routines and Stats panels. Their data is fetched when opened and refreshed
+// with the world; the panel is redrawn from it on every poll.
+type View = "routines" | "stats" | null;
+let view: View = null;
+let routineList: { routines: RoutineInfo[]; skip_tokens_per_week: number } | null = null;
+let past: Finished[] = [];
+let stats: Stats | null = null;
+let panelKey = "";
+const STATS_DAYS = 28;
+
+async function loadPanel() {
+  const now = Math.floor(Date.now() / 1000);
+  if (view === "routines") routineList = await routines();
+  if (view === "stats") {
+    past = await history(midnight(now, STATS_DAYS - 1));
+    stats = summarize(past, now, STATS_DAYS);
+  }
+}
+
+function renderPanel() {
+  const panel = $("#panel");
+  for (const b of document.querySelectorAll<HTMLButtonElement>("#tabs button")) b.classList.toggle("on", b.dataset.view === view);
+  const now = Math.floor(Date.now() / 1000);
+  let html = "";
+  if (view === "routines" && routineList && status) html = routinesPanel(routineList.routines, routineList.skip_tokens_per_week, status, now);
+  if (view === "stats" && stats) html = statsPanel(stats, past, world, now);
+  panel.hidden = !html;
+  // Only touched when the text changes, so hover and scroll survive polls.
+  if (html !== panelKey) {
+    panelKey = html;
+    panel.innerHTML = html;
+  }
+}
+
+async function open(next: View) {
+  view = view === next ? null : next;
+  try {
+    await loadPanel();
+  } catch (e) {
+    banner(e instanceof Error ? e.message : String(e));
+  }
+  renderPanel();
+}
+
+$("#tabs").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest("button");
+  if (btn) void open(btn.dataset.view as View);
+});
+$("#panel").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest("button");
+  if (btn?.dataset.action === "close") void open(view);
+  if (btn?.dataset.action === "skip") confirmSkip(btn.dataset.routine!);
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && view && !document.querySelector("dialog[open]")) void open(view);
+});
+
+// Chart tooltip.
+const tip = $("#tip");
+$("#panel").addEventListener("mousemove", (ev) => {
+  const col = (ev.target as HTMLElement).closest<HTMLElement>(".col");
+  const day = col && stats?.days.slice(-14)[Number(col.dataset.day)];
+  tip.hidden = !day;
+  if (!day) return;
+  tip.innerHTML = dayTip(day);
+  tip.style.left = `${Math.min(ev.clientX + 12, innerWidth - tip.offsetWidth - 8)}px`;
+  tip.style.top = `${ev.clientY + 14}px`;
+});
+$("#panel").addEventListener("mouseleave", () => (tip.hidden = true));
+
 let skyline: City | null = null;
 let rendererError: string | null = null;
 let busy = false;
@@ -232,8 +324,11 @@ async function poll() {
       world = await getWorld();
       renderCity(world);
       renderHistory(world);
+      $("#notice").innerHTML = notice(await pendingConfig());
+      if (view) await loadPanel();
     }
     renderSession(status);
+    renderPanel();
     banner(rendererError);
     if (world) skyline?.update(world, localHour(), s?.elapsed_secs ?? 0);
   } catch (e) {

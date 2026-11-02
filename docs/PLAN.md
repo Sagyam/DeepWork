@@ -403,6 +403,16 @@ TypeScript + three.js frontend, built with bun.
   phrase typed by hand: paste and drop are refused); idle card (nudge, next
   routine, skip, start 25 / 50 / 90 min, custom, stopwatch, profile); the
   last five world events.
+- Routines and Stats panels (tabs under the city card, Esc closes). Routines:
+  the configured routines (`Request::Routines`), the next 24 hours of runs
+  with a Skip per routine's next run, tokens left. Skips are confirmed in a
+  dialog, as the CLI insists on a terminal. Stats (`Request::History`, ended
+  sessions since a time, newest first, at most 2000; folded in the pure
+  `stats.ts`, unit tested): today / this week / 28 days focused, completed,
+  surrendered, streak; focused time per local day for 14 days (bars with a
+  tooltip, a red dot under days with a surrender); the last 10 sessions.
+  Panels refetch with the world (5s). A loosening config change waiting
+  behind its delay (`ConfigStatus`) shows as a card with its reasons.
 - A renderer failure only loses the picture: the HUD keeps working and the
   error shows in a banner.
 - Dev: `cd ui && bun run dev`, then `http://localhost:5173/?mock=city` in a
@@ -428,13 +438,12 @@ TypeScript + three.js frontend, built with bun.
 ## Next session: start here
 
 Phase 3 (2026-11-02): world model, penalties and the Tauri app with the
-3D city are in (see "World model" and "The app" above). Next is the other
-phase 3 item: timer, routines and stats screens in the app. The session card
-already starts, stops and surrenders; missing are a routines view with
-skips, a stats view over past sessions (needs a daemon request for session
-history) and the pending config change. Then tune the city on real use
-(sizes, damage looks, replay pacing); ideas: sound for collapse / completion,
-weather.
+3D city are in (see "World model" and "The app" above), and so are the
+Routines and Stats panels (2026-11-02, checked with the mock and against a
+dry-run daemon; the installed daemon needs `./dist/install.sh` to answer the
+new `history` / `routines` requests). Phase 3 code is complete. Next: tune the
+city on real use (sizes, damage looks, replay pacing); ideas: sound for
+collapse / completion, weather. Then phase 4.
 
 Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
@@ -515,7 +524,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Tauri 2 app with a 3D city (three.js) renderer (`ui/`), animated losses and builds
 - [x] Building and tree kit generated in Blender (`ui/blender/city_kit.py`): modular storeys, baked AO, window atlas
 - [x] More styles (second landmark style, café, brick walk-up, brutalist office, gambrel cottage), lattice crane, traffic and pedestrians
-- [ ] Timer, routines and stats screens (timer, start / stop / surrender are in the session card)
+- [x] Timer, routines and stats screens: timer, start / stop / surrender in the session card; Routines and Stats panels;
+      `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 
 ### Phase 4: Deeper enforcement

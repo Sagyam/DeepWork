@@ -39,8 +39,16 @@ enum Command {
     Stop,
     /// Give up the current session. Takes a while, and it will cost you.
     Surrender,
-    /// List routine runs in the next 24 hours.
+    /// List the routines and their runs in the next 24 hours.
     Routines,
+    /// List sessions that ended in the last few days.
+    History {
+        #[arg(long, default_value_t = 7)]
+        days: u32,
+        /// Print raw JSON.
+        #[arg(long)]
+        json: bool,
+    },
     /// Spend a skip token on the next run of a routine (or of any routine).
     Skip { routine: Option<String> },
     /// Show your city: what focus built and what giving in cost.
@@ -92,17 +100,83 @@ fn main() -> Result<()> {
             }
         }
         Command::Routines => {
+            let Response::Routines {
+                routines,
+                skip_tokens_per_week,
+            } = expect_ok(request(&cli.socket, &Request::Routines)?)?
+            else {
+                bail!("unexpected reply")
+            };
+            if routines.is_empty() {
+                println!("No routines configured.");
+            }
+            for r in &routines {
+                let days = if r.days.is_empty() {
+                    "every day".to_string()
+                } else {
+                    r.days.join(" ")
+                };
+                println!(
+                    "{} at {} for {} min, {days}, profile {}",
+                    r.name, r.start, r.duration_mins, r.profile
+                );
+            }
             let Response::Status(status) = expect_ok(request(&cli.socket, &Request::Status)?)?
             else {
                 bail!("unexpected reply")
             };
+            println!();
             if status.upcoming.is_empty() {
                 println!("No routine runs in the next 24 hours.");
             }
             for u in &status.upcoming {
                 println!("  {}", describe(u));
             }
-            println!("Skip tokens left this week: {}", status.skip_tokens_left);
+            println!(
+                "Skip tokens left this week: {} of {skip_tokens_per_week}",
+                status.skip_tokens_left
+            );
+        }
+        Command::History { days, json } => {
+            let since = unix_now() - i64::from(days) * 86400;
+            let resp = request(&cli.socket, &Request::History { since })?;
+            if json {
+                println!("{}", serde_json::to_string(&resp)?);
+                return Ok(());
+            }
+            let Response::History { sessions } = expect_ok(resp)? else {
+                bail!("unexpected reply")
+            };
+            if sessions.is_empty() {
+                println!("No sessions ended in the last {days} days.");
+            }
+            let mut focused = 0;
+            for f in &sessions {
+                let s = &f.session;
+                let outcome = match s.state {
+                    SessionState::Completed => {
+                        focused += s.elapsed_secs;
+                        "completed"
+                    }
+                    SessionState::Surrendered => "SURRENDERED",
+                    _ => "ended",
+                };
+                let routine = s
+                    .routine
+                    .as_ref()
+                    .map(|r| format!(", routine {r}"))
+                    .unwrap_or_default();
+                let ago = (unix_now() - f.ended_at).max(0) as u64;
+                println!(
+                    "{:>7} ago  {outcome:<11} {:>8}  profile {}{routine}",
+                    fmt_ago(ago),
+                    fmt_secs(s.elapsed_secs),
+                    s.profile
+                );
+            }
+            if !sessions.is_empty() {
+                println!("Focused (completed): {}", fmt_secs(focused));
+            }
         }
         Command::Skip { routine } => {
             if !std::io::stdin().is_terminal() {

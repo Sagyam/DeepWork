@@ -84,6 +84,20 @@ impl TryFrom<String> for Day {
     }
 }
 
+impl std::fmt::Display for Day {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self.0 {
+            Weekday::Monday => "mon",
+            Weekday::Tuesday => "tue",
+            Weekday::Wednesday => "wed",
+            Weekday::Thursday => "thu",
+            Weekday::Friday => "fri",
+            Weekday::Saturday => "sat",
+            Weekday::Sunday => "sun",
+        })
+    }
+}
+
 /// True if `days` is empty (every day) or contains `day`.
 pub fn on_day(days: &[Day], day: Weekday) -> bool {
     days.is_empty() || days.iter().any(|d| d.0 == day)
@@ -93,6 +107,12 @@ pub fn on_day(days: &[Day], day: Weekday) -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct ClockTime(pub Time);
+
+impl std::fmt::Display for ClockTime {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:02}:{:02}", self.0.hour(), self.0.minute())
+    }
+}
 
 impl TryFrom<String> for ClockTime {
     type Error = String;
@@ -573,6 +593,8 @@ mod tests {
         let r = &config.routines[0];
         assert_eq!(r.start.0, Time::constant(9, 0, 0, 0));
         assert_eq!(r.days[2].0, Weekday::Friday);
+        assert_eq!(r.start.to_string(), "09:00");
+        assert_eq!(r.days[2].to_string(), "fri");
         assert_eq!(config.schedule.heads_up_secs, 300);
 
         for bad in ["24:00", "9", "09:5", "9:60", "-1:00"] {

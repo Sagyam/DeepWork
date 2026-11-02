@@ -8,8 +8,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use anyhow::Result;
 use deepwork_proto::{
-    ConfigInfo, Finished, PendingConfig, Request, Response, SessionInfo, SessionKind, SessionState,
-    Status, Upcoming,
+    ConfigInfo, Finished, HISTORY_LIMIT, PendingConfig, Request, Response, RoutineInfo,
+    SessionInfo, SessionKind, SessionState, Status, Upcoming,
 };
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
@@ -205,6 +205,13 @@ impl Core {
             }
             Request::ReloadConfig => Ok(Response::Config(self.reload())),
             Request::World => Ok(Response::World(Box::new(self.world()?))),
+            Request::History { since } => Ok(Response::History {
+                sessions: self.history(since)?,
+            }),
+            Request::Routines => Ok(Response::Routines {
+                routines: self.routines(),
+                skip_tokens_per_week: self.cfg.schedule.skip_tokens_per_week,
+            }),
             Request::Stop => {
                 let min = self.stopwatch_min();
                 let session = self.session.as_mut().ok_or("no session is running")?;
@@ -321,6 +328,38 @@ impl Core {
             Timestamp::now(),
             &self.tz,
         ))
+    }
+
+    fn history(&self, since: i64) -> Result<Vec<Finished>, String> {
+        let min = self.stopwatch_min();
+        let sessions = self
+            .store
+            .finished_since(since, HISTORY_LIMIT)
+            .map_err(|e| format!("could not read past sessions: {e:#}"))?;
+        Ok(sessions
+            .into_iter()
+            .map(|(s, ended_at)| Finished {
+                session: s.info(min),
+                ended_at,
+            })
+            .collect())
+    }
+
+    fn routines(&self) -> Vec<RoutineInfo> {
+        self.cfg
+            .routines
+            .iter()
+            .map(|r| RoutineInfo {
+                name: r.name.clone(),
+                days: r.days.iter().map(|d| d.to_string()).collect(),
+                start: r.start.to_string(),
+                duration_mins: r.duration_mins,
+                profile: r
+                    .profile
+                    .clone()
+                    .unwrap_or_else(|| self.cfg.session.default_profile.clone()),
+            })
+            .collect()
     }
 
     fn skip(&mut self, routine: Option<&str>, uid: u32) -> Result<Response, String> {

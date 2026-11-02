@@ -48,7 +48,17 @@ pub enum Request {
     ReloadConfig,
     /// The progression world, derived from the ledger.
     World,
+    /// Sessions that ended at or after `since` (unix seconds), newest first.
+    /// At most [`HISTORY_LIMIT`].
+    History {
+        since: i64,
+    },
+    /// The routines in the config.
+    Routines,
 }
+
+/// The most sessions one [`Request::History`] returns.
+pub const HISTORY_LIMIT: usize = 2000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -135,6 +145,18 @@ pub struct Status {
     pub last: Option<Finished>,
     #[serde(default)]
     pub nudge: Option<Nudge>,
+}
+
+/// A routine as configured. Its runs show up in [`Status::upcoming`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoutineInfo {
+    pub name: String,
+    /// `"mon"` .. `"sun"`; every day if empty.
+    pub days: Vec<String>,
+    /// Local wall-clock time, `"HH:MM"`.
+    pub start: String,
+    pub duration_mins: u32,
+    pub profile: String,
 }
 
 /// A loosening config change waiting for its delay.
@@ -270,6 +292,13 @@ pub enum Response {
     },
     Config(ConfigInfo),
     World(Box<World>),
+    History {
+        sessions: Vec<Finished>,
+    },
+    Routines {
+        routines: Vec<RoutineInfo>,
+        skip_tokens_per_week: u32,
+    },
     Error {
         message: String,
     },

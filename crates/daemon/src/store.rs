@@ -187,55 +187,67 @@ impl Store {
             .and_then(|(s, ended)| Some((s, ended?))))
     }
 
+    /// Sessions that ended at or after `since`, newest first, with when they
+    /// ended.
+    pub fn finished_since(&self, since: i64, limit: usize) -> Result<Vec<(Session, i64)>> {
+        Ok(self
+            .sessions_where(
+                "ended_at >= ?1 ORDER BY ended_at DESC, id DESC LIMIT ?2",
+                params![since, limit as i64],
+            )?
+            .into_iter()
+            .filter_map(|(s, ended)| Some((s, ended?)))
+            .collect())
+    }
+
     fn session_where(&self, clause: &str) -> Result<Option<(Session, Option<i64>)>> {
+        Ok(self
+            .sessions_where(&format!("{clause} LIMIT 1"), [])?
+            .into_iter()
+            .next())
+    }
+
+    fn sessions_where(
+        &self,
+        clause: &str,
+        params: impl rusqlite::Params,
+    ) -> Result<Vec<(Session, Option<i64>)>> {
         let sql = format!(
             "SELECT id, kind, profile, state, started_at, elapsed_ms, surrender_left_ms, routine,
                     ended_at
-             FROM sessions WHERE {clause} LIMIT 1"
+             FROM sessions WHERE {clause}"
         );
-        self.conn
-            .query_row(&sql, [], |r| {
-                Ok((
-                    r.get::<_, i64>(0)?,
-                    r.get::<_, String>(1)?,
-                    r.get::<_, String>(2)?,
-                    r.get::<_, String>(3)?,
-                    r.get::<_, i64>(4)?,
-                    r.get::<_, i64>(5)?,
-                    r.get::<_, Option<i64>>(6)?,
-                    r.get::<_, Option<String>>(7)?,
-                    r.get::<_, Option<i64>>(8)?,
-                ))
-            })
-            .optional()?
-            .map(
-                |(
-                    id,
-                    kind,
-                    profile,
-                    state,
-                    started_at,
-                    elapsed,
-                    surrender_left,
-                    routine,
-                    ended,
-                )| {
-                    let session = Session {
-                        id,
-                        kind: serde_json::from_str::<SessionKind>(&kind)?,
-                        profile,
-                        routine,
-                        state: serde_json::from_value::<SessionState>(serde_json::Value::String(
-                            state,
-                        ))?,
-                        started_at,
-                        elapsed: from_millis(elapsed),
-                        surrender_left: surrender_left.map(from_millis),
-                    };
-                    Ok((session, ended))
-                },
-            )
-            .transpose()
+        let mut stmt = self.conn.prepare(&sql)?;
+        let rows = stmt.query_map(params, |r| {
+            Ok((
+                r.get::<_, i64>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
+                r.get::<_, i64>(5)?,
+                r.get::<_, Option<i64>>(6)?,
+                r.get::<_, Option<String>>(7)?,
+                r.get::<_, Option<i64>>(8)?,
+            ))
+        })?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, kind, profile, state, started_at, elapsed, surrender_left, routine, ended) =
+                row?;
+            let session = Session {
+                id,
+                kind: serde_json::from_str::<SessionKind>(&kind)?,
+                profile,
+                routine,
+                state: serde_json::from_value::<SessionState>(serde_json::Value::String(state))?,
+                started_at,
+                elapsed: from_millis(elapsed),
+                surrender_left: surrender_left.map(from_millis),
+            };
+            out.push((session, ended));
+        }
+        Ok(out)
     }
 
     /// Records what happened to a routine run. Fails if it was already
@@ -432,6 +444,36 @@ mod tests {
         store.save_session(&s, Some(700)).unwrap();
         let (last, ended) = store.last_finished().unwrap().unwrap();
         assert_eq!((last, ended), (s, 700));
+    }
+
+    #[test]
+    fn finished_since_newest_first() {
+        let store = Store::in_memory().unwrap();
+        let mut ended = Vec::new();
+        for end in [100, 300, 200] {
+            let mut s = Session::new(
+                SessionKind::Countdown { secs: 600 },
+                "deep".into(),
+                end - 50,
+            )
+            .unwrap();
+            store.insert_session(&mut s).unwrap();
+            s.state = SessionState::Completed;
+            store.save_session(&s, Some(end)).unwrap();
+            ended.push(s);
+        }
+        let mut running =
+            Session::new(SessionKind::Countdown { secs: 600 }, "deep".into(), 400).unwrap();
+        store.insert_session(&mut running).unwrap();
+
+        let got: Vec<i64> = store
+            .finished_since(150, 10)
+            .unwrap()
+            .into_iter()
+            .map(|(_, e)| e)
+            .collect();
+        assert_eq!(got, [300, 200]);
+        assert_eq!(store.finished_since(0, 1).unwrap()[0].0, ended[1]);
     }
 
     #[test]

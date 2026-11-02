@@ -70,3 +70,26 @@ export function describe(w: World, e: WorldEvent): string {
 export function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 }
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+export const DAY_NAMES: Record<string, string> = { mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun" };
+
+/** `14:05`, local. */
+export function hhmm(ts: number): string {
+  const d = new Date(ts * 1000);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+/** `Today`, `Yesterday`, `Sat`, or `12 Oct` further back. */
+export function dayName(ts: number, now: number): string {
+  const d = new Date(ts * 1000);
+  const today = new Date(now * 1000);
+  today.setHours(0, 0, 0, 0);
+  const back = Math.round((today.getTime() - new Date(d).setHours(0, 0, 0, 0)) / 86400_000);
+  if (back <= 0) return back === 0 ? "Today" : "Tomorrow";
+  if (back === 1) return "Yesterday";
+  if (back < 7) return WEEKDAYS[d.getDay()];
+  return `${d.getDate()} ${d.toLocaleString("en", { month: "short" })}`;
+}
+
+export const weekday = (ts: number) => WEEKDAYS[new Date(ts * 1000).getDay()];

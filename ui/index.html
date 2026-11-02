@@ -9,9 +9,17 @@
   <body>
     <div id="stage"></div>
     <div id="hud">
-      <section id="city" class="card"></section>
+      <div id="left">
+        <section id="city" class="card"></section>
+        <nav id="tabs" class="card">
+          <button data-view="routines">Routines</button>
+          <button data-view="stats">Stats</button>
+        </nav>
+        <section id="panel" class="card" hidden></section>
+      </div>
       <div id="side">
         <section id="session" class="card"></section>
+        <section id="notice" class="card"></section>
         <section id="history" class="card"></section>
       </div>
       <div id="banner" hidden></div>
@@ -34,6 +42,17 @@
         </menu>
       </form>
     </dialog>
+    <dialog id="skip">
+      <form method="dialog">
+        <h2 id="skip-title"></h2>
+        <p id="skip-text"></p>
+        <menu>
+          <button value="cancel" class="primary">Keep it</button>
+          <button id="skip-confirm" value="confirm">Skip</button>
+        </menu>
+      </form>
+    </dialog>
+    <div id="tip" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

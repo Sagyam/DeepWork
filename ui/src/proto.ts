@@ -9,7 +9,10 @@ export type Request =
   | { type: "stop" }
   | { type: "surrender"; phrase: string }
   | { type: "skip"; routine: string | null }
-  | { type: "world" };
+  | { type: "world" }
+  | { type: "history"; since: number }
+  | { type: "routines" }
+  | { type: "config_status" };
 
 export type SessionState = "active" | "surrendering" | "completed" | "surrendered";
 
@@ -37,6 +40,27 @@ export interface Upcoming {
   skipped: boolean;
 }
 
+export interface Finished {
+  session: SessionInfo;
+  ended_at: number;
+}
+
+export interface RoutineInfo {
+  name: string;
+  /** "mon" .. "sun"; every day if empty. */
+  days: string[];
+  /** "HH:MM", local. */
+  start: string;
+  duration_mins: number;
+  profile: string;
+}
+
+export interface PendingConfig {
+  applies_at: number;
+  applies_in_secs: number;
+  reasons: string[];
+}
+
 export interface Status {
   session: SessionInfo | null;
   profiles: string[];
@@ -44,7 +68,7 @@ export interface Status {
   upcoming: Upcoming[];
   heads_up_secs: number;
   skip_tokens_left: number;
-  last: { session: SessionInfo; ended_at: number } | null;
+  last: Finished | null;
   nudge: { level: number; idle_secs: number } | null;
 }
 
@@ -101,6 +125,8 @@ export type Response =
   | ({ type: "status" } & Status)
   | ({ type: "session" } & SessionInfo)
   | { type: "skipped"; upcoming: Upcoming; tokens_left: number }
-  | { type: "config"; message: string }
+  | { type: "config"; message: string; pending: PendingConfig | null }
   | ({ type: "world" } & World)
+  | { type: "history"; sessions: Finished[] }
+  | { type: "routines"; routines: RoutineInfo[]; skip_tokens_per_week: number }
   | { type: "error"; message: string };
