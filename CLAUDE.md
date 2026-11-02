@@ -10,6 +10,7 @@ when work lands.
 - `cargo test`, `cargo clippy --all-targets`, `cargo fmt`
 - `cargo run -p deepworkd -- --dry-run`: run the daemon unprivileged; commands are logged, not run
 - `cargo run -p deepworkd -- --print-rules`: dump the nft ruleset and tc script
+- UI (`ui/`, bun): `bun test`, `bun run dev` (browser + mock daemon, `?mock=city`), `bunx tauri build --no-bundle` (binary in `target/release/deepwork-ui`)
 - Kernel-level checks without touching the host: `unshare -rn sh -c 'nft -f file'` (user + net namespace)
 
 ## Rules

@@ -134,7 +134,7 @@ rules (stopwatch minimum, surrender).
 | `crates/daemon` | `deepworkd` | Root daemon |
 | `crates/cli` | `deepwork` | CLI client |
 | `crates/agent` | `deepwork-agent` | User service: notifications, heads-ups, escalating nudges |
-| `ui/` | `deepwork-ui` | Tauri 2 + PixiJS (phase 3) |
+| `ui/` | `deepwork-ui` | Tauri 2 + PixiJS window: skyline and session HUD |
 
 ### Tech choices
 
@@ -309,6 +309,47 @@ streak, and a history of the last 30 changes with their cause.
   notifies losses (collapse, earthquake, damage) within ~10s. Builds are left
   to the "Session complete" note.
 
+### The app (phase 3, built)
+
+`ui/`: Tauri 2 shell (`ui/src-tauri`, crate `deepwork-ui`, outside the
+workspace's default members so `cargo test` stays light) and a Vite +
+TypeScript + PixiJS 8 frontend, built with bun.
+
+- The shell has one command, `daemon`, which forwards a `Request` to the
+  socket (`DEEPWORK_SOCKET` or the default) and returns the `Response`
+  (`Gate` refused). No state, no policy: the daemon decides, as for the CLI.
+- The frontend polls `Status` every second and `World` every 5s (and at once
+  when the session changes). `ui/src/proto.ts` mirrors `crates/proto` by hand.
+- Skyline theme in two halves, like the world model: `layout.ts` turns the
+  `World` into a `Scene` (positions, colours, windows, cracks; pure, seeded
+  per plot, unit tested with `bun test`); `skyline.ts` draws it. Grade sets
+  height and roof (house with pitched roof, shop with awning, tower block with
+  water tank, high-rise with antenna, landmark with spire), capped by an
+  aspect ratio so narrow slots don't make needles. Damage soots the facade,
+  breaks windows, adds cracks and smoke; damage 2 also breaks off a top
+  corner. Rubble is a heap with beams. The site is concrete floors up to its
+  progress inside scaffolding to the full height, with a crane; it shakes and
+  flashes red while surrendering. Districts are spaced apart; once they no
+  longer fit, older districts move to rows further back, smaller and hazier
+  (up to 4 rows). Distant silhouettes grow with the tier. Sky, sun / moon,
+  stars, lit windows and street lamps follow the local time. A loss that
+  lands while the window is open shakes the screen.
+- HUD: tier and progress, building condition; session card (timer, building
+  progress, throttled time and stage, stop when allowed, surrender with the
+  phrase typed by hand: paste and drop are refused); idle card (nudge, next
+  routine, skip, start 25 / 50 / 90 min, custom, stopwatch, profile); the
+  last five world events.
+- The CSP has no `unsafe-eval`, so `pixi.js/unsafe-eval` is imported. A
+  renderer failure only loses the picture: the HUD keeps working and the
+  error shows in a banner.
+- Dev: `cd ui && bun run dev`, then `http://localhost:5173/?mock=city` in a
+  browser (`empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
+  `surrender`, `ruins`; `&hour=21` fixes the time of day). The mock daemon
+  answers whenever the page is not inside Tauri.
+- Verified on the host (2026-11-02) against the installed daemon: the real
+  hamlet (5 houses), nudge and history render in the window. Mock scenarios
+  checked in headless Chromium.
+
 ## Decisions taken (revisit if needed)
 
 | Question | Default |
@@ -322,8 +363,14 @@ streak, and a history of the last 30 changes with their cause.
 
 ## Next session: start here
 
-Phase 3 started (2026-11-02): world model and penalties are in (see "World
-model" above); next is the Tauri app. Phase 2 code is complete. Routines, the agent and the bar are
+Phase 3 (2026-11-02): world model, penalties and the Tauri app with the
+skyline are in (see "World model" and "The app" above). Next is the other
+phase 3 item: timer, routines and stats screens in the app. The session card
+already starts, stops and surrenders; missing are a routines view with
+skips, a stats view over past sessions (needs a daemon request for session
+history) and the pending config change. Then tune the skyline on real use.
+
+Phase 2 code is complete. Routines, the agent and the bar are
 confirmed on the host; the rest (root lock, tamper watch, browser policies in
 the daemon, DoT reuse, container DNS, config delay, escalation) is tested in
 namespaces / dry-run only. Host check after `./dist/install.sh`, keeping a
@@ -343,11 +390,9 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 4. Later: tune escalation stages and nudges on real use; then add real
    `[[routines]]`.
 5. After reinstalling: `deepwork world` shows the city built from past
-   sessions; `deepwork-agent` (restart the user unit) notifies losses.
-
-Next in phase 3: the Tauri 2 app (`ui/`), node, bun and webkit2gtk-4.1 are
-installed; `tauri-cli` is not. It reads `Request::World` / `Request::Status`
-over the socket and renders the skyline with PixiJS.
+   sessions; `deepwork-agent` (restart the user unit) notifies losses;
+   `deepwork-ui` (installed when bun is present, with a desktop entry) shows
+   the skyline and a running session's construction site.
 
 ## Phases
 
@@ -401,8 +446,8 @@ over the socket and renders the skyline with PixiJS.
 ### Phase 3: The world
 
 - [x] Ledger → theme-agnostic world model in the daemon (`world.rs`, `Request::World`, `deepwork world`)
-- [ ] Tauri 2 app with a procedural PixiJS skyline renderer
-- [ ] Timer, routines and stats screens
+- [x] Tauri 2 app with a procedural PixiJS skyline renderer (`ui/`)
+- [ ] Timer, routines and stats screens (timer, start / stop / surrender are in the session card)
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 
 ### Phase 4: Deeper enforcement

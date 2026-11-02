@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DeepWork
+Comment=Your focus city and session timer
+Exec=/usr/local/bin/deepwork-ui
+Icon=deepwork
+Categories=Utility;
+StartupWMClass=deepwork-ui

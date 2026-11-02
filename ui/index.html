@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepWork</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="stage"></div>
+    <div id="hud">
+      <section id="city" class="card"></section>
+      <div id="side">
+        <section id="session" class="card"></section>
+        <section id="history" class="card"></section>
+      </div>
+      <div id="banner" hidden></div>
+    </div>
+    <dialog id="surrender">
+      <form method="dialog">
+        <h2>Surrender this session?</h2>
+        <p>
+          Enforcement stays on for 10 more minutes, then the session ends. The building
+          under construction collapses and fire spreads to its neighbours.
+        </p>
+        <p>Type this exactly (no pasting):</p>
+        <blockquote id="phrase"></blockquote>
+        <input id="phrase-input" autocomplete="off" spellcheck="false" />
+        <p class="error" id="surrender-error"></p>
+        <menu>
+          <button value="cancel" class="primary">Keep working</button>
+          <button id="surrender-confirm" value="confirm" class="danger" disabled>Surrender</button>
+        </menu>
+      </form>
+    </dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

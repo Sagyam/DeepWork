@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
-members = ["crates/proto", "crates/daemon", "crates/cli", "crates/agent"]
+members = ["crates/proto", "crates/daemon", "crates/cli", "crates/agent", "ui/src-tauri"]
+# The Tauri app pulls in webkit2gtk; build it with `cargo build -p deepwork-ui`.
+default-members = ["crates/proto", "crates/daemon", "crates/cli", "crates/agent"]
 
 [workspace.package]
 version = "0.1.0"

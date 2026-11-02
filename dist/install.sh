@@ -19,7 +19,9 @@ if [[ ${1:-} == uninstall ]]; then
     sudo /usr/local/bin/deepworkd --browser-policies remove || true
     systemctl --user disable --now deepwork-agent.service || true
     sudo rm -f /etc/systemd/system/deepworkd.service /usr/local/bin/deepworkd /usr/local/bin/deepwork \
-        /usr/local/bin/deepwork-agent /etc/systemd/user/deepwork-agent.service
+        /usr/local/bin/deepwork-agent /etc/systemd/user/deepwork-agent.service \
+        /usr/local/bin/deepwork-ui /usr/local/share/applications/deepwork-ui.desktop \
+        /usr/local/share/icons/hicolor/512x512/apps/deepwork.png
     sudo systemctl daemon-reload
     # The daemon lifts enforcement when a session ends; this covers a crash.
     sudo nft destroy table inet deepwork 2>/dev/null || true
@@ -33,6 +35,14 @@ if [[ ${1:-} == uninstall ]]; then
 fi
 
 cargo build --release --locked
+# The window (Tauri) needs bun for its frontend; skipped without it.
+if command -v bun >/dev/null; then
+    (cd ui && bun install --frozen-lockfile && bun run build)
+    cargo build --release --locked -p deepwork-ui
+    sudo install -Dm755 target/release/deepwork-ui /usr/local/bin/deepwork-ui
+    sudo install -Dm644 dist/deepwork-ui.desktop /usr/local/share/applications/deepwork-ui.desktop
+    sudo install -Dm644 ui/src-tauri/icons/icon.png /usr/local/share/icons/hicolor/512x512/apps/deepwork.png
+fi
 sudo install -Dm755 target/release/deepworkd /usr/local/bin/deepworkd
 sudo install -Dm755 target/release/deepwork /usr/local/bin/deepwork
 sudo install -Dm755 target/release/deepwork-agent /usr/local/bin/deepwork-agent

@@ -1,0 +1,21 @@
+{
+  "name": "deepwork-ui",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test": "bun test",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.4",
+    "pixi.js": "^8.22.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
+    "@types/bun": "latest",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
