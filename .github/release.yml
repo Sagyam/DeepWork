@@ -1,0 +1,21 @@
+# Shapes the notes `gh release create --generate-notes` writes in
+# workflows/release.yml: merged pull requests since the last tag, grouped by
+# label. The first matching category wins.
+changelog:
+  exclude:
+    labels: [skip-changelog, duplicate, invalid, wontfix]
+  categories:
+    - title: 🛡️ Harder to get around
+      labels: [bypass, security]
+    - title: ✨ New
+      labels: [enhancement]
+    - title: 🐛 Fixed
+      labels: [bug]
+    - title: 📦 Packaging
+      labels: [packaging]
+    - title: 📝 Docs
+      labels: [documentation]
+    - title: ⬆️ Dependencies
+      labels: [dependencies]
+    - title: Other changes
+      labels: ["*"]

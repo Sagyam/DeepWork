@@ -109,6 +109,11 @@ Versions are calendar based, `YYYY.M.N`: year, month without a leading zero
 0. So the first release of November 2026 is `2026.11.0`, the next one
 `2026.11.1`, and the first one in January `2027.1.0`.
 
+Release notes are generated from the pull requests merged since the last
+tag, grouped by label (`.github/release.yml`; `skip-changelog` leaves one
+out). Commits pushed straight to `main` only show up in the "Full
+changelog" compare link.
+
 ```sh
 # set version in Cargo.toml, cargo update -w, commit; the workflow refuses
 # a tag that doesn't match Cargo.toml
@@ -155,3 +160,8 @@ The demo is a montage, captured frame by frame with `page.clock.install()` and
 ffmpeg adds a caption per clip (`drawtext`, Noto Sans Bold 40 px), joins them
 with 0.3 s `xfade`s, and encodes an animated WebP at 720 px, quality 55
 (about 6 MB; the swaying trees make GIF 2-3x larger).
+
+`assets/social-preview.jpg` (1280x640, uploaded by hand under Settings >
+Social preview) and the landing page's `og.jpg` come from one HTML card in
+the site repo (`og/card.html`), over a HUD-less render of `metropolis` at
+`&hour=18.3`.
