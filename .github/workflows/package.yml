@@ -10,6 +10,25 @@ name: package
 on:
   push:
     branches: [main]
+    # Only what ends up in the package. Docs, CI config for other workflows
+    # and the release-only scripts (get.sh, install.sh, packaging/) don't
+    # trigger a build; release.yml calls this workflow regardless.
+    paths:
+      - "crates/**"
+      - "ui/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "dist/PKGBUILD"
+      - "dist/.SRCINFO"
+      - "dist/deepwork-git.install"
+      - "dist/*.service"
+      - "dist/*.hook"
+      - "dist/*.rules"
+      - "dist/*.desktop"
+      - "dist/pam.py"
+      - "dist/config.example.toml"
+      - ".github/workflows/package.yml"
+      - "!**/*.md"
   workflow_dispatch:
   workflow_call:
 
