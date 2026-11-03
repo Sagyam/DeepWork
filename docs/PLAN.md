@@ -570,9 +570,11 @@ TypeScript + three.js frontend, built with bun.
     line of narration ("You surrendered. Plot 5 collapsed ..."), so a loss
     is watched, not just counted.
   - Performance on the host's Radeon 610M: 60 fps (vsync) in the app for the
-    real hamlet; the 120-plot metropolis at night ~100 fps uncapped in
-    GPU Chromium with the old box models, ~90 with the Blender kit and traffic
-    (hamlet ~170). `VITE_FPS=1 bun run build` adds a frame-rate readout.
+    real hamlet. The earlier "~90-170 fps uncapped" GPU Chromium figures
+    counted frames queued faster than the GPU drew them; waiting for the GPU
+    every frame (2026-11-03, 1600 x 1000), the mocks run at hamlet 54,
+    city 42 and metropolis 33 fps (see `docs/models.md`).
+    `VITE_FPS=1 bun run build` adds a frame-rate readout.
 - HUD: tier and progress, building condition; session card (timer, building
   progress, throttled time and stage, stop when allowed, surrender with the
   phrase typed by hand: paste and drop are refused).
@@ -665,6 +667,18 @@ TypeScript + three.js frontend, built with bun.
 | Install URL | `https://deepwork.sagyamthapa.com.np/get.sh`, a Vercel rewrite in `Sagyam/deepwork-site` to `dist/get.sh` on `main` |
 
 ## Next session: start here
+
+Realistic city (2026-11-03): the user found the low-poly look lacking and
+asked for something closer to Cities: Skylines. A prototype building is in
+(`ui/blender/proto_apartment.py`, `bun run proto` writes the git-ignored
+`ui/proto/`; viewer `ui/proto.html?view=hero|detail|street|roof|city|back&hour=15`,
+`&count=N` for a stress test): six-storey brick block over two shops, numpy
+PBR textures, AO baked in Cycles on lightmap UVs, world-space grime, and
+glass that shows a ray-traced room (interior mapping) and reflects the sky.
+The user liked it. `docs/models.md` is the plan: every model needed,
+measured GPU / CPU cost, LODs, effort. The user is going through it slowly;
+start from its open questions and "Suggested order" (tooling on the
+prototype first: pieces, LODs, instancing, measured in WebKitGTK).
 
 Design language (2026-11-03): the app now uses the landing site's tokens and
 fonts (`docs/DESIGN.md`, the spec for all of Sagyam's apps), in light and
@@ -814,6 +828,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       (Routines is a settings section; Stats and Session logs have their own progress sheet, 2026-11-03);
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
+- [ ] Realistic city (`docs/models.md`): prototype apartment block done; tooling, then the model list
 
 ### Phase 4: Deeper enforcement
 
