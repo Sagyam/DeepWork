@@ -1,0 +1,148 @@
+name: release
+
+# Builds every Linux package and, for a `v*` tag, publishes them as a GitHub
+# release (dist/get.sh installs from there):
+#
+#   deepwork_<ver>-1_<amd64|arm64>.deb        Debian 12+, Ubuntu 22.04+
+#   deepwork-<ver>-1.<x86_64|aarch64>.rpm     Fedora 37+, openSUSE
+#   deepwork-git-<ver>-x86_64.pkg.tar.zst     Arch (dist/PKGBUILD)
+#   deepwork-<ver>-<arch>-linux.tar.gz        any other systemd distribution
+#   SHA256SUMS
+#
+# Run it by hand (Actions > release > Run workflow) to get the same files as
+# artifacts without a release. Tag with the version in Cargo.toml:
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# Nothing is signed yet, and nothing goes to a package repository: that needs
+# a signing key in the repo secrets and accounts (AUR, COPR, OBS, a PPA).
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  NFPM_VERSION: 2.48.0
+
+jobs:
+  linux:
+    name: deb, rpm, tarball (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 for glibc 2.35: the oldest base the packages claim to support.
+          - { runner: ubuntu-22.04, arch: x86_64, goarch: amd64 }
+          - { runner: ubuntu-22.04-arm, arch: aarch64, goarch: arm64 }
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Version
+        id: version
+        run: |
+          crate=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)
+          if [[ $GITHUB_REF == refs/tags/v* ]]; then
+            version=${GITHUB_REF_NAME#v}
+            if [[ $version != "$crate" ]]; then
+              echo "::error::tag $GITHUB_REF_NAME does not match version $crate in Cargo.toml"
+              exit 1
+            fi
+          else
+            # Sorts before the release it leads up to, in dpkg and rpm alike.
+            version="$crate~dev$(git rev-list --count HEAD).g$(git rev-parse --short=7 HEAD)"
+          fi
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev pkg-config
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v$NFPM_VERSION/nfpm_${NFPM_VERSION}_Linux_${{ matrix.arch == 'aarch64' && 'arm64' || 'x86_64' }}.tar.gz" |
+            sudo tar -xz -C /usr/local/bin nfpm
+          nfpm --version
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Test
+        run: cargo test --locked
+
+      # Frontend first: tauri-build embeds ui/dist at compile time.
+      - name: Build
+        run: |
+          (cd ui && bun install --frozen-lockfile && bun run build)
+          cargo build --release --locked
+          cargo build --release --locked -p deepwork-ui --features custom-protocol
+
+      - name: Package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          ARCH: ${{ matrix.goarch }}
+        run: |
+          dist/packaging/stage.sh target/pkg/stage
+          mkdir -p out
+          nfpm package -f dist/packaging/nfpm.yaml -p deb -t out/
+          nfpm package -f dist/packaging/nfpm.yaml -p rpm -t out/
+
+          name="deepwork-$VERSION-${{ matrix.arch }}-linux"
+          mkdir -p "target/pkg/$name"
+          cp -R target/pkg/stage/usr "target/pkg/$name/"
+          cp dist/packaging/tarball-install.sh "target/pkg/$name/install.sh"
+          cp LICENSE "target/pkg/$name/"
+          tar -C target/pkg -czf "out/$name.tar.gz" "$name"
+          ls -l out
+
+      # The .deb must install and its binaries must load on the oldest base.
+      - name: Smoke test the .deb
+        run: |
+          sudo apt-get install -y ./out/*.deb
+          deepwork --help >/dev/null
+          deepworkd --print-rules >/dev/null
+          ldd /usr/bin/deepwork-ui | { ! grep 'not found'; }
+          grep -q deepwork-pam-gate /etc/pam.d/sudo
+          sudo apt-get remove -y deepwork
+          ! grep -q deepwork-pam-gate /etc/pam.d/sudo
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux-${{ matrix.arch }}
+          path: out/*
+          if-no-files-found: error
+
+  arch:
+    name: Arch package
+    uses: ./.github/workflows/package.yml
+
+  publish:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [linux, arch]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd out
+          sha256sum -- * >SHA256SUMS
+          cat SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+            --title "DeepWork $GITHUB_REF_NAME" --generate-notes --verify-tag -- *

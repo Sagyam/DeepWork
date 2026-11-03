@@ -196,6 +196,28 @@ package can be cut from the same file once a tag exists. `makepkg -si` in
   `deepwork` answers over the socket, and a reinstall keeps
   `/etc/deepwork/config.toml`.
 
+Other distributions (2026-11-03): `.github/workflows/release.yml` builds a
+.deb, an .rpm and a tarball for x86_64 and aarch64 on Ubuntu 22.04
+(glibc 2.35: Debian 12+, Ubuntu 22.04+, Fedora, openSUSE) with nfpm, plus the
+Arch package through `package.yml`, and publishes them on `v*` tags;
+`dist/get.sh` picks one from `/etc/os-release`. Layout and scriptlets
+(`dist/packaging/`) match the Arch package: /usr paths, PAM and polkit hooked on
+install and unhooked on removal, services enabled by the user (or by
+`get.sh`). Differences: the config is seeded from
+`/usr/share/deepwork/config.example.toml` by `postinstall.sh` instead of being
+a package config file (dpkg would stop upgrades to ask about a file the app
+rewrites), and Debian gets an apt hook in place of the pacman one. For these
+distributions the daemon skips the resolved drop-in when systemd-resolved is
+not running (plain `/etc/resolv.conf` lookups hit the port 53 redirect), and
+`pam.py` hooks services that only exist in `/usr/lib/pam.d` (openSUSE) through a copy in `/etc/pam.d`, removed again on uninstall; the browser policies also cover `/usr/lib64/firefox`, Debian's
+`firefox-esr` and the Firefox snap (`/etc/firefox/policies`). Not covered:
+Ubuntu 22.04's polkit 0.105 ignores JS rules, so there only the
+PAM hook guards polkit; snap Chromium's policy path; NixOS (declarative PAM)
+and non-systemd distributions. Checked 2026-11-03 by building in `ubuntu:22.04` and installing, checking
+and removing the packages in Debian 12 / 13, Ubuntu 22.04 / 24.04, Fedora 43
+and openSUSE Tumbleweed containers (no systemd there, so no daemon run).
+No signing or package repositories yet.
+
 ### Network enforcement
 
 1. `deepworkd` runs a DNS forwarder (default `127.0.0.1:5454` and `[::1]:5454`)
@@ -787,3 +809,9 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       with the PAM / polkit hooks in its install scriptlet. Built and inspected
       with `makepkg` on 2026-11-02 (see "Packaging"); `!lto` is required so the
       bundled SQLite archive stays readable by rust-lld
+- [x] Release pipeline for other distributions: .deb / .rpm / tarball
+      (x86_64, aarch64) with nfpm, Arch package, GitHub release on `v*` tags,
+      `dist/get.sh` installer (see "Packaging")
+- [ ] First tagged release (`v0.1.0`), then install it on a Debian / Ubuntu
+      and a Fedora machine and run the host checks there
+- [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo)

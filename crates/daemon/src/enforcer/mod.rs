@@ -36,6 +36,13 @@ fn resolved_dropin(dns_port: u16) -> String {
     )
 }
 
+/// systemd-resolved is the system resolver. Debian and openSUSE often run
+/// without it; their plain `/etc/resolv.conf` lookups go to port 53, which
+/// the ruleset redirects to the forwarder, so there is nothing to manage.
+fn resolved_running() -> bool {
+    Path::new("/run/systemd/resolve").is_dir()
+}
+
 /// Runtime drop-in that makes `systemctl stop/restart deepworkd` fail for the
 /// length of a session. Outside sessions the daemon can be stopped and
 /// upgraded normally. Crashes still restart it (`Restart=always`).
@@ -261,12 +268,13 @@ impl Enforcer {
     fn engage(&mut self, profile: Profile, mode: Mode) -> Result<()> {
         self.sync_browser_policies();
         self.install_ruleset(&profile)?;
-        if self.manage_resolved {
+        let resolved = self.dry_run || resolved_running();
+        if self.manage_resolved && resolved {
             // resolved may use DNS-over-TLS, which the ruleset now blocks, so
             // it has to go through us. Restarting also empties its cache.
             self.write_file(RESOLVED_DROPIN, &resolved_dropin(self.dns_port))?;
             self.run("systemctl", &["restart", "systemd-resolved"], None)?;
-        } else if let Err(e) = self.run("resolvectl", &["flush-caches"], None) {
+        } else if resolved && let Err(e) = self.run("resolvectl", &["flush-caches"], None) {
             // Cached answers would never reach our resolver, so their
             // addresses would never be added to the sets.
             warn!("could not flush resolved cache: {e:#}");

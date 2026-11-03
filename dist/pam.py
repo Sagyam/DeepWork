@@ -9,6 +9,9 @@ The block fails open by construction: pam_deny is only reached when the gate
 exits 0, which it does only when the daemon explicitly says "deny". A missing
 gate binary, a crash, a timeout or a stopped daemon all skip pam_deny. Root
 (and so TTY root login, which uses the `login` service) is never gated.
+
+Services configured only in /usr/lib/pam.d (openSUSE) get a hooked copy in
+/etc/pam.d, which takes precedence; removal deletes that copy again.
 """
 
 import os
@@ -66,17 +69,33 @@ def main() -> int:
         return 1
     for service in SERVICES:
         path = os.path.join(root, "etc/pam.d", service)
-        if not os.path.isfile(path):
+        # openSUSE and others ship PAM files in /usr/lib/pam.d; PAM reads a
+        # file of the same name in /etc/pam.d instead, so the hook goes in a
+        # copy there, which is deleted again on removal.
+        vendor = os.path.join(root, "usr/lib/pam.d", service)
+        vendor_text = None
+        if os.path.isfile(vendor):
+            with open(vendor) as f:
+                vendor_text = f.read()
+        if os.path.isfile(path):
+            with open(path) as f:
+                old = f.read()
+            mode = os.stat(path).st_mode & 0o7777
+        elif apply and vendor_text is not None:
+            old, mode = vendor_text, 0o644
+        else:
             continue
-        with open(path) as f:
-            old = f.read()
         new = edit(old, apply)
-        if new == old:
+        if not apply and vendor_text is not None and new != old and new == edit(vendor_text, False):
+            os.remove(path)
+            print(f"unhooked {path} (removed; {vendor} applies again)")
+            continue
+        if new == old and os.path.isfile(path):
             continue
         tmp = path + ".deepwork-tmp"
         with open(tmp, "w") as f:
             f.write(new)
-        os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+        os.chmod(tmp, mode)
         os.replace(tmp, path)
         print(f"{'hooked' if apply else 'unhooked'} {path}")
     return 0

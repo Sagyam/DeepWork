@@ -4,14 +4,14 @@ name: package
 # artifact you can download and install with `pacman -U`. No signing yet.
 #
 # AUR publishing is off the table for now (registrations closed); when they
-# open, the same package can be pushed as `deepwork-git` and this workflow can
-# keep attaching builds to tags.
+# open, the same package can be pushed as `deepwork-git`. Tags go through
+# release.yml, which calls this workflow and attaches the package.
 
 on:
   push:
     branches: [main]
-    tags: ["v*"]
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: package-${{ github.ref }}
@@ -29,7 +29,10 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      # Full history: pkgver() counts commits and reads tags.
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       # The image ships a stale keyring, and makepkg needs git. makepkg refuses
       # to run as root, so everything below runs as `builder`.
@@ -47,6 +50,13 @@ jobs:
         run: |
           sudo -u builder env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" \
             bash -c 'cd "$GITHUB_WORKSPACE/dist" && makepkg --printsrcinfo | diff -u .SRCINFO -'
+
+      # The PKGBUILD clones main from GitHub; build this exact commit instead
+      # (a tag, or a push that main has already moved past).
+      - name: Point the PKGBUILD at this checkout
+        run: |
+          sed -i "s|^source=.*|source=(\"\$pkgname::git+file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA\")|" dist/PKGBUILD
+          grep '^source=' dist/PKGBUILD
 
       - name: Build
         run: |

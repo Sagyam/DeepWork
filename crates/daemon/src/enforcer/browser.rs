@@ -24,6 +24,16 @@ const CHROMIUM_POLICY_DIRS: [&str; 3] = [
     "/etc/brave/policies/managed",
 ];
 
+/// Where distributions install Firefox-family browsers: Arch, Fedora and
+/// openSUSE (lib64), Debian's ESR. Zen tarballs in /opt are found above.
+const FIREFOX_APP_DIRS: [&str; 5] = [
+    "/usr/lib/zen-browser",
+    "/usr/lib/firefox",
+    "/usr/lib64/firefox",
+    "/usr/lib/firefox-esr",
+    "/usr/lib64/firefox-esr",
+];
+
 fn firefox_doh() -> Value {
     json!({ "Enabled": false, "Locked": true })
 }
@@ -105,12 +115,19 @@ fn firefox_policy_files() -> Vec<PathBuf> {
                 .is_some_and(|n| n.starts_with("zen-browser"))
         })
         .collect();
-    apps.extend(["/usr/lib/zen-browser", "/usr/lib/firefox"].map(PathBuf::from));
-    apps.into_iter()
+    apps.extend(FIREFOX_APP_DIRS.map(PathBuf::from));
+    let mut files: Vec<PathBuf> = apps
+        .into_iter()
         // A real install, not a leftover distribution directory.
         .filter(|app| app.join("application.ini").exists())
         .map(|app| app.join("distribution/policies.json"))
-        .collect()
+        .collect();
+    // The Firefox snap (Ubuntu's default) cannot be written to; it reads
+    // the system-wide policy file instead.
+    if Path::new("/snap/firefox").exists() {
+        files.push(PathBuf::from("/etc/firefox/policies/policies.json"));
+    }
+    files
 }
 
 fn write_if_changed(path: &Path, contents: &str) -> Result<bool> {

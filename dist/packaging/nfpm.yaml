@@ -1,0 +1,112 @@
+# .deb and .rpm from the tree dist/packaging/stage.sh lays out. Run from the repo
+# root (paths are relative to it):
+#
+#   VERSION=0.1.0 ARCH=amd64 nfpm package -f dist/packaging/nfpm.yaml -p deb -t target/pkg/
+#
+# ARCH is Go-style (amd64, arm64); nfpm maps it to x86_64 / aarch64 for rpm.
+# Built on Ubuntu 22.04 (glibc 2.35), so the binaries run on Debian 12+,
+# Ubuntu 22.04+, Fedora 37+ and openSUSE Leap 15.6 / Tumbleweed.
+
+name: deepwork
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+version_schema: none
+release: "1"
+section: utils
+priority: optional
+maintainer: Sagyam Thapa <sagyamthapa32@gmail.com>
+description: |-
+  Focus sessions enforced at the network layer.
+  A root daemon throttles distracting sites during focus sessions (DNS-fed
+  nftables sets, tc/netem, SNI inspection) and locks root access until the
+  session ends. A 3D city grows with every session and remembers early quits.
+vendor: Sagyam Thapa
+homepage: https://github.com/Sagyam/DeepWork
+license: MIT
+
+contents:
+  - src: target/pkg/stage/usr/bin/deepworkd
+    dst: /usr/bin/deepworkd
+  - src: target/pkg/stage/usr/bin/deepwork
+    dst: /usr/bin/deepwork
+  - src: target/pkg/stage/usr/bin/deepwork-agent
+    dst: /usr/bin/deepwork-agent
+  - src: target/pkg/stage/usr/bin/deepwork-ui
+    dst: /usr/bin/deepwork-ui
+  - src: target/pkg/stage/usr/lib/deepwork/deepwork-pam-gate
+    dst: /usr/lib/deepwork/deepwork-pam-gate
+  - src: target/pkg/stage/usr/lib/systemd/system/deepworkd.service
+    dst: /usr/lib/systemd/system/deepworkd.service
+  - src: target/pkg/stage/usr/lib/systemd/user/deepwork-agent.service
+    dst: /usr/lib/systemd/user/deepwork-agent.service
+  - src: target/pkg/stage/usr/share/polkit-1/rules.d/10-deepwork.rules
+    dst: /usr/share/polkit-1/rules.d/10-deepwork.rules
+  - src: target/pkg/stage/usr/share/applications/deepwork-ui.desktop
+    dst: /usr/share/applications/deepwork-ui.desktop
+  - src: target/pkg/stage/usr/share/icons/hicolor/512x512/apps/deepwork.png
+    dst: /usr/share/icons/hicolor/512x512/apps/deepwork.png
+  - src: target/pkg/stage/usr/share/deepwork/pam.py
+    dst: /usr/share/deepwork/pam.py
+  - src: target/pkg/stage/usr/share/deepwork/config.example.toml
+    dst: /usr/share/deepwork/config.example.toml
+  - src: target/pkg/stage/usr/share/doc/deepwork/PLAN.md
+    dst: /usr/share/doc/deepwork/PLAN.md
+  - src: target/pkg/stage/usr/share/doc/deepwork/README.md
+    dst: /usr/share/doc/deepwork/README.md
+  - src: target/pkg/stage/usr/share/doc/deepwork/LICENSE
+    dst: /usr/share/doc/deepwork/copyright
+    packager: deb
+  - src: target/pkg/stage/usr/share/doc/deepwork/LICENSE
+    dst: /usr/share/licenses/deepwork/LICENSE
+    packager: rpm
+    file_info:
+      mode: 0644
+  # Re-applies the browser policies after browser upgrades, like the pacman
+  # hook on Arch. dnf has no equivalent; the daemon's minute timer covers it.
+  - src: dist/packaging/apt-browser-policies.conf
+    dst: /etc/apt/apt.conf.d/80deepwork-browser-policies
+    type: config
+    packager: deb
+
+scripts:
+  postinstall: dist/packaging/postinstall.sh
+  preremove: dist/packaging/preremove.sh
+  postremove: dist/packaging/postremove.sh
+
+overrides:
+  deb:
+    depends:
+      - libc6 (>= 2.35)
+      - nftables
+      - iproute2
+      - python3
+      - systemd
+      - libpam-modules
+      - libwebkit2gtk-4.1-0
+      - libgtk-3-0t64 | libgtk-3-0
+    recommends:
+      - polkitd | policykit-1
+  rpm:
+    # Fedora ships tc in iproute-tc, openSUSE in iproute2. Library sonames
+    # keep the window's dependencies valid on both.
+    depends:
+      - nftables
+      - (iproute-tc or iproute2)
+      - python3
+      - systemd
+      - pam
+      - libwebkit2gtk-4.1.so.0()(64bit)
+      - libgtk-3.so.0()(64bit)
+    recommends:
+      # Fedora keeps sch_netem (the throttle) out of the default kernel package.
+      - kernel-modules-extra
+      - polkit
+
+rpm:
+  group: Applications/System
+  summary: Focus sessions enforced at the network layer
+  compression: zstd
+
+deb:
+  compression: xz

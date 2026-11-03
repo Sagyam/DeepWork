@@ -12,7 +12,7 @@ checklists live in [PLAN.md](PLAN.md), which is the source of truth.
 | `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
 | `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
 | `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer and the full settings sheet |
-| `dist/` | systemd units, example config, PKGBUILD, install script |
+| `dist/` | systemd units, example config, PKGBUILD, install scripts; `dist/packaging/` the deb / rpm / tarball packaging |
 | `assets/` | README logo, screenshots and demo GIF |
 
 ## How it works
@@ -46,7 +46,33 @@ Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
 
 ## Install
 
-On Arch, as a package (`bun` is a makedepend, for the window):
+From a release, on any supported distribution:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Sagyam/DeepWork/main/dist/get.sh | sh
+```
+
+`dist/get.sh` reads `/etc/os-release`, downloads the matching asset from the
+latest GitHub release, checks it against `SHA256SUMS`, installs it with apt,
+dnf, zypper or pacman, and enables `deepworkd` and the user agent
+(`DEEPWORK_VERSION=v0.2.0` pins a release, `DEEPWORK_NO_ENABLE=1` only
+installs). By hand:
+
+```sh
+sudo apt install ./deepwork_0.1.0-1_amd64.deb      # Debian, Ubuntu
+sudo dnf install ./deepwork-0.1.0-1.x86_64.rpm     # Fedora
+sudo zypper install --allow-unsigned-rpm ./deepwork-0.1.0-1.x86_64.rpm   # openSUSE
+sudo pacman -U ./deepwork-git-*.pkg.tar.zst        # Arch
+tar xf deepwork-0.1.0-x86_64-linux.tar.gz && sudo ./deepwork-0.1.0-x86_64-linux/install.sh
+sudo systemctl enable --now deepworkd.service
+systemctl --user enable --now deepwork-agent.service
+```
+
+On Fedora the throttle needs `sch_netem` from `kernel-modules-extra` (a weak
+dependency of the rpm); minimal Ubuntu kernels may need
+`linux-modules-extra-$(uname -r)`.
+
+On Arch, as a package built from source (`bun` is a makedepend, for the window):
 
 ```sh
 cd dist
@@ -55,16 +81,33 @@ sudo systemctl enable --now deepworkd.service
 systemctl --user enable --now deepwork-agent.service
 ```
 
-Every push to `main` builds the package in Actions; download the
-`deepwork-git-x86_64` artifact from the latest `package` run and
-`sudo pacman -U` the tarball inside it.
-
 Or build and install straight from the source tree, into `/usr/local`:
 
 ```sh
 ./dist/install.sh            # builds, installs to /usr/local, enables deepworkd.service
 ./dist/install.sh uninstall
 ```
+
+## Releases
+
+`.github/workflows/release.yml` runs on `v*` tags (and by hand, for
+artifacts only). It builds on Ubuntu 22.04 (glibc 2.35) for x86_64 and
+aarch64, lays the tree out with `dist/packaging/stage.sh`, turns it into a .deb and
+an .rpm with [nfpm](https://nfpm.goreleaser.com) (`dist/packaging/nfpm.yaml`, with
+`postinstall.sh` / `preremove.sh` / `postremove.sh` mirroring the Arch install
+scriptlet) and a tarball with `dist/packaging/tarball-install.sh`, installs the .deb
+on the runner as a smoke test, calls `package.yml` for the Arch package, and
+publishes everything with `SHA256SUMS` as a GitHub release.
+
+```sh
+# bump version in Cargo.toml (the workflow refuses a tag that doesn't match)
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+`package.yml` still builds the Arch package on every push to `main`
+(artifact `deepwork-git-x86_64`). Nothing is signed or pushed to a package
+repository yet: AUR, COPR, OBS or a PPA need accounts, and a signed apt / dnf
+repository needs a key in the repo secrets.
 
 ## CLI
 

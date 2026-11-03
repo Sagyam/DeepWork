@@ -14,11 +14,11 @@ Distracting sites slow to a crawl at the network layer, routines start sessions 
 [![Rust](https://img.shields.io/badge/Rust-2024-b7410e?logo=rust&logoColor=white)](Cargo.toml)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24c8db?logo=tauri&logoColor=white)](ui/src-tauri)
 [![Three.js](https://img.shields.io/badge/Three.js-3D_city-000000?logo=threedotjs&logoColor=white)](ui/src/city)
-[![Arch Linux](https://img.shields.io/badge/Arch-PKGBUILD-1793d1?logo=archlinux&logoColor=white)](dist/PKGBUILD)
+[![Linux](https://img.shields.io/badge/Linux-deb_·_rpm_·_Arch-1793d1?logo=linux&logoColor=white)](https://github.com/Sagyam/DeepWork/releases/latest)
 [![Hyprland](https://img.shields.io/badge/Hyprland-Omarchy-58e1ff?logo=hyprland&logoColor=white)](https://omarchy.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
 
-[![package](https://github.com/Sagyam/DeepWork/actions/workflows/package.yml/badge.svg)](https://github.com/Sagyam/DeepWork/actions/workflows/package.yml)
+[![release](https://github.com/Sagyam/DeepWork/actions/workflows/release.yml/badge.svg)](https://github.com/Sagyam/DeepWork/releases/latest)
 ![tests](https://img.shields.io/badge/tests-137_passing-3fb950)
 ![enforcement](https://img.shields.io/badge/enforcement-nftables_+_tc-e0a63f)
 ![status](https://img.shields.io/badge/status-phases_1--4_done-e0a63f)
@@ -66,18 +66,20 @@ Full threat model: [docs/PLAN.md](docs/PLAN.md#threat-model).
 ## Quick start
 
 ```sh
-git clone https://github.com/Sagyam/DeepWork && cd DeepWork/dist
-makepkg -si
-sudo systemctl enable --now deepworkd.service
-systemctl --user enable --now deepwork-agent.service
+curl -fsSL https://raw.githubusercontent.com/Sagyam/DeepWork/main/dist/get.sh | sh
 deepwork start 50m
 ```
 
+The script picks the right package for your distribution from the
+[latest release](https://github.com/Sagyam/DeepWork/releases/latest) and starts
+the daemon. Rather do it by hand? Download the `.deb`, `.rpm` or Arch package
+from there, or build from source ([Development](docs/DEVELOPMENT.md#install)).
+
 | Requires | |
 |---|---|
-| OS | Arch Linux (built on Omarchy / Hyprland) |
+| OS | Linux with systemd: Debian 12+, Ubuntu 22.04+, Fedora, openSUSE, Arch (x86_64, aarch64) |
 | Kernel | nftables, tc/netem |
-| DNS | systemd-resolved (works with DNS-over-TLS) |
+| DNS | systemd-resolved (works with DNS-over-TLS) or plain `/etc/resolv.conf` |
 
 ## Docs
 
