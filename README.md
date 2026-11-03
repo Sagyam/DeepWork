@@ -85,5 +85,6 @@ from there, or build from source ([Development](docs/DEVELOPMENT.md#install)).
 
 - [Development](docs/DEVELOPMENT.md): layout, building without root, CLI
 - [Plan](docs/PLAN.md): design, threat model, roadmap
+- [Contributing](.github/CONTRIBUTING.md) · [Security](.github/SECURITY.md) · [Code of conduct](.github/CODE_OF_CONDUCT.md)
 
 <div align="center"><sub>MIT · Created in <a href="https://t3.codes">T3 Code</a></sub></div>
