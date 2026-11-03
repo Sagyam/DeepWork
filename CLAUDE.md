@@ -4,6 +4,8 @@ Focus/time-blocking app for Linux (Omarchy/Arch, Hyprland). A root daemon thrott
 distracting sites at the network layer during sessions. Multi-session project:
 **`docs/PLAN.md` is the source of truth**. Read it first, and tick its checklists
 when work lands.
+`docs/DESIGN.md` is the design language shared with the landing site and
+the user's other apps; UI changes follow it, in light and dark.
 `docs/DEVELOPMENT.md` holds the layout, dev and install commands; keep
 `README.md` a short visual pitch for passersby (media in `assets/`).
 

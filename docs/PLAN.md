@@ -608,6 +608,10 @@ TypeScript + three.js frontend, built with bun.
     happened ("applied", or the loosening reasons and the 24h delay). A pending
     banner stays at the top of every config section. Unsaved edits are guarded
     on close.
+- Looks: the shared design language in `docs/DESIGN.md` (the landing site's
+  tokens and self-hosted fonts), light and dark. Settings → Appearance picks
+  System / Light / Dark; `index.html` applies it before first paint and
+  `theme.ts` follows the desktop while on System.
 - **Progress sheet** (the chart button, `progress.ts`): read-only, same
   layout as the settings sheet, no save footer.
   - Stats (`Request::History`, ended sessions since a time, newest first, at
@@ -661,6 +665,13 @@ TypeScript + three.js frontend, built with bun.
 | Install URL | `https://deepwork.sagyamthapa.com.np/get.sh`, a Vercel rewrite in `Sagyam/deepwork-site` to `dist/get.sh` on `main` |
 
 ## Next session: start here
+
+Design language (2026-11-03): the app now uses the landing site's tokens and
+fonts (`docs/DESIGN.md`, the spec for all of Sagyam's apps), in light and
+dark. Settings → Appearance has the System / Light / Dark switch (kept in the
+window's localStorage, never in `config.toml`). Sky blue is for actions and
+choices, amber for the timer, progress and the city. Checked headless with
+the mock in both schemes.
 
 UI follow-up (2026-11-03): Stats and Session logs left the settings sheet for
 their own progress sheet, opened by a chart button beside the cog. Settings

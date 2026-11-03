@@ -7,9 +7,10 @@ import { confirmAction, openText, saveText } from "./files";
 import { escapeHtml, hhmm, hm } from "./format";
 import { runsPanel, skippable } from "./panels";
 import { cleanDomain, defaultProfileName, putPath } from "./settings-model";
+import { setThemePref, themePref, type ThemePref } from "./theme";
 import type { Config, ListMode, PendingConfig, Profile, RuleAction, Status, Throttle } from "./proto";
 
-export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup";
+export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup" | "appearance";
 
 const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "session", label: "Session", blurb: "Timer defaults and nudges" },
@@ -18,6 +19,7 @@ const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "inverted", label: "Inverted mode", blurb: "Throttle between sessions" },
   { key: "dns", label: "DNS", blurb: "Resolver and upstreams" },
   { key: "backup", label: "Backup", blurb: "Export and import everything" },
+  { key: "appearance", label: "Appearance", blurb: "System, light or dark" },
 ];
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -169,8 +171,7 @@ function segmented(current: ListMode, name: string): string {
 // Sections
 
 function sessionSection(c: Config): string {
-  return `<div class="sheet-title"><h2>Session</h2>
-      <p class="muted">What every new focus session uses. Changes that loosen enforcement wait 24 hours.</p></div>
+  return `${sheetTitle("Session", `What every new focus session uses. Changes that loosen enforcement wait 24 hours.`)}
     <div class="grid2">
       ${field("Default profile", `<select data-path="session.default_profile">${profileOptions(c.session.default_profile)}</select>`)}
       ${field("Stopwatch minimum", num("session.stopwatch_min_secs", c.session.stopwatch_min_secs, { min: 1, scale: 60, suffix: "min" }), "A stopwatch cannot be stopped before this.")}
@@ -216,8 +217,7 @@ function listGroup(c: Config, name: string, action: RuleAction, title: string, h
 function listsSection(c: Config): string {
   const p = currentProfile();
   const names = Object.keys(c.profiles);
-  return `<div class="sheet-title"><h2>Site lists</h2>
-      <p class="muted">Slow or block distractions, and let the sites you need through. Every domain also covers its subdomains.</p></div>
+  return `${sheetTitle("Site lists", `Slow or block distractions, and let the sites you need through. Every domain also covers its subdomains.`)}
     <div class="pill-row">${names
       .map(
         (n) =>
@@ -302,8 +302,7 @@ function routinesSection(c: Config): string {
       </div>`,
     )
     .join("");
-  return `<div class="sheet-title"><h2>Routines</h2>
-      <p class="muted">A routine starts a countdown on its own. If the machine was asleep, it starts late with what is left of its window. Each run happens once.</p></div>
+  return `${sheetTitle("Routines", `A routine starts a countdown on its own. If the machine was asleep, it starts late with what is left of its window. Each run happens once.`)}
     ${runs}
     ${rows || `<p class="empty">No routines. Focus only starts when you do.</p>`}
     <button class="primary" data-action="routine-add">Add a routine</button>`;
@@ -311,8 +310,7 @@ function routinesSection(c: Config): string {
 
 function invertedSection(c: Config): string {
   const inv = c.inverted;
-  return `<div class="sheet-title"><h2>Inverted mode</h2>
-      <p class="muted">Distractions are slowed whenever no session is running. Completing focus earns free minutes that lift the throttle for a while.</p></div>
+  return `${sheetTitle("Inverted mode", `Distractions are slowed whenever no session is running. Completing focus earns free minutes that lift the throttle for a while.`)}
     ${toggle("inverted.enabled", inv.enabled, "Keep distractions slow between sessions", "Outside sessions nothing is locked: sudo, systemctl and Docker work as usual.")}
     <div class="grid2">
       ${field("Profile to enforce", `<select data-path="inverted.profile" data-nullable="1"><option value=""${inv.profile === null ? " selected" : ""}>default profile</option>${profileOptions(inv.profile)}</select>`)}
@@ -337,8 +335,7 @@ function upstreamRow(c: Config, i: number): string {
 }
 
 function dnsSection(c: Config): string {
-  return `<div class="sheet-title"><h2>DNS</h2>
-      <p class="muted">The forwarder runs during sessions so names can be matched before the address is known.</p></div>
+  return `${sheetTitle("DNS", `The forwarder runs during sessions so names can be matched before the address is known.`)}
     <p class="notice-small">DNS changes take effect when <code>deepworkd</code> restarts, not when you save.</p>
     <div class="grid2">
       ${field("Port", num("dns.port", c.dns.port, { min: 1, max: 65535 }))}
@@ -368,8 +365,7 @@ function dnsSection(c: Config): string {
 }
 
 function backupSection(): string {
-  return `<div class="sheet-title"><h2>Backup</h2>
-      <p class="muted">Settings and progress travel together: your city is rebuilt from the sessions in the file.</p></div>
+  return `${sheetTitle("Backup", `Settings and progress travel together: your city is rebuilt from the sessions in the file.`)}
     <div class="backup-card">
       <h3>Export everything</h3>
       <p>One JSON file with the settings, ended sessions, penalties, routine runs and the free-minute bank.</p>
@@ -387,6 +383,33 @@ function backupSection(): string {
     </div>`;
 }
 
+const THEMES: { key: ThemePref; label: string; icon: string }[] = [
+  { key: "system", label: "System", icon: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>' },
+  { key: "light", label: "Light", icon: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>' },
+  { key: "dark", label: "Dark", icon: '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z"/>' },
+];
+
+/** A view preference, so it applies at once and never goes to deepworkd. */
+function appearanceSection(): string {
+  const pref = themePref();
+  return `${sheetTitle("Appearance", `How this window looks. Kept in the app, not in <code>config.toml</code>, and applied at once.`)}
+    ${field(
+      "Theme",
+      `<div class="seg" role="group" aria-label="Colour theme">${THEMES.map(
+        (t) =>
+          `<button class="${pref === t.key ? "on" : ""}" data-action="theme" data-theme="${t.key}" aria-pressed="${pref === t.key}">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.icon}</svg>${t.label}</button>`,
+      ).join("")}</div>`,
+      "System follows the desktop's light or dark preference, and switches with it.",
+    )}`;
+}
+
+/** Eyebrow, heading and blurb, then the pending banner on config sections. */
+function sheetTitle(title: string, blurb: string): string {
+  return `<div class="sheet-title"><p class="eyebrow">Settings</p><h2>${title}</h2>
+      <p class="muted">${blurb}</p></div>${section === "appearance" ? "" : pendingBanner()}`;
+}
+
 function pendingBanner(): string {
   if (!pending) return "";
   const reasons = pending.reasons.map((r) => `<li>${escapeHtml(r)}</li>`).join("");
@@ -397,8 +420,9 @@ function pendingBanner(): string {
 }
 
 function body(): string {
+  if (section === "appearance") return appearanceSection();
   if (!draft) return `<p class="muted">Loading settings…</p>`;
-  return pendingBanner() + sectionBody(draft);
+  return sectionBody(draft);
 }
 
 function sectionBody(c: Config): string {
@@ -415,11 +439,13 @@ function sectionBody(c: Config): string {
       return dnsSection(c);
     case "backup":
       return backupSection();
+    case "appearance":
+      return appearanceSection();
   }
 }
 
 function render() {
-  if (!draft) return;
+  if (!draft && section !== "appearance") return;
   nav().innerHTML = SECTIONS.map(
     (s) =>
       `<button class="nav-item${s.key === section ? " on" : ""}" data-action="section" data-section="${s.key}">
@@ -712,7 +738,7 @@ export async function openSettings(at: SettingsSection = "session") {
     }
   }
   render();
-  if (!draft) main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
+  if (!draft && section !== "appearance") main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
   if (!d.open) d.showModal();
 }
 
@@ -729,7 +755,7 @@ function start() {
     const target = ev.target as HTMLElement;
     const btn = target.closest<HTMLButtonElement>("button[data-action]");
     if (!btn) return;
-    // These three work without a loaded config; the rest edit the draft.
+    // These work without a loaded config; the rest edit the draft.
     switch (btn.dataset.action) {
       case "close-settings":
         return void closeSettings();
@@ -738,6 +764,9 @@ function start() {
         return render();
       case "skip":
         return confirmSkip(btn.dataset.routine!);
+      case "theme":
+        setThemePref(btn.dataset.theme as ThemePref);
+        return render();
     }
     if (!draft) return;
     switch (btn.dataset.action) {

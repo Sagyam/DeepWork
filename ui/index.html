@@ -4,7 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DeepWork</title>
+    <link rel="preload" href="/fonts/space-grotesk-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/work-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin />
     <link rel="stylesheet" href="/src/style.css" />
+    <script>
+      // Before first paint, so a dark-mode window never flashes white (src/theme.ts keeps it live).
+      (() => {
+        const pref = localStorage.getItem("theme") ?? "system";
+        const dark = pref === "dark" || (pref === "system" && matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      })();
+    </script>
   </head>
   <body>
     <div id="stage"></div>

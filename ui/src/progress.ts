@@ -31,7 +31,7 @@ const main = () => document.querySelector<HTMLElement>("#progress-main")!;
 const nav = () => document.querySelector<HTMLElement>("#progress-nav")!;
 
 function statsSection(): string {
-  const title = `<div class="sheet-title"><h2>Stats</h2>
+  const title = `<div class="sheet-title"><p class="eyebrow">Progress</p><h2>Stats</h2>
     <p class="muted">Focused time per day, completed and surrendered sessions, streak.</p></div>`;
   if (statsError) return `${title}<p class="error">Stats unavailable: ${escapeHtml(statsError)}</p>`;
   if (!stats) return `${title}<p class="muted">Loading stats…</p>`;
@@ -39,7 +39,7 @@ function statsSection(): string {
 }
 
 function logsSection(): string {
-  const title = `<div class="sheet-title"><h2>Session logs</h2>
+  const title = `<div class="sheet-title"><p class="eyebrow">Progress</p><h2>Session logs</h2>
     <p class="muted">The city's event log, newest first: what every session — or bypass — did.</p></div>`;
   return title + logsPanel(world, Math.floor(Date.now() / 1000));
 }
