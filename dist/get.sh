@@ -62,7 +62,7 @@ fi
 release=$(curl -fsSL "$api") ||
     die "no release found at $api (none published yet, or GitHub rate-limited this address)."
 urls=$(printf '%s\n' "$release" | grep -o '"browser_download_url": *"[^"]*"' | sed 's/.*"\(https[^"]*\)"/\1/')
-url=$(printf '%s\n' "$urls" | grep -E "$pattern\$" | grep -v -- '-debug' | head -n1)
+url=$(printf '%s\n' "$urls" | grep -E -e "$pattern\$" | grep -v -- '-debug' | head -n1)
 sums=$(printf '%s\n' "$urls" | grep -E '/SHA256SUMS$' | head -n1)
 [ -n "$url" ] || die "the release has no asset matching $pattern."
 
