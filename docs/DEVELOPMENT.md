@@ -90,8 +90,11 @@ Or build and install straight from the source tree, into `/usr/local`:
 
 ## Releases
 
-`.github/workflows/ci.yml` runs `cargo fmt --check`, clippy with `-D warnings`,
-`cargo test`, `tsc` and `bun test` on every pull request and push to `main`.
+`.github/workflows/ci.yml` runs `cargo fmt --check`, clippy with `-D warnings`
+and `cargo test` when Rust changes (`crates/`, `ui/src-tauri/`, `Cargo.*`), and
+`tsc` and `bun test` when the rest of `ui/` changes, on pull requests and pushes
+to `main`. `package.yml` builds the Arch package on pushes to `main` that touch
+what goes into it. Markdown never triggers either.
 Dependabot (`.github/dependabot.yml`) opens grouped monthly updates for cargo,
 bun and the actions.
 
