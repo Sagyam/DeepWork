@@ -13,8 +13,9 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# Per caller: release.yml runs this for the same ref as a push to main.
 concurrency:
-  group: package-${{ github.ref }}
+  group: package-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -29,18 +30,22 @@ jobs:
     timeout-minutes: 90
 
     steps:
+      # The image ships a stale keyring. git has to be there before checkout,
+      # which otherwise downloads a tarball with no history for makepkg.
+      - name: Install git
+        run: |
+          pacman -Sy --noconfirm archlinux-keyring
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed git sudo
+
       # Full history: pkgver() counts commits and reads tags.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      # The image ships a stale keyring, and makepkg needs git. makepkg refuses
-      # to run as root, so everything below runs as `builder`.
-      - name: Prepare the container
+      # makepkg refuses to run as root, so everything below runs as `builder`.
+      - name: Add a build user
         run: |
-          pacman -Sy --noconfirm archlinux-keyring
-          pacman -Syu --noconfirm
-          pacman -S --noconfirm --needed git sudo
           useradd --create-home builder
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           chown -R builder:builder "$GITHUB_WORKSPACE"
