@@ -585,10 +585,11 @@ TypeScript + three.js frontend, built with bun.
   nothing shifts — dimmed and empty. The profile and length
   survive the one-second polls. Skip and free time sit below as secondary
   actions.
-- One cog under the city card opens the settings sheet; there are no other
-  tabs or panels on the HUD, and no log hanging under the session card.
+- Two buttons under the city card: a chart that opens the progress sheet
+  (Stats, Session logs) and a cog that opens the settings sheet; there are no
+  other tabs or panels on the HUD, and no log hanging under the session card.
 - **Settings sheet** (the cog): every key in `config.toml` is editable, with
-  no file hunting, and the read-only views live in the same left nav.
+  no file hunting.
   - Session: default profile, stopwatch minimum, surrender wait, routine
     heads-up, skip tokens, nudges (days, hours, delay, repeat).
   - Site lists per profile: Block list / Allow only mode, and three grouped
@@ -600,6 +601,15 @@ TypeScript + three.js frontend, built with bun.
     terminal), then the editor (name, days, start, length, profile, add /
     remove). The runs list refreshes from the poll without rebuilding the
     editor underneath.
+  - Inverted mode: on/off, profile, earn rate, bank cap.
+  - DNS: port, upstreams (plain or DNS-over-TLS), forward zones, resolved and
+    container DNS, with a note that DNS waits for a daemon restart.
+  - Save sends the whole config; the daemon validates and answers with what
+    happened ("applied", or the loosening reasons and the 24h delay). A pending
+    banner stays at the top of every config section. Unsaved edits are guarded
+    on close.
+- **Progress sheet** (the chart button, `progress.ts`): read-only, same
+  layout as the settings sheet, no save footer.
   - Stats (`Request::History`, ended sessions since a time, newest first, at
     most 2000; folded in the pure `stats.ts`, unit tested): today / this
     week / 28 days focused, completed, surrendered, streak; focused time per
@@ -608,17 +618,10 @@ TypeScript + three.js frontend, built with bun.
   - Session logs: the world's event log (builds, repairs, collapses,
     quakes), newest first, straight from `Request::World` — this replaced the
     five-entry "Recent" card that used to hang below the timer.
-  - Inverted mode: on/off, profile, earn rate, bank cap.
-  - DNS: port, upstreams (plain or DNS-over-TLS), forward zones, resolved and
-    container DNS, with a note that DNS waits for a daemon restart.
-  - Read-only sections refresh from the poll (stats refetches with the
-    world, ~5s) and only rewrite the DOM when their HTML changed, so scroll
-    and hover survive. Section switching, closing and skipping work even if
-    the config failed to load.
-  - Save sends the whole config; the daemon validates and answers with what
-    happened ("applied", or the loosening reasons and the 24h delay). A pending
-    banner stays at the top of every config section. Unsaved edits are guarded
-    on close.
+  - Both sections refresh from the poll (stats refetches with the world,
+    ~5s) and only rewrite the DOM when their HTML changed, so scroll and
+    hover survive. The chart tooltip lives inside the sheet's dialog, so it
+    draws above the modal.
 - **Backup** (Settings → Backup, and `deepwork config export|import`): one
   JSON bundle with the settings, ended sessions, penalty events, routine runs
   and free-minute bank. Import merges; a session already present (same profile
@@ -627,7 +630,8 @@ TypeScript + three.js frontend, built with bun.
   while a session runs. The native file dialog comes from
   `tauri-plugin-dialog`; a plain browser dev page downloads / uploads instead.
 - Routines and Stats used to be inline panels under tabs (removed 2026-11-02:
-  the cog sheet took them in, along with the new Session logs section).
+  the cog sheet took them in, along with the new Session logs section; Stats
+  and Session logs moved to their own progress sheet on 2026-11-03).
   A loosening config change waiting behind its delay (`ConfigStatus`) still
   shows as a card with its reasons.
 - A renderer failure only loses the picture: the HUD keeps working and the
@@ -657,6 +661,12 @@ TypeScript + three.js frontend, built with bun.
 | Install URL | `https://deepwork.sagyamthapa.com.np/get.sh`, a Vercel rewrite in `Sagyam/deepwork-site` to `dist/get.sh` on `main` |
 
 ## Next session: start here
+
+UI follow-up (2026-11-03): Stats and Session logs left the settings sheet for
+their own progress sheet, opened by a chart button beside the cog. Settings
+checkboxes were stretched by `dialog input { width: 100% }` (label pushed to
+the far right); fixed, and `.field` inputs and selects share one height so
+the routine rows line up. Checked headless with the mock.
 
 UI rework (2026-11-02): the four HUD tabs (Routines / Stats / Sites /
 Settings) are now one cog that opens the settings sheet, whose left nav gained
@@ -790,7 +800,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Building and tree kit generated in Blender (`ui/blender/city_kit.py`): modular storeys, baked AO, window atlas
 - [x] More styles (second landmark style, café, brick walk-up, brutalist office, gambrel cottage), lattice crane, traffic and pedestrians
 - [x] Timer, routines and stats screens: timer, start / stop / surrender in the session card; Routines and Stats
-      (now sections of the settings sheet, along with Session logs — the 2026-11-02 cog rework);
+      (Routines is a settings section; Stats and Session logs have their own progress sheet, 2026-11-03);
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 

@@ -1,5 +1,5 @@
-// The read-only views shown inside the settings sheet (upcoming routine runs,
-// Stats, Session logs) and the pending-config notice, as HTML. The HUD poll
+// The read-only views (upcoming routine runs in the settings sheet, Stats and
+// Session logs in the progress sheet) and the pending-config notice, as HTML. The HUD poll
 // pushes fresh data in; skips still go through the daemon like everything else.
 import { dayName, describe, escapeHtml, hhmm, hm, isLoss, weekday } from "./format";
 import type { Finished, PendingConfig, Status, Upcoming, World } from "./proto";
@@ -82,7 +82,7 @@ function outcome(f: Finished): string {
   }
 }
 
-/** The Stats section. Rendered inside the settings sheet; the sheet adds the title. */
+/** The Stats section. Rendered inside the progress sheet; the sheet adds the title. */
 export function statsPanel(stats: Stats, sessions: Finished[], world: World | null, now: number): string {
   const n = stats.days.length;
   const tiles = [

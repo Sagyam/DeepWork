@@ -12,7 +12,15 @@
       <div id="left">
         <section id="city" class="card"></section>
         <nav id="menu" class="card">
-          <button data-settings="session" aria-label="Settings" title="Settings, routines, stats and logs">
+          <button data-open="progress" aria-label="Stats and session logs" title="Stats and session logs">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 3v18h18"></path>
+              <path d="M8 17v-5"></path>
+              <path d="M13 17V8"></path>
+              <path d="M18 17v-8"></path>
+            </svg>
+          </button>
+          <button data-open="settings" aria-label="Settings" title="Settings and routines">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
@@ -63,8 +71,8 @@
         <button class="close" data-action="close-settings" title="Close (Esc)">×</button>
       </header>
       <div class="sheet-body">
-        <nav id="settings-nav"></nav>
-        <div id="settings-main"></div>
+        <nav id="settings-nav" class="sheet-nav"></nav>
+        <div id="settings-main" class="sheet-main"></div>
       </div>
       <footer class="sheet-foot">
         <span id="settings-message" class="settings-message"></span>
@@ -74,7 +82,20 @@
         </div>
       </footer>
     </dialog>
-    <div id="tip" hidden></div>
+    <dialog id="progress" class="sheet">
+      <header class="sheet-head">
+        <div>
+          <h2>Progress</h2>
+          <p class="small muted">Read-only, straight from deepworkd's ledger.</p>
+        </div>
+        <button class="close" data-action="close-progress" title="Close (Esc)">×</button>
+      </header>
+      <div class="sheet-body">
+        <nav id="progress-nav" class="sheet-nav"></nav>
+        <div id="progress-main" class="sheet-main"></div>
+      </div>
+      <div id="tip" hidden></div>
+    </dialog>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

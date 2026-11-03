@@ -2,6 +2,7 @@ import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, w
 import { BUILDINGS, TIERS, clock, escapeHtml, hm } from "./format";
 import { notice } from "./panels";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
+import { openProgress, progressUpdate } from "./progress";
 import { confirmSkip, hudUpdate, openSettings, type SettingsSection } from "./settings";
 import { City } from "./city/scene";
 
@@ -363,8 +364,13 @@ dialog.addEventListener("close", () => {
   }
 });
 
-// The cog: everything the app can configure or show lives in the one sheet.
-$("#menu").addEventListener("click", () => void openSettings("session"));
+// Two buttons under the city card: the chart opens Stats and Session logs,
+// the cog opens everything that can be configured.
+$("#menu").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest("button");
+  if (btn?.dataset.open === "progress") openProgress();
+  else if (btn?.dataset.open === "settings") void openSettings("session");
+});
 
 // Settings and imports can change the world or the pending config.
 window.addEventListener("deepwork:changed", () => {
@@ -398,7 +404,8 @@ async function poll() {
       $("#notice").innerHTML = notice(await pendingConfig());
     }
     renderSession(status);
-    hudUpdate(status, world);
+    hudUpdate(status);
+    progressUpdate(world);
     banner(rendererError);
     if (world) skyline?.update(world, localHour(), s?.elapsed_secs ?? 0);
   } catch (e) {

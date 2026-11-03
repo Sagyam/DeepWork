@@ -11,7 +11,7 @@ checklists live in [PLAN.md](PLAN.md), which is the source of truth.
 | `crates/cli` | `deepwork`, the CLI |
 | `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
 | `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
-| `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer and the full settings sheet |
+| `ui/` | `deepwork-ui`, the Tauri window: 3D city, timer, the settings sheet and the progress (stats and logs) sheet |
 | `dist/` | systemd units, example config, PKGBUILD, install scripts; `dist/packaging/` the deb / rpm / tarball packaging |
 | `assets/` | README logo, screenshots and demo GIF |
 
@@ -158,7 +158,7 @@ The demo is a montage, captured frame by frame with `page.clock.install()` and
 | Set a timer | `hamlet` | drag `.clockdial` from 30 to 50 min, click Start focus |
 | Growth | `hamlet`, `city`, `metropolis` | 1.6 s each |
 | Collapse | `surrender` | `city.demo("collapse")` |
-| Settings | `metropolis` | cog, then Stats, then Site lists |
+| Settings | `metropolis` | chart button (Stats), then cog, then Site lists |
 
 ffmpeg adds a caption per clip (`drawtext`, Noto Sans Bold 40 px), joins them
 with 0.3 s `xfade`s, and encodes an animated WebP at 720 px, quality 55

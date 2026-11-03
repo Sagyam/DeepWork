@@ -97,7 +97,7 @@ dialog {
 }
 dialog::backdrop { background: rgba(0,0,0,0.55); }
 dialog blockquote { margin: 6px 0; padding: 8px 10px; background: rgba(255,255,255,0.05); border-radius: 6px; font-style: italic; user-select: none; }
-dialog input { width: 100%; }
+dialog input:not([type="checkbox"]) { width: 100%; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; margin: 12px 0 0; }
 .error { color: var(--danger); margin: 4px 0 0; font-size: 12.5px; }
 .error:empty { display: none; }
@@ -157,15 +157,15 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .sheet-head p { margin: 4px 0 0; }
 .sheet-head .close { font-size: 24px; line-height: 1; padding: 0 4px; background: none; border: none; color: var(--dim); }
 .sheet-body { display: grid; grid-template-columns: 196px minmax(0, 1fr); flex: 1; min-height: 0; }
-#settings-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow-y: auto; border-right: 1px solid var(--edge); }
+.sheet-nav { display: flex; flex-direction: column; gap: 2px; padding: 12px 10px; overflow-y: auto; border-right: 1px solid var(--edge); }
 .nav-item { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 8px 10px; border: none; border-radius: 8px; background: none; color: var(--dim); text-align: left; }
 .nav-item:hover { background: rgba(255,255,255,0.05); }
 .nav-item.on { background: rgba(255,255,255,0.1); }
 .nav-label { font-weight: 600; color: var(--fg); }
 .nav-blurb { font-size: 11px; color: var(--dim); line-height: 1.25; }
-#settings-main { overflow-y: auto; padding: 18px 22px 40px; }
-#settings-main h3 { margin: 24px 0 8px; }
-#settings-main h3:first-of-type { margin-top: 16px; }
+.sheet-main { overflow-y: auto; padding: 18px 22px 40px; }
+.sheet-main h3 { margin: 24px 0 8px; }
+.sheet-main h3:first-of-type { margin-top: 16px; }
 .sheet-foot { display: flex; justify-content: space-between; align-items: center; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--edge); background: rgba(0,0,0,0.18); }
 .sheet-foot .row { margin: 0; }
 .settings-message { font-size: 12.5px; color: var(--ok); }
@@ -175,7 +175,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 
 .field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; min-width: 0; }
 .field-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); }
-.field input, .field select { width: 100%; padding: 6px 8px; }
+.field input, .field select { width: 100%; height: 32px; padding: 6px 8px; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 10px; }
 .number { display: flex; align-items: center; gap: 6px; }
@@ -184,7 +184,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .hint { font-size: 11.5px; color: #8f95a6; line-height: 1.4; margin: 2px 0 8px; }
 .hint code, .note code, .sheet-head code { font-size: 11px; background: rgba(255,255,255,0.07); padding: 1px 4px; border-radius: 4px; }
 .toggle { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; font-size: 13px; cursor: pointer; }
-.toggle input { margin-top: 2px; accent-color: var(--accent); }
+.toggle input { flex: none; width: 16px; height: 16px; margin: 1px 0 0; padding: 0; accent-color: var(--accent); }
 .toggle .hint { display: block; margin: 1px 0 0; }
 .toggles { display: flex; flex-direction: column; }
 .row.tight { gap: 4px; margin-top: 0; flex-wrap: nowrap; }
@@ -243,7 +243,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 @media (max-width: 760px) {
   .sheet { width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
   .sheet-body { grid-template-columns: 1fr; }
-  #settings-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--edge); }
+  .sheet-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--edge); }
   .nav-blurb { display: none; }
   .grid2, .grid4, .routine-top, .profile-bar, .add-rule { grid-template-columns: 1fr; }
 }
