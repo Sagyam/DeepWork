@@ -27,3 +27,8 @@ jiff = "0.2"
 libc = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Dependencies build without debug info in dev: it was most of target/debug
+# (several GB) and is rarely needed. Our own crates keep full debug info.
+[profile.dev.package."*"]
+debug = false
