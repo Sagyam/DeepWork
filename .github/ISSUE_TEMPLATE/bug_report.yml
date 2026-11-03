@@ -1,0 +1,81 @@
+name: Bug report
+description: Something doesn't work as it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Locked out, or found a way to get root through DeepWork? Don't file it here: use the
+        [private security report](https://github.com/Sagyam/DeepWork/security/advisories/new).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. deepwork start 25m
+        2. Open youtube.com
+        3. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: part
+    attributes:
+      label: Part
+      options:
+        - Daemon / enforcement (deepworkd)
+        - DNS
+        - CLI (deepwork)
+        - Window / city (deepwork-ui)
+        - Notifications (deepwork-agent)
+        - Install / packaging
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`deepwork --version`, or the commit if built from source"
+    validations:
+      required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Distribution and desktop
+      placeholder: Arch, Hyprland (Omarchy)
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: Installed with
+      options:
+        - get.sh
+        - .deb
+        - .rpm
+        - Arch package
+        - Tarball
+        - From source
+  - type: dropdown
+    id: dns
+    attributes:
+      label: DNS setup
+      options:
+        - systemd-resolved
+        - systemd-resolved with DNS-over-TLS
+        - Plain /etc/resolv.conf
+        - Something else (say below)
+        - Not sure
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: "`journalctl -u deepworkd -b --no-pager | tail -n 100`, and `deepwork status`"
+      render: text

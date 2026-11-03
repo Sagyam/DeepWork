@@ -1,0 +1,51 @@
+name: Bypass
+description: A way around the throttle during a session
+labels: [bypass]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks, these make DeepWork harder to get around. Check the
+        [threat model](https://github.com/Sagyam/DeepWork/blob/main/docs/PLAN.md#threat-model) first:
+        some bypasses are known, and anything needing TTY root, a live USB or the GRUB command line is
+        out of scope on purpose. If the bypass gives an unprivileged user root, report it
+        [privately](https://github.com/Sagyam/DeepWork/security/advisories/new) instead.
+  - type: textarea
+    id: how
+    attributes:
+      label: How it works
+      description: The exact commands or browser settings.
+    validations:
+      required: true
+  - type: dropdown
+    id: privilege
+    attributes:
+      label: Needs
+      options:
+        - Nothing special (normal user)
+        - sudo or polkit
+        - Membership in a group (docker, wheel, ...)
+        - A particular browser or app setting
+    validations:
+      required: true
+  - type: dropdown
+    id: penalty
+    attributes:
+      label: Does the city notice?
+      description: Does it show up as tampering, or cost a building?
+      options:
+        - "No"
+        - "Yes"
+        - Not sure
+  - type: input
+    id: version
+    attributes:
+      label: Version and distribution
+      placeholder: 2026.11.0 on Fedora 43
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Countermeasure idea
+      description: Optional. How could the daemon catch or block it?

@@ -90,6 +90,11 @@ Or build and install straight from the source tree, into `/usr/local`:
 
 ## Releases
 
+`.github/workflows/ci.yml` runs `cargo fmt --check`, clippy with `-D warnings`,
+`cargo test`, `tsc` and `bun test` on every pull request and push to `main`.
+Dependabot (`.github/dependabot.yml`) opens grouped monthly updates for cargo,
+bun and the actions.
+
 `.github/workflows/release.yml` runs on `v*` tags (and by hand, for
 artifacts only). It builds on Ubuntu 22.04 (glibc 2.35) for x86_64 and
 aarch64, lays the tree out with `dist/packaging/stage.sh`, turns it into a .deb and

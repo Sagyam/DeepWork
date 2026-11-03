@@ -1,0 +1,30 @@
+name: Feature request
+description: An idea for DeepWork
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: Idea
+      description: How you'd like it to work.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Workarounds or other approaches you've considered.
+  - type: checkboxes
+    id: rails
+    attributes:
+      label: Safety rails
+      options:
+        - label: This keeps the 6 hour cap, surrender, fail-open PAM and TTY root intact
+          required: true

@@ -18,6 +18,7 @@ Distracting sites slow to a crawl at the network layer, routines start sessions 
 [![Hyprland](https://img.shields.io/badge/Hyprland-Omarchy-58e1ff?logo=hyprland&logoColor=white)](https://omarchy.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-3fb950)](LICENSE)
 
+[![ci](https://github.com/Sagyam/DeepWork/actions/workflows/ci.yml/badge.svg)](https://github.com/Sagyam/DeepWork/actions/workflows/ci.yml)
 [![release](https://github.com/Sagyam/DeepWork/actions/workflows/release.yml/badge.svg)](https://github.com/Sagyam/DeepWork/releases/latest)
 ![tests](https://img.shields.io/badge/tests-137_passing-3fb950)
 ![enforcement](https://img.shields.io/badge/enforcement-nftables_+_tc-e0a63f)
