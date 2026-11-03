@@ -44,6 +44,11 @@ so a year's city holds 500-1,750 buildings. Two consequences shape the plan:
 
 ## Can an ordinary PC draw it?
 
+Measured once to know the work is affordable. The optimisations it calls
+for come last (see "Last: performance"); until then models go in drawn the
+simple way, following the rules under "Rules for every model" so the late
+work stays mechanical.
+
 ### Measured on this PC
 
 Radeon 610M (the Ryzen 7700X's 2-CU integrated GPU, about the weakest GPU
@@ -109,28 +114,6 @@ harness was a Playwright script driving `/usr/bin/chromium --headless=new
 | Entry discrete | GTX 1650, RX 6500 | 6-8x | 60 fps+ |
 | Mid discrete | RTX 3060, RX 6700 | 20x+ | 60 fps+, even without LODs |
 
-### What it takes beyond LODs
-
-- **Frame-rate policy.** This is a focus app that sits open for hours;
-  drawing flat out pegs a laptop's iGPU (several watts, a warm fan). Cap at
-  30 fps by default, drop to ~5 fps or stop when the window is unfocused,
-  hidden or on another workspace, and redraw on change when nothing moves.
-  This saves more battery than any modelling choice.
-- **Quality presets** (Low / Medium / High): render scale, shadow-map size,
-  LOD distances, MSAA, bloom. Low for weak iGPUs on 1440p and 4K screens,
-  where pixel count costs more than triangles.
-- **Texture compression.** The prototype's maps are ~19 MB of PNG. A shared
-  material library of ~15 surfaces (colour, normal, roughness at 1024²) is
-  ~250 MB of VRAM uncompressed; KTX2 / Basis brings it to ~40-60 MB.
-  Per-model AO maps at 1024² single channel are ~1.4 MB each.
-- **Geometry memory.** ~3 MB per model at full precision, ~1 MB quantised
-  (meshopt); 30 models with LODs ≈ 40-100 MB. Instances cost nothing.
-- **Install size.** Today the kit adds 4.6 MB to the binary. Thirty
-  realistic models with compressed textures add ~60-90 MB.
-- **The real window is WebKitGTK, not Chromium.** Tauri on Linux uses
-  WebKitGTK, whose WebGL is usually slower. Every number above has to be
-  checked in `deepwork-ui` itself before the design is fixed.
-
 ## What is reusable from the prototype
 
 Already written, used by every model after this one:
@@ -149,26 +132,62 @@ Already written, used by every model after this one:
   window glass that reflects the sky and shows a room behind it (walls,
   floor, furniture, curtains or blinds; lit at night), shop interiors.
 
-Still to build once, before models go into the app:
+## Decisions (2026-11-03)
 
-- [ ] Split models into stackable pieces (ground, typical storey, top storey,
-      roof) so the plan's floor count still drives height.
-- [ ] LOD 1 / LOD 2 generation (bake facades to textures in Blender).
-- [ ] Instanced drawing in `models.ts` (one InstancedMesh per piece, LOD and
-      material) instead of merging.
-- [ ] KTX2 texture pipeline and a shared material library.
-- [ ] Per-building variation: brick / render / paint / frame colours, shop
-      names, mirrored plans, roof-gear seeds.
-- [ ] Damage looks for realistic models (below).
-- [ ] Frame-rate policy and quality presets.
+- **Style:** a mix of American and European, no preference between them.
+  Each building picks its style from its seed, as today; no zoning.
+- **Frame rate:** 30 fps for an end-game city on a weak iGPU is acceptable.
+- **Landmarks** (3 h+ sessions) are not only towers: civic buildings,
+  squares, parks and monuments too. These need more ground than a 16 m lot
+  (see "Landmarks").
+- **Models are downloaded on first run**, not built into the binary (see
+  "Downloading the models").
+- **Optimisation comes last:** LODs, instancing, pausing on inactivity, a
+  frame cap, camera limits, presets and compression are one phase at the end.
+
+## Rules for every model
+
+So the last phase can optimise without remodelling:
+
+- 20-40 k triangles for a whole building; landmarks up to ~80 k.
+- Materials from the shared library only (brick, stone, render, glass,
+  frame paint, ...), at most ~25 roles per model, named by role as today.
+- Stackable pieces where the kind has a floor count: ground storey, typical
+  storey, top storey, roof. Landmarks and open spaces are one piece.
+- Lightmap UVs (UV1) with baked AO; UV0 in metres for tiling materials;
+  glass panes carry (window id + u, v) for the interior shader.
+- Variation through parameters (colours, signs, mirrored plans, roof gear),
+  never through copies of the model.
+
+## Downloading the models
+
+- **Who downloads:** the app (`deepwork-ui`), as the user, never the root
+  daemon. Clients stay untrusted views; the daemon does not care what the
+  city looks like.
+- **What:** one asset pack per release (models, KTX2 textures, a manifest of
+  files with SHA-256 sums). The manifest's hash is compiled into the app, so
+  a pack is checked before use and a tampered or stale pack is refused.
+- **Where from:** a GitHub release asset (`Sagyam/DeepWork`), which has no
+  bandwidth cap; Vercel (the landing site) does. Versioned by content hash,
+  so an app update only fetches a new pack when the models changed.
+- **Where to:** `~/.local/share/deepwork/assets/<hash>/`; old packs removed
+  once the new one is verified.
+- **Until it is there:** the current low-poly kit (4.6 MB) stays embedded as
+  the fallback, so the app works offline and on first start; a small
+  progress line in the city card while the pack downloads, and resume after
+  a broken connection.
+- **During a session:** GitHub is not throttled unless the user blocks it;
+  if it is, the download waits for the session to end.
+- **Packages:** the Arch / deb / rpm packages do not ship the pack either;
+  the first run fetches it the same way.
 
 ## The buildings
 
 Effort is in percent of a 5-hour usage window. The prototype took ~25%,
 including the shared tooling above; a model that reuses its materials and
 components should take 8-12%, one that needs a new material family 15-25%.
-P1 replaces every style the city has today; P2 is variety, so one kind can
-fill a city.
+P1 replaces every style the city has today (plus the first civic landmarks);
+P2 is variety, so one kind can fill a city.
 
 ### Cottages (grade 0)
 
@@ -180,17 +199,19 @@ fill a city.
 | C4 | A-frame cabin | Steep shingle roof to the ground, glazed gable, deck | cottage A-frame | timber | 10% | P1 |
 | C5 | Stone cottage | Rubble-stone walls, gambrel roof with dormers, porch | cottage classic (gambrel) | new: fieldstone | 15% | P2 |
 | C6 | Craftsman bungalow | Low hip, deep eaves with brackets, wide porch on tapered columns | | timber, stone | 10% | P2 |
+| C7 | Half-timbered house | European: timber frame with render infill, steep tiled roof, jettied upper storey | | new: half-timber, clay tile | 15% | P2 |
 
 ### Shops (grade 1)
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
 | S1 | Main-street shop | Two-storey brick, shop under flats, cornice, awning (a smaller sibling of the prototype) | shop classic | brick, stone | 8% | P1 |
-| S2 | Corner café | Painted render, arched windows, oriel, umbrella tables | shop classic (café) | render | 12% | P1 |
+| S2 | Corner café | European: painted render, arched windows, oriel, umbrella tables | shop classic (café) | render | 12% | P1 |
 | S3 | Diner | Stainless-steel railcar body, neon sign, booths in the windows | shop diner | new: brushed metal, neon | 18% | P1 |
 | S4 | Brick factory | Sawtooth roof, tall smokestack, loading doors, steel windows | shop factory | brick, new: steel sash, corrugated sheet | 18% | P1 |
 | S5 | Corner store | One storey, roller shutters, painted signage, ice chest out front | | brick, metal | 10% | P2 |
 | S6 | Filling station | Canopy on columns, pumps, small kiosk | | new: canopy, pumps | 15% | P2 |
+| S7 | Market hall shop | European: arcaded ground floor, shops under the arches, stone above | | stone, render | 12% | P2 |
 
 ### Apartments (grade 2)
 
@@ -200,7 +221,7 @@ fill a city.
 | A2 | Brownstone row | Three townhouses, stoops with iron railings, bay fronts | apartment townhouse | new: brownstone; brick | 12% | P1 |
 | A3 | Balcony block | Rendered mid-century block, rows of balconies with glass rails | apartment classic (balconies) | render, glass | 12% | P1 |
 | A4 | Art deco apartments | Buff brick, corner windows, deco spandrels and entrance | | brick, stone | 12% | P2 |
-| A5 | Parisian block | Cream stone, wrought-iron balconies, zinc mansard with dormers | | new: zinc roof | 15% | P2 |
+| A5 | Parisian block | European: cream stone, wrought-iron balconies, zinc mansard with dormers | | new: zinc roof | 15% | P2 |
 | A6 | Modern apartments | Fibre-cement panels, deep loggias, timber soffits | | new: panels | 15% | P2 |
 
 ### Offices (grade 3)
@@ -215,21 +236,61 @@ fill a city.
 
 ### Landmarks (grade 4)
 
-| ID | Model | Look | Replaces | Family | Effort | Priority |
+A landmark is the reward for a 3-hour session, so it may be a tower, a
+civic building, a square, a park or a monument. Most need more than a 16 m
+lot. Footprints:
+
+| Size | Ground | Fits |
+|---|---|---|
+| Lot | 16 x 16 m | towers |
+| Half block | 32 x 32 m (four lots) | city hall, museum, theatre, square, monument |
+| Block | 64 x 32 m (all eight lots) | station, cathedral, park, stadium |
+
+How the plan finds that ground is a design choice for `plan.ts` (the
+daemon's world model stays as it is: one plot per session):
+
+- **Recommended: landmark cells.** Like parks today (every fourth cell),
+  some grid cells are kept for landmarks; the n-th landmark takes the n-th
+  such cell, half or whole, so landmarks spread round the city as it grows
+  and never displace buildings. A landmark's plot index still maps to its
+  place, deterministically.
+- Alternative: a landmark claims the lots that follow it in its block,
+  which shifts later buildings and needs the plan to skip claimed lots.
+
+Towers (replace today's landmarks):
+
+| ID | Model | Look | Replaces | Size | Effort | Priority |
 |---|---|---|---|---|---|---|
-| L1 | Art deco skyscraper | Stone piers, setbacks, lit stepped crown, spire | landmark deco | stone, new: metal crown | 25% | P1 |
-| L2 | Glass supertall | Tapered glass, sky gardens, LED bands | landmark glass | curtain wall | 20% | P1 |
-| L3 | Twisting tower | Each storey turned, glass and white bands | landmark twist | curtain wall | 15% | P1 |
-| L4 | TV tower | Concrete shaft, observation pod, mast | landmark TV tower | concrete | 15% | P1 |
-| L5 | Neo-gothic tower | Terracotta, pointed arches, pinnacles | | terracotta | 25% | P2 |
+| L1 | Art deco skyscraper | Stone piers, setbacks, lit stepped crown, spire | landmark deco | lot | 25% | P1 |
+| L2 | Glass supertall | Tapered glass, sky gardens, LED bands | landmark glass | lot | 20% | P1 |
+| L3 | Twisting tower | Each storey turned, glass and white bands | landmark twist | lot | 15% | P1 |
+| L4 | TV tower | Concrete shaft, observation pod, mast | landmark TV tower | lot | 15% | P1 |
+
+Civic buildings, squares, parks and monuments (new):
+
+| ID | Model | Look | Size | Effort | Priority |
+|---|---|---|---|---|---|
+| L5 | City hall | Classical front with columns and steps, dome or clock tower, flagpoles, forecourt | half block | 30% | P1 |
+| L6 | Town square | Paving, a fountain, a statue on a plinth, trees, café tables, a bandstand or market stalls | half block | 20% | P1 |
+| L7 | Monument | Triumphal arch or obelisk on a plaza, steps, lamps, flowerbeds | half block | 15% | P1 |
+| L8 | Museum or library | Portico, broad steps, stone lions, banners | half block | 25% | P2 |
+| L9 | Theatre | Marquee with bulbs, posters, ornate front, fly tower behind | half block | 25% | P2 |
+| L10 | Cathedral | Gothic: twin towers, rose window, buttresses, slate roofs | block | 35% | P2 |
+| L11 | Railway station | Stone front with a clock, iron-and-glass train shed, platforms | block | 35% | P2 |
+| L12 | City park | Lawns, a lake with a boathouse, paths, avenue trees, a pavilion (needs the new trees) | block | 25% | P2 |
+| L13 | Stadium | Bowl of stands, floodlights, pitch, entrance plaza | block | 30% | P2 |
+
+The automatic parks every fourth cell stay as they are (plaza, pond park,
+football ground; see "Not buildings"); earned parks and squares are larger
+and grander, so the two read differently.
 
 ### States every building needs
 
 | State | Today | Realistic version | Effort |
 |---|---|---|---|
-| Construction | Floors up to progress, scaffold, crane, blueprint | Same scheme with realistic scaffold, formwork, safety netting, site hoarding | 20% |
+| Construction | Floors up to progress, scaffold, crane, blueprint | Same scheme with realistic scaffold, formwork, safety netting, site hoarding; landmarks fenced across their whole ground | 20% |
 | Damage 1 | Darker, smoke | Soot streaks (grime shader), a few broken panes, smoke | 5% (shader) |
-| Damage 2 | Lower ~3/4, no roof, fire | Broken top edge per piece, burnt interiors in the window shader, exposed floors | 15% |
+| Damage 2 | Lower ~3/4, no roof, fire | Broken top edge per piece, burnt interiors in the window shader, exposed floors; parks and squares scorched, statues toppled | 15% |
 | Rubble | Heap of chunks | Brick / concrete heaps by family, bent beams, dust | 15% |
 | Night | Window atlas lit | Done: the interior shader lights rooms | done |
 
@@ -242,46 +303,74 @@ Low-poly next to realistic buildings looks broken, so these follow in turn:
 | Terrain | Faceted, flat-shaded hills, river, lake | Smooth terrain, grass / rock / soil textures, real water | 40% |
 | Trees | Six low-poly species | 4-5 species with leaf cards, billboards far away | 30% |
 | Streets | Flat roads, zebras, lamps | Asphalt, kerbs, paving, lane marks, drains, lamps, hydrants, bins, benches, bus stops, traffic lights | 25% |
-| Parks | Plaza / pond / football ground | Same three with paving, planting, a fountain, a bandstand, stands and floodlights | 30% |
+| Automatic parks | Plaza / pond / football ground | Same three with paving, planting, a fountain, a bandstand, stands and floodlights | 30% |
 | Vehicles | Four cars, a bus | Hatchback, saloon, van, taxi, bus, delivery truck | 25% |
 | People | One pedestrian | A few figures in varied clothes (small on screen, low detail) | 15% |
 | Tower crane | Lattice crane | More detailed lattice (reuses the fire-escape strut code) | 10% |
 | Bridge | Truss bridge | Steel truss with deck and railings | 10% |
 
+## Last: performance
+
+Deferred to the end on purpose. Everything here is in the measurements
+above; none of it changes how models look.
+
+- [ ] **LODs:** LOD 1 (3-5 k triangles, facades flat with baked colour,
+      normal and AO maps, glass keeps its rooms) and LOD 2 (200-400, a box
+      with roof shape and facade texture), generated in Blender.
+- [ ] **Instancing:** one InstancedMesh per piece, LOD and material in
+      `models.ts`, instead of merging every building into shared meshes.
+- [ ] **Pause on inactivity:** stop drawing when the window is hidden, on
+      another workspace or minimised; ~5 fps when unfocused; draw only on
+      change when nothing moves (no auto-rotate, no traffic in view).
+- [ ] **Frame cap:** 30 fps by default.
+- [ ] **Camera limits:** a minimum height and distance and a maximum tilt,
+      so only a handful of buildings are ever close enough for LOD 0 and
+      the far countryside stays out of view.
+- [ ] **Quality presets** (Low / Medium / High): render scale, shadow-map
+      size, LOD distances, MSAA, bloom. Low for weak iGPUs on 1440p and 4K
+      screens, where pixel count costs more than triangles.
+- [ ] **Texture compression:** KTX2 / Basis for the shared library (~250 MB
+      of VRAM uncompressed, ~40-60 MB compressed); single-channel AO maps.
+- [ ] **Geometry compression:** quantised meshes (meshopt), ~3 MB to ~1 MB a
+      model; also shrinks the download.
+- [ ] **Measure in the real window:** Tauri on Linux draws through WebKitGTK,
+      whose WebGL is usually slower than Chromium's. Target: 30 fps for an
+      end-game city on a Radeon 610M-class iGPU.
+
 ## Rough total
 
 | Work | Windows (5 h each) |
 |---|---|
-| Shared tooling: pieces, LODs, instancing, KTX2, variation, presets | 2-3 |
-| P1 buildings (17 left) | ~2.5 |
-| P2 buildings (10) | ~1.5 |
+| Integration: stackable pieces, variation, loading realistic models in the app | ~1 |
+| Download on first run (pack, manifest, fallback) | ~0.5 |
+| Landmark ground in `plan.ts` | ~0.5 |
+| P1 buildings (20 left, incl. 3 civic) | ~3 |
+| P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
+| Last: performance | ~2 |
 | Review and rework | ~1 |
-| **Total** | **~10** |
+| **Total** | **~13-14** |
 
 ## Suggested order
 
-1. Tooling first, on the prototype: split it into pieces, make its LODs,
-   draw it instanced in the real app (WebKitGTK), measure, and settle the
-   presets and the frame-rate policy. This decides whether the rest is
-   affordable, before 27 more models depend on it.
-2. One model per kind (S1, A2, O1, L1, C1) so a real mixed city can be seen.
-3. The rest of P1, then building states.
-4. Surroundings: streets, trees and terrain first, as they fill the most
+1. Integration on the prototype: split it into pieces, add per-building
+   variation, and load it in the real app next to the low-poly kit (drawn
+   the simple way for now).
+2. Download on first run, as soon as models leave the binary: pack,
+   manifest, low-poly fallback.
+3. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
+4. Landmark ground in `plan.ts`, then the first civic landmarks (L5-L7).
+5. The rest of P1, then building states.
+6. Surroundings: streets, trees and terrain first, as they fill the most
    screen.
-5. P2 variety.
+7. P2 variety.
+8. Last: performance.
 
 ## Open questions
 
-- [ ] Where is the city? The prototype is pre-war American (brick, fire
-      escape, water tank). Stay American, go European, or mix them, with
-      older styles near the centre and glass towers further out?
-- [ ] Sizes: should models keep today's footprints (9-10 m) or use the lot
-      (16 m) more fully? The prototype is 14 x 12 m.
-- [ ] Do landmarks have to be tall? A civic building (city hall with a dome,
-      a station, a cathedral) could be the reward for a 3-hour session.
-- [ ] Install size: ship all models in the binary (~60-90 MB more), or fetch
-      them on first run?
-- [ ] Minimum hardware: is 30 fps on a 610M-class iGPU at the Low preset
-      good enough?
+- [ ] Ordinary buildings: keep today's footprints (9-10 m) or use more of the
+      16 m lot? The prototype is 14 x 12 m.
+- [ ] Landmark ground: landmark cells (recommended) or claimed lots?
+- [ ] Should a landmark's size follow the session (3 h a half block, 5 h+ a
+      whole block), or be picked by the seed?

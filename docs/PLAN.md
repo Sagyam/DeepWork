@@ -676,9 +676,12 @@ asked for something closer to Cities: Skylines. A prototype building is in
 PBR textures, AO baked in Cycles on lightmap UVs, world-space grime, and
 glass that shows a ray-traced room (interior mapping) and reflects the sky.
 The user liked it. `docs/models.md` is the plan: every model needed,
-measured GPU / CPU cost, LODs, effort. The user is going through it slowly;
-start from its open questions and "Suggested order" (tooling on the
-prototype first: pieces, LODs, instancing, measured in WebKitGTK).
+measured GPU / CPU cost, effort, and the decisions taken (American and
+European mixed; landmarks may be civic buildings, squares, parks and
+monuments on half or whole blocks; models downloaded on first run; LODs,
+instancing, pausing and other optimisation last; 30 fps end game on a weak
+iGPU is fine). The user is going through it slowly; start from its "Open
+questions" and "Suggested order".
 
 Design language (2026-11-03): the app now uses the landing site's tokens and
 fonts (`docs/DESIGN.md`, the spec for all of Sagyam's apps), in light and
