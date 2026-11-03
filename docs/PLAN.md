@@ -466,107 +466,15 @@ streak, and a history of the last 30 changes with their cause.
   notifies losses (collapse, earthquake, damage) within ~10s. Builds are left
   to the "Session complete" note.
 
-### World model v2: coins and a master plan (decided 2026-11-03, not built)
+### Progression v2: coins, a shop and our city plan (ideas, not built)
 
-Comes with the realistic city (`docs/models.md`). The user decides how many
-hours they focus and when; the app decides what gets built and where. Nobody
-plans their own city.
-
-**Coins.** Focused time earns coins: 1 coin per focused minute of a
-completed session. A surrendered session earns nothing (as today its time
-does not count). Coins are folded from the ledger like the rest of the
-world, never stored, so existing histories turn into the new city by
-themselves and no client can edit a balance.
-
-**Coins buy buildings.** Read as: the app spends them, not the user. Every
-building, square and landmark has a price; coins go into the next item of
-the master plan, and when it is paid for it is finished. The construction
-site is that item, its progress the coins paid in over its price, so one
-long session can finish several cheap buildings, and a landmark takes many
-sessions. (Open: if the user should choose what to buy, see the questions
-below.)
-
-**The master plan.** One fixed, designed layout for the whole city, the same
-for everyone: streets, districts, the lot of every building, ground kept
-for squares, parks and landmarks, and the order they are built in. A city
-grows like a real one: a hamlet round a crossroads, a main street, a town
-square, then apartments, a downtown of offices, and civic landmarks and
-towers in the places kept for them. What stands on each lot (kind and
-model) is part of the plan, chosen so streets look good, not drawn from a
-seed. The plan is long enough for years of use (~2,000 focused hours);
-past its end it continues outward with procedurally placed rings that
-follow the same zoning.
-
-**Prices** (first guesses, tune on real use; 60 coins = 1 focused hour):
-
-| Item | Coins | Hours |
-|---|---|---|
-| Cottage | 45 | 0.75 |
-| Shop | 90 | 1.5 |
-| Apartment block | 180 | 3 |
-| Office tower | 360 | 6 |
-| Square or monument (half block) | 600 | 10 |
-| Landmark tower (lot) | 900 | 15 |
-| Civic building (half block) | 1,200 | 20 |
-| Block landmark (cathedral, station, park, stadium) | 2,400 | 40 |
-
-What that buys at each tier, if the plan is laid out like this:
-
-| Tier | Coins | Built in that tier | City by its end |
-|---|---|---|---|
-| Hamlet (0-10 h) | 600 | ~8 cottages, 2 shops | ~10 buildings |
-| Town (10-50 h) | +2,400 | ~10 cottages, 8 shops, 3 apartments, the town square | ~33 |
-| City (50-200 h) | +9,000 | ~20 shops, 20 apartments, 6 offices, city hall | ~80 |
-| Metropolis (200 h+) | +44,000 a year at 2 h a day | offices, towers, civic and block landmarks, more homes | a few hundred after a year |
-
-Far fewer buildings than one-per-session (a metropolis was 133-480 at
-200 h), which also eases rendering.
-
-**Penalties in coins.** Same tiers as today, priced:
-
-- Surrender (severe): the session earns nothing; the item under construction
-  collapses into rubble and the coins already paid into it are lost; fire
-  does 2 damage to the 3 nearest buildings; the streak resets.
-- Tamper (major): earthquake, 1 damage to every building in the biggest
-  district.
-- Refused root, clock jump, tunnel (minor): 1 damage to the newest building.
-- Repairs and rebuilding are bought before anything new: oldest rubble first
-  (at its full price), then damage (a share of the building's price per
-  level, most damaged first). A 3+ day streak halves repair prices (today it
-  doubles repairs).
-
-**Split between daemon and renderer** (all policy stays in the daemon,
-the renderer stays a view):
-
-- The daemon (`world.rs`, `proto`) owns coins, prices, penalties and the
-  plan as a theme-agnostic sequence: item n has a size class (lot, half
-  block, block), a price and a place (index). It reports the balance,
-  finished items with damage and rubble, and the item under construction
-  with its paid share.
-- The renderer owns what an item looks like and where the index is on the
-  map: the designed layout and the model per lot, in `plan.ts`.
-- The grade-by-session-length rule and per-plot seeds for kind and style go
-  away; seeds stay only for small things (shop names, roof gear, colours).
-
-**UI.** The city card shows the balance and the next item ("Town square:
-420 / 600"); the session card shows coins earned so far; "Session complete"
-lists what was finished.
-
-**Open questions:**
-
-- [ ] Does the user ever choose? Two readings of "coins buy buildings": the
-      app spends automatically on the plan (written above), or the user
-      picks what to buy next from a short list while the app picks where.
-      The first matches "nobody plans their city".
-- [ ] Bonus for long sessions? With flat coins per minute, a 25-minute
-      session and half of a 50-minute one are worth the same, so the old
-      reward for depth goes. Option: minutes past 50 in one session earn
-      1.5 coins.
-- [ ] Should cities densify? The plan could later replace central cottages
-      with shops and apartments, as real towns do, so the hamlet's core
-      becomes downtown. Prettier, but a user's first house would disappear.
-- [ ] Same city for everyone, or the same plan with per-install variation
-      (mirroring, model swaps within a kind)?
+In `docs/progression.md` (2026-11-03): focusing earns coins, with bonuses
+for long sessions and day streaks; coins buy the next upgrade in a shop
+gated by settlement level, with locked upgrades teased; the game decides
+what gets built and where, on one designed master plan; old buildings move
+when bigger ones need their spot. Two open design questions and the known
+holes are listed there. Replaces the earlier "World model v2" (coins spent
+automatically), a misreading.
 
 ### The app (phase 3, built)
 
@@ -783,8 +691,9 @@ European mixed; landmarks may be civic buildings, squares, parks and
 monuments on half or whole blocks; models downloaded on first run; LODs,
 instancing, pausing and other optimisation last; 30 fps end game on a weak
 iGPU is fine). With it comes a new progression, written down but not
-built: coins for focused time that the app spends along one fixed, designed
-city plan ("World model v2" under Progression). The user is going through
+built: coins for focused time, spent in a shop gated by settlement level,
+with the game deciding what is built where on one designed city plan
+(`docs/progression.md`). The user is going through
 both slowly; start from their open questions and the "Suggested order".
 
 Design language (2026-11-03): the app now uses the landing site's tokens and
@@ -936,7 +845,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): prototype apartment block done; tooling, then the model list
-- [ ] World model v2: coins for focused time, spent by the app along a fixed master plan (designed, not built)
+- [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement
 

@@ -10,11 +10,10 @@ them in. Go through it section by section; tick or strike as decisions land.
 
 ## How many buildings a city has
 
-Decided 2026-11-03, replacing one building per session (details under
-"World model v2" in PLAN.md): focused time earns coins (1 per minute of a
-completed session), and the app spends them on the next item of one fixed,
-designed master plan. The user only decides how much and when they focus;
-what is built and where is the app's.
+Replacing one building per session (ideas in `docs/progression.md`, not
+built): focusing earns coins, coins buy upgrades in a shop gated by the
+settlement's level, and the game decides what is built and where on one
+designed master plan. Price guesses:
 
 | Item | Coins | Focused hours |
 |---|---|---|
@@ -140,11 +139,12 @@ Already written, used by every model after this one:
 - **Dimensions:** whatever makes sense for each model: real-world sizes for
   the type, not today's 9-10 m boxes. The master plan sizes lots to fit
   (wide suburban lots, narrow downtown ones), instead of the reverse.
-- **Layout and growth:** one fixed, designed city plan, the same order of
-  building for everyone; nobody plans their own city. Ground for squares,
+- **Layout:** one fixed, designed city plan; nobody plans their own city,
+  and old buildings move when bigger ones need their spot. Ground for squares,
   parks and landmarks is reserved in it from the start.
-- **Currency:** focused time earns coins, coins buy buildings; the app does
-  the buying along the plan (see PLAN.md, "World model v2").
+- **Currency:** focusing earns coins (bonuses for long sessions and
+  streaks); coins buy upgrades in a level-gated shop; the game picks the
+  building and the spot (see `docs/progression.md`).
 - **Frame rate:** 30 fps for an end-game city on a weak iGPU is acceptable.
 - **Landmarks** are not only towers: civic buildings,
   squares, parks and monuments too. These need more ground than a 16 m lot
@@ -346,7 +346,7 @@ above; none of it changes how models look.
 |---|---|
 | Integration: stackable pieces, variation, loading realistic models in the app | ~1 |
 | Download on first run (pack, manifest, fallback) | ~0.5 |
-| World model v2 in the daemon: coins, prices, plan sequence, penalties, UI | ~1.5 |
+| Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
 | P1 buildings (20 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
@@ -361,8 +361,8 @@ above; none of it changes how models look.
 1. Integration on the prototype: split it into pieces, add per-building
    variation, and load it in the real app next to the low-poly kit (drawn
    the simple way for now).
-2. World model v2 and the master plan: coins in the daemon, the designed
-   layout and build order in `plan.ts`. The plan decides which models are
+2. Progression v2 and the master plan (`docs/progression.md`): coins and
+   the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
    needed where, so it comes before most of them.
 3. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
@@ -378,6 +378,5 @@ above; none of it changes how models look.
 
 Answered 2026-11-03: footprints (whatever makes sense), landmark ground
 (reserved by the master plan), landmark size (the plan decides; coins pay).
-The progression questions that came with the coins are under "World model
-v2" in PLAN.md: whether the user ever chooses what to buy, a bonus for long
-sessions, whether the centre densifies, and whether every city is the same.
+The progression questions (animation vs instant purchase, the illusion of
+control, the known holes) are in `docs/progression.md`.
