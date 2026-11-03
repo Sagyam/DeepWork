@@ -49,21 +49,21 @@ Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
 From a release, on any supported distribution:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Sagyam/DeepWork/main/dist/get.sh | sh
+curl -fsSL https://deepwork.sagyamthapa.com.np/get.sh | sh
 ```
 
 `dist/get.sh` reads `/etc/os-release`, downloads the matching asset from the
 latest GitHub release, checks it against `SHA256SUMS`, installs it with apt,
 dnf, zypper or pacman, and enables `deepworkd` and the user agent
-(`DEEPWORK_VERSION=v0.2.0` pins a release, `DEEPWORK_NO_ENABLE=1` only
+(`DEEPWORK_VERSION=v2026.11.0` pins a release, `DEEPWORK_NO_ENABLE=1` only
 installs). By hand:
 
 ```sh
-sudo apt install ./deepwork_0.1.0-1_amd64.deb      # Debian, Ubuntu
-sudo dnf install ./deepwork-0.1.0-1.x86_64.rpm     # Fedora
-sudo zypper install --allow-unsigned-rpm ./deepwork-0.1.0-1.x86_64.rpm   # openSUSE
+sudo apt install ./deepwork_2026.11.0-1_amd64.deb      # Debian, Ubuntu
+sudo dnf install ./deepwork-2026.11.0-1.x86_64.rpm     # Fedora
+sudo zypper install --allow-unsigned-rpm ./deepwork-2026.11.0-1.x86_64.rpm   # openSUSE
 sudo pacman -U ./deepwork-git-*.pkg.tar.zst        # Arch
-tar xf deepwork-0.1.0-x86_64-linux.tar.gz && sudo ./deepwork-0.1.0-x86_64-linux/install.sh
+tar xf deepwork-2026.11.0-x86_64-linux.tar.gz && sudo ./deepwork-2026.11.0-x86_64-linux/install.sh
 sudo systemctl enable --now deepworkd.service
 systemctl --user enable --now deepwork-agent.service
 ```
@@ -99,10 +99,20 @@ scriptlet) and a tarball with `dist/packaging/tarball-install.sh`, installs the 
 on the runner as a smoke test, calls `package.yml` for the Arch package, and
 publishes everything with `SHA256SUMS` as a GitHub release.
 
+Versions are calendar based, `YYYY.M.N`: year, month without a leading zero
+(Cargo needs valid semver), and `N` counting releases within that month from
+0. So the first release of November 2026 is `2026.11.0`, the next one
+`2026.11.1`, and the first one in January `2027.1.0`.
+
 ```sh
-# bump version in Cargo.toml (the workflow refuses a tag that doesn't match)
-git tag v0.1.0 && git push origin v0.1.0
+# set version in Cargo.toml, cargo update -w, commit; the workflow refuses
+# a tag that doesn't match Cargo.toml
+git tag v2026.11.1 && git push origin v2026.11.1
 ```
+
+`/get.sh` on the landing site (repo `Sagyam/deepwork-site`) is a Vercel
+rewrite to `dist/get.sh` on `main` here, so changes to the script go live
+on push.
 
 `package.yml` still builds the Arch package on every push to `main`
 (artifact `deepwork-git-x86_64`). Nothing is signed or pushed to a package

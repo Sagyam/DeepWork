@@ -1,13 +1,16 @@
 #!/bin/sh
 # Installs the latest DeepWork release with the system's package manager:
 #
-#   curl -fsSL https://raw.githubusercontent.com/Sagyam/DeepWork/main/dist/get.sh | sh
+#   curl -fsSL https://deepwork.sagyamthapa.com.np/get.sh | sh
 #
 # Debian / Ubuntu get the .deb, Fedora / openSUSE the .rpm, Arch the pacman
-# package, anything else with systemd the tarball. DEEPWORK_VERSION=v0.2.0
+# package, anything else with systemd the tarball. DEEPWORK_VERSION=v2026.11.0
 # picks a release; DEEPWORK_NO_ENABLE=1 skips starting the services.
 set -eu
 
+# Piped into sh, the script is read as it runs, and anything that reads stdin
+# (apt, dpkg prompts) would eat the rest of it. One block is parsed whole.
+{
 repo=Sagyam/DeepWork
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
@@ -104,3 +107,5 @@ else
     echo "As your user: systemctl --user enable --now deepwork-agent.service"
 fi
 say "Done. Try: deepwork start 25m, or open DeepWork from the app launcher."
+exit 0
+}

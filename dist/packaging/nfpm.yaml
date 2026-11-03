@@ -1,7 +1,7 @@
 # .deb and .rpm from the tree dist/packaging/stage.sh lays out. Run from the repo
 # root (paths are relative to it):
 #
-#   VERSION=0.1.0 ARCH=amd64 nfpm package -f dist/packaging/nfpm.yaml -p deb -t target/pkg/
+#   VERSION=2026.11.0 ARCH=amd64 nfpm package -f dist/packaging/nfpm.yaml -p deb -t target/pkg/
 #
 # ARCH is Go-style (amd64, arm64); nfpm maps it to x86_64 / aarch64 for rpm.
 # Built on Ubuntu 22.04 (glibc 2.35), so the binaries run on Debian 12+,

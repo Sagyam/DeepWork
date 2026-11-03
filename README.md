@@ -66,7 +66,7 @@ Full threat model: [docs/PLAN.md](docs/PLAN.md#threat-model).
 ## Quick start
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/Sagyam/DeepWork/main/dist/get.sh | sh
+curl -fsSL https://deepwork.sagyamthapa.com.np/get.sh | sh
 deepwork start 50m
 ```
 

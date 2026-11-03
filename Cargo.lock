@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "deepwork"
-version = "0.1.0"
+version = "2026.11.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "deepwork-agent"
-version = "0.1.0"
+version = "2026.11.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -648,7 +648,7 @@ dependencies = [
 
 [[package]]
 name = "deepwork-proto"
-version = "0.1.0"
+version = "2026.11.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -656,7 +656,7 @@ dependencies = [
 
 [[package]]
 name = "deepwork-ui"
-version = "0.1.0"
+version = "2026.11.0"
 dependencies = [
  "deepwork-proto",
  "serde_json",
@@ -667,7 +667,7 @@ dependencies = [
 
 [[package]]
 name = "deepworkd"
-version = "0.1.0"
+version = "2026.11.0"
 dependencies = [
  "anyhow",
  "clap",

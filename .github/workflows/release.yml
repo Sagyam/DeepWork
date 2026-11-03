@@ -10,8 +10,9 @@ name: release
 #   SHA256SUMS
 #
 # Run it by hand (Actions > release > Run workflow) to get the same files as
-# artifacts without a release. Tag with the version in Cargo.toml:
-#   git tag v0.1.0 && git push origin v0.1.0
+# artifacts without a release. Versions are CalVer, YYYY.M.N (see
+# docs/DEVELOPMENT.md); tag with the version in Cargo.toml:
+#   git tag v2026.11.0 && git push origin v2026.11.0
 #
 # Nothing is signed yet, and nothing goes to a package repository: that needs
 # a signing key in the repo secrets and accounts (AUR, COPR, OBS, a PPA).
