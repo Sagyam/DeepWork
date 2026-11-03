@@ -10,37 +10,38 @@ them in. Go through it section by section; tick or strike as decisions land.
 
 ## How many buildings a city has
 
-One completed session adds one building (or rebuilds rubble). Its kind comes
-from the session's length, not from the tier:
+Decided 2026-11-03, replacing one building per session (details under
+"World model v2" in PLAN.md): focused time earns coins (1 per minute of a
+completed session), and the app spends them on the next item of one fixed,
+designed master plan. The user only decides how much and when they focus;
+what is built and where is the app's.
 
-| Session | Grade | Kind | Size today (`shape()` in `plan.ts`) |
-|---|---|---|---|
-| < 25 min | 0 | cottage | 6-7.5 x 5.5-7 m, 1 storey |
-| 25-49 min | 1 | shop | 8-9.5 x 7-9 m, 2-3 storeys (diner, factory 1) |
-| 50-89 min | 2 | apartment | 8.5-9.8 m square, 4-7 storeys |
-| 90-179 min | 3 | office | 9-10.2 m square, 9-14 storeys |
-| 3 h+ | 4 | landmark | 10.4 m square, 18-25 storeys |
+| Item | Coins | Focused hours |
+|---|---|---|
+| Cottage | 45 | 0.75 |
+| Shop | 90 | 1.5 |
+| Apartment block | 180 | 3 |
+| Office tower | 360 | 6 |
+| Square or monument (half block) | 600 | 10 |
+| Landmark tower (lot) | 900 | 15 |
+| Civic building (half block) | 1,200 | 20 |
+| Block landmark (cathedral, station, park, stadium) | 2,400 | 40 |
 
-Tiers come from focused hours (10 / 50 / 200), so the building count at
-each tier depends on how long sessions are:
+| Tier (focused hours) | Built in that tier | City by its end |
+|---|---|---|
+| Hamlet (0-10 h) | ~8 cottages, 2 shops | ~10 buildings |
+| Town (10-50 h) | ~10 cottages, 8 shops, 3 apartments, the town square | ~33 |
+| City (50-200 h) | ~20 shops, 20 apartments, 6 offices, city hall | ~80 |
+| Metropolis (200 h+, ~730 h a year at 2 h a day) | offices, towers, civic and block landmarks, more homes | a few hundred after a year |
 
-| Tier (focused hours) | 25-min sessions | 50-min | 90-min |
-|---|---|---|---|
-| Hamlet (0-10 h) | up to 24 | up to 12 | up to 7 |
-| Town (10-50 h) | 24-120 | 12-60 | 7-33 |
-| City (50-200 h) | 120-480 | 60-240 | 33-133 |
-| Metropolis (200 h+) | 480+ | 240+ | 133+ |
+Prices are first guesses. What this means for the models:
 
-Metropolis never stops growing: two focused hours a day is ~730 h a year,
-so a year's city holds 500-1,750 buildings. Two consequences shape the plan:
-
-- **Each kind must fill a whole city by itself.** A Pomodoro user's
-  metropolis is hundreds of shops; a 50-minute user's is apartments. Every
-  kind needs enough models (5-6) plus per-building variation (brick and
-  paint colours, frame colours, shop signs, floor counts, mirrored plans)
-  that a street of one kind does not look copy-pasted.
-- **Rendering must scale to thousands of buildings**, which rules out
-  drawing every building at full detail (next section).
+- **The plan picks the model for every lot**, so streets are composed, not
+  random: a main street of shops, a row of brownstones, a downtown of
+  towers. Each kind still needs several models so a street of one kind
+  does not repeat, but no kind has to fill a whole city alone any more.
+- **Far fewer buildings**: ~80 at City and a few hundred after a year,
+  against 133-480 at 200 h before. That eases rendering (next section).
 
 ## Can an ordinary PC draw it?
 
@@ -135,9 +136,17 @@ Already written, used by every model after this one:
 ## Decisions (2026-11-03)
 
 - **Style:** a mix of American and European, no preference between them.
-  Each building picks its style from its seed, as today; no zoning.
+  The master plan places them; no style districts are required.
+- **Dimensions:** whatever makes sense for each model: real-world sizes for
+  the type, not today's 9-10 m boxes. The master plan sizes lots to fit
+  (wide suburban lots, narrow downtown ones), instead of the reverse.
+- **Layout and growth:** one fixed, designed city plan, the same order of
+  building for everyone; nobody plans their own city. Ground for squares,
+  parks and landmarks is reserved in it from the start.
+- **Currency:** focused time earns coins, coins buy buildings; the app does
+  the buying along the plan (see PLAN.md, "World model v2").
 - **Frame rate:** 30 fps for an end-game city on a weak iGPU is acceptable.
-- **Landmarks** (3 h+ sessions) are not only towers: civic buildings,
+- **Landmarks** are not only towers: civic buildings,
   squares, parks and monuments too. These need more ground than a 16 m lot
   (see "Landmarks").
 - **Models are downloaded on first run**, not built into the binary (see
@@ -189,7 +198,7 @@ components should take 8-12%, one that needs a new material family 15-25%.
 P1 replaces every style the city has today (plus the first civic landmarks);
 P2 is variety, so one kind can fill a city.
 
-### Cottages (grade 0)
+### Cottages (45 coins)
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
@@ -201,7 +210,7 @@ P2 is variety, so one kind can fill a city.
 | C6 | Craftsman bungalow | Low hip, deep eaves with brackets, wide porch on tapered columns | | timber, stone | 10% | P2 |
 | C7 | Half-timbered house | European: timber frame with render infill, steep tiled roof, jettied upper storey | | new: half-timber, clay tile | 15% | P2 |
 
-### Shops (grade 1)
+### Shops (90 coins)
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
@@ -213,7 +222,7 @@ P2 is variety, so one kind can fill a city.
 | S6 | Filling station | Canopy on columns, pumps, small kiosk | | new: canopy, pumps | 15% | P2 |
 | S7 | Market hall shop | European: arcaded ground floor, shops under the arches, stone above | | stone, render | 12% | P2 |
 
-### Apartments (grade 2)
+### Apartments (180 coins)
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
@@ -224,7 +233,7 @@ P2 is variety, so one kind can fill a city.
 | A5 | Parisian block | European: cream stone, wrought-iron balconies, zinc mansard with dormers | | new: zinc roof | 15% | P2 |
 | A6 | Modern apartments | Fibre-cement panels, deep loggias, timber soffits | | new: panels | 15% | P2 |
 
-### Offices (grade 3)
+### Offices (360 coins)
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
@@ -234,11 +243,11 @@ P2 is variety, so one kind can fill a city.
 | O4 | Stone office | Classical base, terracotta shaft, cornice (Chicago school) | | stone, new: terracotta | 15% | P2 |
 | O5 | Modernist slab | Ribbon windows, white spandrels, roof canopy | office classic (fins) | curtain wall | 10% | P2 |
 
-### Landmarks (grade 4)
+### Landmarks (600-2,400 coins)
 
-A landmark is the reward for a 3-hour session, so it may be a tower, a
-civic building, a square, a park or a monument. Most need more than a 16 m
-lot. Footprints:
+Landmarks are the big purchases of the plan: towers, civic buildings,
+squares, parks and monuments, each taking many sessions to pay for. Most
+need more than a lot. Footprints:
 
 | Size | Ground | Fits |
 |---|---|---|
@@ -246,16 +255,10 @@ lot. Footprints:
 | Half block | 32 x 32 m (four lots) | city hall, museum, theatre, square, monument |
 | Block | 64 x 32 m (all eight lots) | station, cathedral, park, stadium |
 
-How the plan finds that ground is a design choice for `plan.ts` (the
-daemon's world model stays as it is: one plot per session):
-
-- **Recommended: landmark cells.** Like parks today (every fourth cell),
-  some grid cells are kept for landmarks; the n-th landmark takes the n-th
-  such cell, half or whole, so landmarks spread round the city as it grows
-  and never displace buildings. A landmark's plot index still maps to its
-  place, deterministically.
-- Alternative: a landmark claims the lots that follow it in its block,
-  which shifts later buildings and needs the plan to skip claimed lots.
+Decided: the master plan reserves their ground from the start (the town
+square at the old crossroads, city hall facing it, the station at the
+edge of downtown, ...), empty until the plan reaches them. A landmark's
+size comes from the plan, not from a session.
 
 Towers (replace today's landmarks):
 
@@ -343,34 +346,38 @@ above; none of it changes how models look.
 |---|---|
 | Integration: stackable pieces, variation, loading realistic models in the app | ~1 |
 | Download on first run (pack, manifest, fallback) | ~0.5 |
-| Landmark ground in `plan.ts` | ~0.5 |
+| World model v2 in the daemon: coins, prices, plan sequence, penalties, UI | ~1.5 |
+| Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
 | P1 buildings (20 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
 | Last: performance | ~2 |
 | Review and rework | ~1 |
-| **Total** | **~13-14** |
+| **Total** | **~15-16** |
 
 ## Suggested order
 
 1. Integration on the prototype: split it into pieces, add per-building
    variation, and load it in the real app next to the low-poly kit (drawn
    the simple way for now).
-2. Download on first run, as soon as models leave the binary: pack,
+2. World model v2 and the master plan: coins in the daemon, the designed
+   layout and build order in `plan.ts`. The plan decides which models are
+   needed where, so it comes before most of them.
+3. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
-3. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
-4. Landmark ground in `plan.ts`, then the first civic landmarks (L5-L7).
-5. The rest of P1, then building states.
-6. Surroundings: streets, trees and terrain first, as they fill the most
+4. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
+5. The first civic landmarks (L5-L7) on their reserved ground.
+6. The rest of P1, then building states.
+7. Surroundings: streets, trees and terrain first, as they fill the most
    screen.
-7. P2 variety.
-8. Last: performance.
+8. P2 variety.
+9. Last: performance.
 
 ## Open questions
 
-- [ ] Ordinary buildings: keep today's footprints (9-10 m) or use more of the
-      16 m lot? The prototype is 14 x 12 m.
-- [ ] Landmark ground: landmark cells (recommended) or claimed lots?
-- [ ] Should a landmark's size follow the session (3 h a half block, 5 h+ a
-      whole block), or be picked by the seed?
+Answered 2026-11-03: footprints (whatever makes sense), landmark ground
+(reserved by the master plan), landmark size (the plan decides; coins pay).
+The progression questions that came with the coins are under "World model
+v2" in PLAN.md: whether the user ever chooses what to buy, a bonus for long
+sessions, whether the centre densifies, and whether every city is the same.
