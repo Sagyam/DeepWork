@@ -58,6 +58,8 @@ const A1_FL = 3.1;
 const C1_PLATE = 6.1;
 const C3_G = 3.3;
 const C3_TOP = 6.3;
+const C4_TOP = 3.35;
+const C4_RIDGE = 7.8;
 const S1_G = 4.45;
 const S1_FL = 3.3;
 
@@ -120,6 +122,21 @@ export const DEFS: Record<string, RealDef> = {
     height: () => C3_TOP + 0.45,
     smoke: () => new THREE.Vector3(-4.6, C3_TOP + 1.6, -2.2),
     debris: 0xe4e0d6,
+  },
+  c4: {
+    id: "c4",
+    kind: "cottage",
+    style: "aframe",
+    w: 8.6,
+    d: 12,
+    front: 1.5,
+    floors: () => 2,
+    // The body stops at the loft floor; the roof is the rest of the A.
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: C4_TOP }] : [])],
+    top: () => C4_TOP,
+    height: () => C4_RIDGE + 0.2,
+    smoke: () => new THREE.Vector3(-1.0, C4_RIDGE + 0.8, -3.38),
+    debris: 0x8a6a4c,
   },
   s1: {
     id: "s1",
@@ -442,6 +459,14 @@ const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
 const TIMBER = [0xe6b488, 0xc4c2bc, 0x4a4644, 0xd2905e, 0xf0cc96];
 /** Window frames, copings and doors: anthracite (most), black, bronze. */
 const FRAMES = [0x33373b, 0x1e1f21, 0x33373b, 0x6e5e4a, 0x40454a];
+/** C4's boards: natural cedar, honey pine, walnut, barn red, weathered grey, forest green, whitewash. */
+const STAINS = [0xd8a070, 0xeec890, 0x8a5c40, 0xb04c3a, 0xc0bab0, 0x7a9670, 0xf2ece0];
+/** Cedar shakes: natural, silvered, dark-stained, red cedar, charcoal. */
+const SHAKES = [0xd8b090, 0xc4c0b8, 0x8a7060, 0xc89078, 0x84807a];
+/** C4's trim: dark brown, white, black, cream, barn red, forest green. */
+const TRIMS = [0x3a2a20, 0xeeeae2, 0x1e1e1e, 0xe4d8bc, 0x7a2a22, 0x2e4234];
+/** Front doors and deck chairs: red, mustard, teal, navy, orange, oiled wood. */
+const BRIGHTS = [0xa02a22, 0xd09a2a, 0x2a6a6a, 0x24344e, 0xc8642a, 0x8a5a36];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -530,7 +555,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "carpaint", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "carpaint", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -571,10 +596,15 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : 0x3a2216, 0.38)); break;
     case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: pick(RENDERS, paint.wall) }), 0.4); break;
     case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
     case "alu": m = w(plain(frame, 0.4, 0.5)); break;
+    case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
+    case "boards": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.82, color: pick(STAINS, paint.wall) }), 0.6); break;
+    case "timber": m = w(plain(pick(TRIMS, paint.accent), 0.6)); break;
+    case "chair": m = w(plain(pick(BRIGHTS, paint.accent + paint.wall + 2), 0.55)); break;
+    case "logend": m = w(plain(0xc8a478, 0.9)); break;
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
     case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
     case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1 }); break;
