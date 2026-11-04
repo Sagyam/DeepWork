@@ -5,6 +5,7 @@
 // the lowlands, conifers higher up, bare rock above the tree line.
 import * as THREE from "three";
 import { piece } from "./kit";
+import { hasReal, realMat, realPiece } from "./real";
 import { PITCH_X, PITCH_Z, rng, type CityPlan } from "./plan";
 import { LAKE, RADIUS, ROAD_Z, WATER, fbm, noise, smoothstep, terrain, type Land as Shape } from "./terrain";
 
@@ -254,15 +255,24 @@ export class Land {
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
     const col = new THREE.Color();
+    // The realistic woods (trees model) draw the kit's forest pieces when loaded.
+    const real = hasReal("trees");
+    const white = new THREE.Color(0xffffff);
     for (const [key, list] of buckets) {
       const model = key.split(":")[0];
-      for (const { role, geo } of piece(model).parts) {
-        const mesh = new THREE.InstancedMesh(geo, this.mat(role === "leaf" ? "leaf" : role), list.length);
+      const realistic = real && model.startsWith("forest_");
+      const parts = realistic ? realPiece("trees", model) : piece(model).parts;
+      for (const { role, geo } of parts) {
+        const leafy = role === "woods" || role === "firs";
+        const material = realistic ? (realMat("trees", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "forest") as THREE.MeshStandardMaterial) : this.mat(role === "leaf" ? "leaf" : role);
+        const mesh = new THREE.InstancedMesh(geo, material, list.length);
         list.forEach((t, i) => {
           q.setFromAxisAngle(up, t.ry);
           m.compose(v.set(t.x, t.y, t.z), q, sc.set(t.s, t.sy, t.s));
           mesh.setMatrixAt(i, m);
-          mesh.setColorAt(i, col.setHex(role === "leaf" ? t.color : role === "bark" ? 0x5a4030 : 0x8a8478));
+          // Realistic leaves are textured: the kit's greens only tint them, lightened.
+          if (realistic) mesh.setColorAt(i, leafy ? col.setHex(t.color).lerp(white, 0.45) : white);
+          else mesh.setColorAt(i, col.setHex(role === "leaf" ? t.color : role === "bark" ? 0x5a4030 : 0x8a8478));
         });
         mesh.computeBoundingSphere();
         mesh.receiveShadow = true;

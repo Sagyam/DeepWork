@@ -12,7 +12,8 @@
 #   bush, bush_wide, shrub, flowers                                 shrubs
 #   hedge   a 2 m segment (x), 0.7 m deep, 1.25 m tall, stretched by the app
 # Roles: bark, birch, leaf (broad leaves), smallleaf (birch), needles,
-# blossom (cherry), bloom (flowering shrub), hedge (the hedge's dense core).
+# blossom (cherry), bloom (flowering shrub), hedge (the hedge's dense core);
+# woods and firs for the woods' light trees (forest_a-e).
 import math
 import random
 
@@ -217,7 +218,28 @@ def grass_tex(t, n=1024):
     t.save("grass_nrm", normals(blades * 0.6 + clump * 0.4, 2.5))
 
 
-TEXTURES = (leaf_textures, bark_tex, hedge_tex, grass_tex)
+def canopy_textures(t):
+    """Cards for the woods, seen from afar: the leaves' gaps filled with shade,
+    so mipmaps keep the cards solid instead of thinning them away."""
+    from lib import blur
+
+    greens = [srgb(150, 172, 104), srgb(132, 160, 92), srgb(168, 184, 116), srgb(120, 146, 84)]
+    sets = {
+        "woods": dict(count=1500, size=0.06, aspect=0.55, palette=greens, seed=11, kind="broad", twigs=12),
+        "firs": dict(count=3800, size=0.07, aspect=0.1, palette=[srgb(98, 124, 92), srgb(84, 112, 84), srgb(110, 134, 98)], seed=12, kind="needle", twigs=9),
+    }
+    n = 512
+    for name, kw in sets.items():
+        col, alpha, h = _leaf_canvas(n, **kw)
+        solid = blur(alpha.ravel(), n, 7.0).reshape(n, n) > 0.3
+        mean = col[alpha > 0.5].mean(axis=0)
+        gap = solid & (alpha < 0.5)
+        col[gap] = mean * 0.45
+        col[~solid] = mean * 0.6
+        t.save(f"{name}_col", col, solid.astype(np.float32))
+
+
+TEXTURES = (leaf_textures, canopy_textures, bark_tex, hedge_tex, grass_tex)
 
 
 # ---- geometry ------------------------------------------------------------------------
@@ -478,6 +500,36 @@ def hedge(m, rng, L=2.0, D=0.7, H=1.25):
         card(m, "leaf", c, rng.uniform(0.14, 0.24), n, rng)
 
 
+def light_tree(m, rng, height, clear, crown_r, cards, size, limbs=3, rz_f=1.0, role="woods", trunk_r=0.2):
+    """A cheap tree for the woods (a few dozen cards, bare limbs): drawn thousands of times."""
+    top = Vector((0, 0, clear))
+    if clear > 0:
+        tube(m, "bark", (0, 0, 0), top, trunk_r, trunk_r * 0.7, seg=5)
+    rz = (height - clear) / 2 * rz_f
+    centre = Vector((0, 0, height - rz))
+    tips = []
+    for k in range(limbs):
+        a = k / limbs * math.tau + rng.random()
+        end = centre + Vector((math.cos(a) * crown_r * 0.5, math.sin(a) * crown_r * 0.5, rz * 0.2))
+        if clear > 0:
+            tube(m, "bark", top, end, trunk_r * 0.5, trunk_r * 0.25, seg=4)
+        tips.append((end, (end - top).normalized()))
+    foliage(m, role, rng, tips + [(centre + Vector((0, 0, rz * 0.4)), Vector((0, 0, 1)))], cards, size, crown_r * 0.75, centre, crown_r, rz)
+
+
+def light_conifer(m, rng, height, radius, whorls=6):
+    tube(m, "bark", (0, 0, 0), (0, 0, height * 0.9), 0.17, 0.04, seg=4)
+    for w in range(whorls):
+        f = w / whorls
+        z = height * (0.18 + 0.75 * f)
+        R = radius * (1 - f) + 0.2
+        for k in range(3):
+            a = k / 3 * math.tau + w * 1.1
+            c = Vector((math.cos(a) * R * 0.45, math.sin(a) * R * 0.45, z))
+            card(m, "firs", c, R * 1.25, (math.cos(a) * 0.35, math.sin(a) * 0.35, 1), rng)
+    card(m, "firs", (0, 0, height * 0.95), 0.9, (0.7, 0.1, 0.4), rng)
+
+
 # Species: (piece, builder). Each draws at the origin; build() lays them out for the bake.
 def _species():
     return [
@@ -495,6 +547,14 @@ def _species():
         ("shrub", lambda m, R: bush(m, R, 0.7, 1.0, 130, 0.36)),
         ("flowers", lambda m, R: bush(m, R, 0.65, 0.55, 110, 0.3, role="bloom")),
         ("hedge", lambda m, R: hedge(m, R)),
+        # The woods: light trees at the kit's own sizes (land.ts scales them
+        # as it scaled the kit's forest_a-e): broadleaf, conifer, rainforest
+        # giant, undergrowth, and a far clump standing for several trees.
+        ("forest_a", lambda m, R: light_tree(m, R, 5.0, 1.6, 1.8, 44, 1.1)),
+        ("forest_b", lambda m, R: light_conifer(m, R, 5.6, 1.7)),
+        ("forest_c", lambda m, R: light_tree(m, R, 9.0, 6.8, 2.6, 44, 1.3, limbs=4, rz_f=0.55, trunk_r=0.3)),
+        ("forest_d", lambda m, R: light_tree(m, R, 2.6, 0.4, 1.5, 34, 1.0, limbs=2, trunk_r=0.12)),
+        ("forest_e", lambda m, R: light_tree(m, R, 3.1, 0.0, 1.8, 36, 1.3, limbs=3)),
     ]
 
 

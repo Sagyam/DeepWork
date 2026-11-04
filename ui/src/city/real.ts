@@ -191,7 +191,7 @@ export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<
 export const hasReal = (id: string) => loaded.has(id);
 
 /** Leaf-card roles: alpha-tested, two-sided, normals bent out from the crown. */
-const LEAVES = ["leaf", "smallleaf", "needles", "blossom", "bloom"];
+const LEAVES = ["leaf", "smallleaf", "needles", "blossom", "bloom", "woods", "firs"];
 
 /**
  * Points each leaf card's normals away from the middle of its crown (the
@@ -612,13 +612,16 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     // Trees and shrubs.
     case "bark": m = w(pbr("bark", [1, 2], { roughness: 0.95, normal: 1.2 })); break;
     case "birch": m = w(new THREE.MeshStandardMaterial({ map: tex("birch_col", [1, 1]), roughness: 0.8 })); break;
-    case "hedge": m = w(pbr("hedge", [1.5, 1.5], { roughness: 0.85, color: pick(FOLIAGE, paint.wall) })); break;
+    case "hedge": m = w(pbr("hedge", [1.5, 1.5], { roughness: 0.85, color: paint.wall < 0 ? 0xffffff : pick(FOLIAGE, paint.wall) })); break;
     case "leaf":
     case "smallleaf":
     case "needles":
     case "blossom":
     case "bloom":
-      m = foliage(role, role === "blossom" || role === "bloom" ? 0xffffff : pick(FOLIAGE, paint.wall), ao);
+    case "woods":
+    case "firs":
+      // paint.wall < 0: white, for instance colours to tint (the woods).
+      m = foliage(role, role === "blossom" || role === "bloom" || paint.wall < 0 ? 0xffffff : pick(FOLIAGE, paint.wall), ao);
       break;
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
