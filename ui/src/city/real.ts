@@ -10,6 +10,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { glass, interiorUniforms, type RoomKind } from "./interior";
+import type { Kind } from "./plan";
 
 export { interiorUniforms };
 
@@ -30,6 +31,9 @@ const loaded = new Map<string, Loaded>();
 /** How a model sits in the city: its size, how it stacks, where its chimney smokes. */
 export interface RealDef {
   id: string;
+  /** The kit kind and style it takes over (docs/models.md). */
+  kind: Kind;
+  style: string;
   /** Footprint (x, z) in metres, eaves, porch and steps included; front faces +z. */
   w: number;
   d: number;
@@ -52,12 +56,16 @@ export interface RealDef {
 const A1_G = 4.5;
 const A1_FL = 3.1;
 const C1_PLATE = 6.1;
+const C3_G = 3.3;
+const C3_TOP = 6.3;
 const S1_G = 4.45;
 const S1_FL = 3.3;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
     id: "a1",
+    kind: "apartment",
+    style: "classic",
     w: 14,
     d: 12,
     front: 1.0,
@@ -82,6 +90,8 @@ export const DEFS: Record<string, RealDef> = {
   },
   c1: {
     id: "c1",
+    kind: "cottage",
+    style: "classic",
     w: 10,
     d: 11.8,
     front: 2.0,
@@ -92,8 +102,29 @@ export const DEFS: Record<string, RealDef> = {
     smoke: () => new THREE.Vector3(-4.6, 9.9, 0.2),
     debris: 0xd8d2c4,
   },
+  c3: {
+    id: "c3",
+    kind: "cottage",
+    style: "modern",
+    w: 12.2,
+    d: 10.3,
+    // Room for the car in front of the garage.
+    front: 4.0,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "upper", y: C3_G }] : []),
+      ...(floors > 1 && roof ? [{ piece: "roof", y: C3_TOP }] : []),
+    ],
+    top: (floors) => (floors > 1 ? C3_TOP : C3_G),
+    height: () => C3_TOP + 0.45,
+    smoke: () => new THREE.Vector3(-4.6, C3_TOP + 1.6, -2.2),
+    debris: 0xe4e0d6,
+  },
   s1: {
     id: "s1",
+    kind: "shop",
+    style: "classic",
     w: 9.3,
     d: 11,
     front: 1.0,
@@ -349,6 +380,12 @@ const SHUTTERS = [0x1d2a22, 0x1f2d44, 0x222222, 0x6a2a24, 0x3e5a48, 0x4a5a6a];
 const SHINGLES = [0x5a5a5c, 0x6e5a48, 0x4e5660, 0x5c6252, 0x7a6e64, 0x3e3e40];
 /** Pressed-metal cornices: cream, stone, bottle green, oxblood, slate. */
 const CORNICES = [0xe6dcc4, 0xc8beac, 0x2e4434, 0x5a2420, 0x4a5058];
+/** Render: white, warm white, pale grey, sand, anthracite, chalk. */
+const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
+/** Timber cladding: larch, silver-weathered, charred, cedar, honey. */
+const TIMBER = [0xe6b488, 0xc4c2bc, 0x4a4644, 0xd2905e, 0xf0cc96];
+/** Window frames, copings and doors: anthracite (most), black, bronze. */
+const FRAMES = [0x33373b, 0x1e1f21, 0x33373b, 0x6e5e4a, 0x40454a];
 
 const cache = new Map<string, THREE.Material>();
 /** Glass and lamps, which follow the time of day (see City.light). */
@@ -370,7 +407,7 @@ export function setRealEnv(env: THREE.Texture) {
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost"].includes(role);
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu"].includes(role);
   const key = `${id}:${role}:${damage}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -384,6 +421,14 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
     return g;
   };
   const accent = id === "c1" ? pick(SHUTTERS, paint.accent) : pick(SHOPFRONTS, paint.accent);
+  const frame = pick(FRAMES, paint.roof);
+  /** Glossy glass without a room behind: sky reflections only. */
+  const sheen = (params: THREE.MeshPhysicalMaterialParameters) => {
+    const g = new THREE.MeshPhysicalMaterial({ roughness: 0.08, ior: 1.5, ...params });
+    if (skyEnv) g.envMap = skyEnv;
+    glassMats.add(g);
+    return g;
+  };
   switch (role) {
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
@@ -403,7 +448,14 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : 0x3a2216, 0.38)); break;
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: pick(RENDERS, paint.wall) }), 0.4); break;
+    case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
+    case "alu": m = w(plain(frame, 0.4, 0.5)); break;
+    case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
+    case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
+    case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1 }); break;
+    case "skyglass": m = sheen({ color: 0x141a20 }); break;
     case "brass": m = w(plain(0xc9a24e, 0.3, 1)); break;
     case "dark": m = w(plain(0x161616, 0.7)); break;
     case "iron": m = w(plain(0x1b1c1e, 0.5, 0.35)); break;

@@ -7,7 +7,8 @@ git-ignored `ui/public/models/`), load in the app through
 `ui/src/city/real.ts`, and replace the kit style they stand for; any model
 that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
-brick block, C1, the clapboard farmhouse, and S1, the main-street shop. This file lists every model
+brick block, C1, the clapboard farmhouse, S1, the main-street shop, and C3,
+the modern house. This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
 through it section by section; tick or strike as decisions land.
 
@@ -126,7 +127,9 @@ every model after this one:
   rusticated ashlar, granite, bitumen roof, wood staves, iron railing,
   grating, awning canvas, paving, asphalt, grime; with C1, painted
   clapboard, three-tab asphalt shingles and louvred shutters (near-white or
-  grey, tinted per building in the app).
+  grey, tinted per building in the app); with C3, smooth render and vertical
+  timber battens (both tinted per building), roof gravel, a sedum roof and
+  solar cells.
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls.
 - The piece pipeline: a model is drawn as a reference stack (ground storey,
@@ -141,18 +144,24 @@ every model after this one:
   railings with alpha-tested bars, balconies on corbels, fire escapes,
   shopfronts with stallriser, transom and sign fascia (`lib.shopfront`, any
   height and width, sign panel optional), awnings (`lib.awning`), recessed
-  entrances with canopy, water tank, condensers, chimneys.
+  entrances with canopy, water tank, condensers, chimneys; with C3, modern
+  glazing (`lib.glazing`: slim aluminium frames, fixed lights or sliding
+  leaves, frameless where glass meets glass at a corner), the family for
+  A3, A6 and the offices.
 - Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
   the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
 - App materials (`real.ts`): PBR with weathering (rain streaks, splash,
   corner dirt), window glass that reflects the sky and shows a room behind
   it (walls, floor, furniture, curtains or blinds; lit at night; darkened and
-  put out by damage), shop interiors, shop signs from an atlas of eight.
+  put out by damage; as wide as the window for glass walls), shop
+  interiors, shop signs from an atlas of eight; glossy glass with sky
+  reflections only, for rooflights and solar panels.
 - Per-building variation by parameters: brick tint, shopfront colour and
   sign pair (A1); siding, shutter and door, and roof colours (C1); brick
   tint, shopfront and cornice colours, sign, ghost sign, an awning or none,
-  two or three storeys (S1).
+  two or three storeys (S1); render, cladding timber and aluminium colours
+  (C3).
 
 ## Decisions (2026-11-03)
 
@@ -190,7 +199,10 @@ every model after this one:
   plan's sizes still pick the floor count. A1 is 14 x 12 m and stands 1 m
   back on a paved lot; C1 is 10 x 11.8 m with its porch, 2 m back, behind a
   picket fence, with a drive; S1 is 9 x 11 m, 1 m back (its awning reaches
-  over the pavement), with a walled service yard behind. Lots get resized with the master plan.
+  over the pavement), with a walled service yard behind; C3 is 12.2 x 10.3 m
+  with its cantilever and deck, 4 m back so the car fits on the drive in
+  front of its garage, which leaves 1.7 m of garden behind the deck. Lots
+  get resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -246,7 +258,7 @@ P2 is variety, so one kind can fill a city.
 |---|---|---|---|---|---|---|
 | C1 | Clapboard farmhouse | Gable roof, painted weatherboard, porch with posts, brick chimney, picket fence | cottage classic (gable) | **done** (2026-11-04): I-house, 3 bays, shutters, full porch, lean-to; 7.3 k triangles | 20% | P1 |
 | C2 | Brick cottage | Hip roof in slate, bay window, stone sills, hedged garden | cottage classic (hip) | brick, stone | 10% | P1 |
-| C3 | Modern house | Flat roofs, timber and render, big glazing, garage | cottage modern | new: render, glazing | 15% | P1 |
+| C3 | Modern house | Flat roofs, timber and render, big glazing, garage | cottage modern | **done** (2026-11-04): render ground storey with corner glazing and a timber-lined entrance recess, batten-clad upper storey cantilevered 1.2 m inside a white frame, garage with a batten door and sedum roof, deck; gravel roof with solar panels, rooflight, flue; pieces ground / upper / roof; 3.3 k triangles | 15% | P1 |
 | C4 | A-frame cabin | Steep shingle roof to the ground, glazed gable, deck | cottage A-frame | timber | 10% | P1 |
 | C5 | Stone cottage | Rubble-stone walls, gambrel roof with dormers, porch | cottage classic (gambrel) | new: fieldstone | 15% | P2 |
 | C6 | Craftsman bungalow | Low hip, deep eaves with brackets, wide porch on tapered columns | | timber, stone | 10% | P2 |
@@ -390,7 +402,7 @@ above; none of it changes how models look.
 | Download on first run (pack, manifest, fallback) | ~0.5 |
 | Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
-| P1 buildings (19 left, incl. 3 civic) | ~3 |
+| P1 buildings (17 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
@@ -404,8 +416,9 @@ above; none of it changes how models look.
    variation, and load it in the real app next to the low-poly kit (drawn
    the simple way for now).~~ Done 2026-11-04, with C1.
 2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
-   farmhouse~~, ~~S1 main-street shop~~ (done 2026-11-04), then C3 modern house, C4 A-frame cabin, S3 diner, S4 brick
-   factory, then C2 brick cottage and S2 corner café for variety. After
+   farmhouse~~, ~~S1 main-street shop~~, ~~C3 modern house~~ (done
+   2026-11-04), then C4 A-frame cabin, S3 diner, S4 brick factory, then C2
+   brick cottage and S2 corner café for variety. After
    that the hamlet has no low-poly buildings left.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are

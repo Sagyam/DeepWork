@@ -72,8 +72,10 @@ vec3 interior() {
 
   bool shop = uKind == 1;
   float r1 = hash(id), r2 = hash(id + 17.0), r3 = hash(id + 41.0), r4 = hash(id + 73.0);
-  float RW = shop ? W + 0.2 : 3.6;
-  float x0 = W * 0.5 - RW * 0.5 + (shop ? 0.0 : (r2 - 0.5) * 0.8);
+  // Rooms are at least as wide as their window (glass walls), and shift
+  // sideways behind narrower ones.
+  float RW = shop ? W + 0.2 : max(3.6, W + 0.2);
+  float x0 = W * 0.5 - RW * 0.5 + (shop ? 0.0 : (r2 - 0.5) * min(0.8, RW - W - 0.2));
   float x1 = x0 + RW;
   float fl = shop || uKind == 2 ? 0.0 : (H > 2.1 ? -0.05 : -0.9);
   float ce = fl + (shop ? 3.4 : 2.8);

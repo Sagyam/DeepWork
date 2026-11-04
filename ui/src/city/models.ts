@@ -406,8 +406,8 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
  * exist to take their own variants of it.
  */
 export function realDef(s: Spec): RealDef | null {
-  const id = s.style !== "classic" ? null : ({ apartment: "a1", cottage: "c1", shop: "s1" } as Record<string, string>)[s.kind];
-  return id && hasReal(id) ? DEFS[id] : null;
+  const def = Object.values(DEFS).find((d) => d.kind === s.kind && d.style === s.style);
+  return def && hasReal(def.id) ? def : null;
 }
 
 /** A spec sized and placed for its realistic model (real-world sizes, not the kit's); others unchanged. */
@@ -484,6 +484,22 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       tree(p, -half + 1.6, back + 1.6, 0.85, s.seed + 2, KERB);
       if (r() < 0.6) tree(p, (r() - 0.5) * 3, back + 1.2, 0.6, s.seed + 4, KERB);
       p.box(mat(0x3f6a34, { flatShading: true }), LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55);
+      break;
+    }
+    case "c3": {
+      // Lawn; a drive to the garage with the car on it, stepping slabs to
+      // the recessed door, a hedge along the street and across the back.
+      p.box(mat(0x6f9a4f, { roughness: 1 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const gz = 3.95; // the garage door
+      p.box(mat(0xa29e96, { roughness: 0.95 }), 3.6, KERB + 0.03, front - gz, 4.2, 0, (front + gz) / 2);
+      parked(p, 4.2, gz + 2.5, Math.PI, s.seed + 3);
+      for (let z = 4.65; z < front - 0.5; z += 0.9) p.box(paving, 1.3, KERB + 0.04, 0.6, 0.6, 0, z);
+      const hedge = mat(0x3f6a34, { flatShading: true });
+      p.box(hedge, half - 0.3, KERB + 0.7, 0.6, (-half - 0.3) / 2, 0, front - 0.5);
+      p.box(hedge, half - 6.2, KERB + 0.7, 0.6, (half + 6.2) / 2, 0, front - 0.5);
+      p.box(hedge, LOT - 0.4, KERB + 1.4, 0.7, 0, 0, back + 0.55);
+      tree(p, -half + 2.0, front - 2.2, 0.7, s.seed + 1, KERB);
+      if (r() < 0.7) tree(p, 3.5 + r() * 3, back + 1.2, 0.8, s.seed + 2, KERB);
       break;
     }
     case "s1": {

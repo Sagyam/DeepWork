@@ -331,6 +331,101 @@ def awning_tex(t):
     t.save("awning_col", col)
 
 
+def render_tex(t, n=1024):
+    """Smooth painted render: fine sand grain, soft trowel waves and patches; tile 3 m.
+
+    Near-white so the app tints it per building.
+    """
+    grain = fbm(n, 384, 2, 131)
+    trowel = fbm(n, 12, 4, 132, stretch=(3, 1))
+    patch = fbm(n, 3, 4, 133)
+    col = np.ones((n, n, 3), np.float32) * srgb(240, 238, 232)
+    col *= ((0.95 + 0.06 * grain) * (0.97 + 0.04 * trowel) * (0.95 + 0.06 * patch))[..., None]
+    t.save("render_col", col)
+    t.save("render_nrm", normals(0.5 * grain + 0.4 * trowel, 1.2))
+
+
+def battens_tex(t, n=1024):
+    """Vertical timber battens, 45 mm with 20 mm shadow gaps: tile 1.3 m.
+
+    Pale, low-saturation wood so the app's tint gives natural larch, cedar,
+    silver-weathered or charred cladding.
+    """
+    k = 20
+    y, x = np.mgrid[0:n, 0:n]
+    fx = (x / (n / k)) % 1
+    b = x * k // n
+    rng = np.random.default_rng(141)
+    tone, off = rng.random(k)[b], rng.random(k)[b]
+    grain = fbm(n, 6, 5, 142, stretch=(8, 1))
+    grain = grain[(y + (off * n).astype(int)) % n, x]  # each batten cut from elsewhere in the log
+    knots = fbm(n, 24, 3, 143) > 0.78
+    col = np.ones((n, n, 3), np.float32) * srgb(214, 198, 176)
+    col *= (0.82 + 0.22 * tone + 0.3 * (grain - 0.5))[..., None]
+    col[knots] *= 0.8
+    edge = np.minimum(fx, 0.69 - fx) * (n / k)  # px from the batten's edge; the gap is fx > 0.69
+    gap = fx > 0.69
+    col *= np.clip(0.55 + edge / 6, 0.55, 1.0)[..., None]
+    col[gap] = srgb(40, 34, 30)
+    h = np.where(gap, 0.0, np.clip(edge / 4, 0, 1) ** 0.5) + 0.06 * grain
+    t.save("battens_col", col)
+    t.save("battens_nrm", normals(h, 4.0))
+
+
+def gravel_tex(t, n=1024):
+    """Rounded roof ballast, ~2.5 cm pebbles in greys and buffs: tile 1.5 m."""
+    c = 64
+    rng = np.random.default_rng(151)
+    pts = rng.random((c, c, 2))
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32) / (n / c)
+    iy, ix = y.astype(int), x.astype(int)
+    best = np.full((n, n), 9.0, np.float32)
+    bid = np.zeros((n, n), int)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            cy, cx = (iy + dy) % c, (ix + dx) % c
+            p = pts[cy, cx]
+            d = (x - (ix + dx + p[..., 0])) ** 2 + (y - (iy + dy + p[..., 1])) ** 2
+            near = d < best
+            best[near] = d[near]
+            bid[near] = (cy * c + cx)[near]
+    dome = np.clip(1 - np.sqrt(best) / 0.75, 0, 1) ** 0.6
+    pal = np.stack([srgb(150, 146, 138), srgb(118, 114, 108), srgb(176, 168, 152), srgb(96, 94, 92), srgb(160, 150, 128)])
+    col = pal[(rng.random(c * c) * 4.999).astype(int)][bid] * (0.85 + 0.3 * rng.random(c * c)[bid])[..., None]
+    col *= (0.35 + 0.65 * dome)[..., None]
+    t.save("gravel_col", col)
+    t.save("gravel_nrm", normals(dome, 5.0))
+
+
+def sedum_tex(t, n=1024):
+    """A sedum green roof: mats of green, olive and red succulents with yellow flowers; tile 1.2 m."""
+    a = fbm(n, 24, 5, 161)
+    b = fbm(n, 5, 4, 162)
+    s = fbm(n, 256, 2, 163)
+    col = np.ones((n, n, 3), np.float32) * srgb(86, 118, 56)
+    col = np.where((a < 0.42)[..., None], srgb(128, 126, 66), col)
+    red = (np.clip((b - 0.52) / 0.2, 0, 1) * np.clip((a - 0.3) / 0.4, 0, 1) * 0.65)[..., None]
+    col = col * (1 - red) + srgb(146, 74, 58) * red
+    col *= (0.65 + 0.5 * s)[..., None] * (0.85 + 0.3 * a)[..., None]
+    col[(s > 0.78) & (b < 0.45)] = srgb(222, 196, 70)
+    t.save("sedum_col", col)
+    t.save("sedum_nrm", normals(0.6 * a + 0.5 * s, 4.0))
+
+
+def solar_tex(t):
+    """One solar panel, 6 x 10 monocrystalline cells with busbars; UVs 0..1 across the panel."""
+    w, hh = 608, 1024
+    y, x = np.mgrid[0:hh, 0:w].astype(np.float32)
+    fu, fv = (x / w * 6) % 1, (y / hh * 10) % 1
+    eu, ev = np.minimum(fu, 1 - fu), np.minimum(fv, 1 - fv)
+    sheet = (eu < 0.025) | (ev < 0.02) | (eu + ev < 0.09)  # gaps and chamfered cell corners
+    col = np.ones((hh, w, 3), np.float32) * srgb(20, 28, 48)
+    col *= (0.85 + 0.3 * fbm(w, 32, 3, 171)[np.arange(hh) % w])[..., None]
+    col[np.min(np.abs(fu[..., None] - np.array([0.2, 0.5, 0.8])), axis=-1) < 0.008] = srgb(92, 98, 110)
+    col[sheet] = srgb(48, 52, 60)
+    t.save("solar_col", col)
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -358,7 +453,10 @@ def ground_tex(t, n=1024):
     t.save("asphalt_nrm", normals(g, 1.5))
 
 
-TEXTURES = (brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex, ground_tex, grime_tex)
+TEXTURES = (
+    brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, ground_tex, grime_tex,
+)
 
 
 def textures(out):
@@ -611,6 +709,44 @@ def french(F, a, b, c, e, D=0.22):
         F.box(fr, l0 + 0.06, l1 - 0.06, t - 0.12, t - 0.06, -D + 0.02, -D + 0.08)
         F.box(fr, l0 + 0.06, l1 - 0.06, c + 0.45, c + 0.51, -D + 0.02, -D + 0.08)
         pane(F, "glass", a, b, c, e, l0 + 0.06, l1 - 0.06, c + 0.51, t - 0.12, -D + 0.04, wid)
+
+
+def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, True)):
+    """A modern window or glass wall in the opening (a..b, c..e), glass D deep:
+    a slim aluminium frame and `lights` panes between mullions, one room
+    behind them all. `slide` makes the lights sliding leaves in sashes of
+    their own, alternately in front and behind; an end in `ends` that is
+    False is left frameless, for glass meeting glass at a corner: the
+    opening runs to the corner and the glass stops D short of it, where the
+    other side's glass is."""
+    wid = new_id()
+    fw = 0.05
+    w0, w1 = -D - 0.04, -D + 0.05
+    if ends[0]:
+        F.box(fr, a, a + fw, c, e, w0, w1)
+    if ends[1]:
+        F.box(fr, b - fw, b, c, e, w0, w1)
+    fa, fb = a if ends[0] else a + D - 0.05, b if ends[1] else b - D + 0.05
+    F.box(fr, fa, fb, e - fw, e, w0, w1)
+    F.box(fr, fa, fb, c, c + fw, w0, w1 + 0.02)
+    ia, ib = a + (fw if ends[0] else D), b - (fw if ends[1] else D)
+    ic, ie = c + fw, e - fw
+    us = [ia + i * (ib - ia) / lights for i in range(lights + 1)]
+    for i in range(lights):
+        u0, u1 = us[i], us[i + 1]
+        if slide:
+            # Leaves overlap their neighbours; the sash is wider at the meeting stiles.
+            u0, u1 = u0 - (0.03 if i else 0), u1 + (0.03 if i < lights - 1 else 0)
+            w = -D + (0.025 if i % 2 else -0.025)
+            s = 0.045
+            for box in ((u0, u0 + s, ic, ie), (u1 - s, u1, ic, ie), (u0 + s, u1 - s, ic, ic + s), (u0 + s, u1 - s, ie - s, ie)):
+                F.box(fr, *box, w - 0.022, w + 0.022)
+            pane(F, "glass", a, b, c, e, u0 + s, u1 - s, ic + s, ie - s, w, wid)
+        else:
+            if i:
+                F.box(fr, u0 - 0.025, u0 + 0.025, ic, ie, -D - 0.03, -D + 0.05)
+            pane(F, "glass", a, b, c, e, u0 + (0.025 if i else 0), u1 - (0.025 if i < lights - 1 else 0), ic, ie, -D, wid)
+    return wid
 
 
 def sill(F, a, b, c, D=0.22, role="stone"):
