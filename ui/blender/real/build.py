@@ -1,7 +1,7 @@
 # Builds the realistic city's models (docs/models.md) into one directory:
 #
 #   bun run models [-- ids...] [--no-bake] [--no-tex]
-#   (blender -b --factory-startup -P blender/real/build.py -- public/models a1 c1)
+#   (blender -b --factory-startup -P blender/real/build.py -- public/models a1 s1)
 #
 # Writes tex/*.png (the shared texture library), and per model <id>.glb
 # (pieces as nodes, materials named by role) and <id>_ao.png (AO baked on
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import lib  # noqa: E402
 
-MODELS = {"a1": "a1_apartment", "c1": "c1_farmhouse"}
+MODELS = {"a1": "a1_apartment", "c1": "c1_farmhouse", "s1": "s1_shop"}
 
 argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 flags = {a for a in argv if a.startswith("--")}

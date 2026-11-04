@@ -15,7 +15,9 @@
 # - Pieces: a model is built as a reference stack (ground storey, storeys,
 #   roof, ...) so the bake sees its neighbours, then split into one glTF node
 #   per piece, moved so its base is at the origin. Alpha-tested geometry
-#   (railing bars, grates) goes in a "<piece>_cut" node, not baked.
+#   (railing bars, grates) goes in a "<piece>_cut" node, not baked; decals
+#   (paint on a wall) in "<piece>_decal", made after the bake so they do not
+#   shade the wall they lie on.
 import math
 import os
 import random
@@ -673,11 +675,69 @@ def balcony(F, cut, u, z):
     railing(F, cut, u - 1.1, u + 1.1, z, 0.05, 0.9)
 
 
+def shopfront(F, a, b, c, e, sign=0, door_left=False, D_=0.3, sign_w=None):
+    """A shopfront in the opening (a..b, c..e) set D_ deep: stallriser, display
+    window, a door at one end, transom lights, and a fascia above e with the
+    sign (u = sign column + 0..1; the app picks the names) between consoles.
+    `sign_w` narrows the sign to a panel in the middle of the fascia."""
+    fr = "shopframe"
+    t = e - 0.6  # transom bar
+    # Stallriser, posts, transom bar, head.
+    F.box(fr, a, b, c, c + 0.4, -D_, -D_ + 0.14)
+    F.box(fr, a, a + 0.1, c, e, -D_, -D_ + 0.16)
+    F.box(fr, b - 0.1, b, c, e, -D_, -D_ + 0.16)
+    F.box(fr, a + 0.1, b - 0.1, t - 0.08, t, -D_, -D_ + 0.16)
+    F.box(fr, a + 0.1, b - 0.1, e - 0.08, e, -D_, -D_ + 0.16)
+    wid = new_id()
+    dw = 1.1
+    d0, d1 = (a + 0.1, a + 0.1 + dw) if door_left else (b - 0.1 - dw, b - 0.1)
+    g0, g1 = (d1 + 0.06, b - 0.1) if door_left else (a + 0.1, d0 - 0.06)
+    F.box(fr, d0 - 0.06 if not door_left else d1, d0 if not door_left else d1 + 0.06, c, t, -D_, -D_ + 0.16)
+    # Display window in two lights, and the door.
+    mid = (g0 + g1) / 2
+    F.box(fr, mid - 0.03, mid + 0.03, c + 0.4, t - 0.08, -D_ + 0.02, -D_ + 0.12)
+    pane(F, "shopglass", a, b, c, e, g0, g1, c + 0.4, t - 0.08, -D_ + 0.06, wid)
+    pane(F, "shopglass", a, b, c, e, a + 0.1, b - 0.1, t, e - 0.08, -D_ + 0.06, wid)
+    for u in [a + 0.1 + i * (b - a - 0.2) / 4 for i in range(1, 4)]:
+        F.box(fr, u - 0.025, u + 0.025, t, e - 0.08, -D_ + 0.02, -D_ + 0.12)
+    F.box(fr, d0, d1, c, c + 0.1, -D_ - 0.05, -D_ + 0.04)
+    F.box(fr, d0, d0 + 0.09, c, t - 0.08, -D_ - 0.05, -D_ + 0.04)
+    F.box(fr, d1 - 0.09, d1, c, t - 0.08, -D_ - 0.05, -D_ + 0.04)
+    F.box(fr, d0 + 0.09, d1 - 0.09, c + 0.1, c + 0.35, -D_ - 0.05, -D_ + 0.04)
+    F.box(fr, d0 + 0.09, d1 - 0.09, t - 0.16, t - 0.08, -D_ - 0.05, -D_ + 0.04)
+    pane(F, "shopglass", a, b, c, e, d0 + 0.09, d1 - 0.09, c + 0.35, t - 0.16, -D_, wid)
+    hx = d1 - 0.18 if door_left else d0 + 0.14
+    F.box("brass", hx, hx + 0.04, c + 0.85, c + 1.3, -D_ + 0.04, -D_ + 0.08)
+    # Fascia with the sign, between console brackets.
+    F.box(fr, a - 0.15, b + 0.15, e + 0.1, e + 0.8, 0, 0.12)
+    F.box(fr, a - 0.2, b + 0.2, e + 0.8, e + 0.88, 0, 0.18)
+    s0, s1 = (a + 0.1, b - 0.1) if sign_w is None else ((a + b - sign_w) / 2, (a + b + sign_w) / 2)
+    F.quad("sign", s0, s1, e + 0.17, e + 0.73, 0.121, uvs=[(sign, 0), (sign + 1, 0), (sign + 1, 1), (sign, 1)])
+    for u in (a - 0.32, b + 0.15):
+        F.box(fr, u, u + 0.17, e - 0.15, e + 0.88, 0, 0.2)
+
+
+def awning(F, x0, x1, top, drop=0.75, depth=1.5):
+    """A canvas awning from the wall at `top`, falling `drop` over `depth`, with a valance and iron arms."""
+    m, p = F.m, F.p
+    for out in (F.n + Z, -F.n - Z):
+        m.poly("awning", [p(x0, top, 0.05), p(x1, top, 0.05), p(x1, top - drop, depth), p(x0, top - drop, depth)], out=out)
+    for out in (F.n, -F.n):
+        m.poly("awning", [p(x0, top - drop, depth), p(x1, top - drop, depth), p(x1, top - drop - 0.28, depth), p(x0, top - drop - 0.28, depth)], out=out)
+    for u in (x0, x1):
+        pts = [p(u, top, 0.05), p(u, top - drop, depth), p(u, top - drop - 0.12, depth)]
+        m.poly("awning", pts, out=F.t)
+        m.poly("awning", pts, out=-F.t)
+    F.box("iron", x0, x1, top - drop - 0.03, top - drop + 0.02, depth - 0.04, depth + 0.01, skip=())
+    for u in (x0 + 0.05, x1 - 0.05):
+        m.strut("iron", p(u, top - 0.6, 0.0), p(u, top - drop, depth - 0.03), 0.03)
+
+
 # ---- models: pieces, bake, export -----------------------------------------------------
 
 
 class Model:
-    """A model under construction: one solid and one cut-out mesh, faces tagged by piece.
+    """A model under construction: solid, cut-out and decal meshes, faces tagged by piece.
 
     `piece(name, at)` starts a piece whose base sits at `at` (x, y, z) in the
     reference scene; geometry is drawn in reference coordinates and moved
@@ -688,11 +748,12 @@ class Model:
         self.id = id_
         self.m = Mesh(id_)
         self.cut = Mesh(f"{id_}_cut")
+        self.decal = Mesh(f"{id_}_decal")
         self.names, self.at = [], []
         self.R = random.Random(seed)
 
     def piece(self, name, at=(0, 0, 0)):
-        self.m.part = self.cut.part = len(self.names)
+        self.m.part = self.cut.part = self.decal.part = len(self.names)
         self.names.append(f"{self.id}_{name}")
         self.at.append(Vector(at))
         WID[0] = 0
@@ -703,6 +764,8 @@ class Model:
         print(self.id, "triangles", tris, "pieces", len(self.names))
         bake_ao(ob, os.path.join(out, f"{self.id}_ao.png"), bake, size, samples)
         parts = split(ob, self.names, self.at, "") + split(co, self.names, self.at, "_cut")
+        if self.decal.bm.faces:
+            parts += split(self.decal.finish(), self.names, self.at, "_decal")
         for o in bpy.data.objects:
             o.select_set(o in parts)
         bpy.ops.export_scene.gltf(filepath=os.path.join(out, f"{self.id}.glb"), export_format="GLB", use_selection=True, export_yup=True, export_texcoords=True, export_normals=True, export_materials="EXPORT")

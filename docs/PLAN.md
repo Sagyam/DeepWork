@@ -543,7 +543,7 @@ TypeScript + three.js frontend, built with bun.
     from `ui/blender/real/`) alongside the kit, with PBR library textures,
     baked AO on UV1, world-space grime and interior-mapped glass. A model
     replaces a kit style (`realDef` in `models.ts`: A1 for classic
-    apartments, C1 for classic cottages) at its own real-world size on the
+    apartments, C1 for classic cottages, S1 for classic shops) at its own real-world size on the
     lot (`fitReal`), stacked from its pieces; damage darkens it and puts its
     rooms out, damage 2 drops the roof and top storeys under wreckage.
   - `city/kit.ts` loads the kit before the scene starts (`City.create`).
@@ -696,10 +696,12 @@ their pieces (`stackReal`) with their own yards, damage and construction
 sites; a model takes over its whole kit style (A1 classic apartments, C1
 classic cottages) and the kit draws whatever is missing. The glass reflects
 a sky environment the scene redraws as the sun moves. `proto.html?model=c1`
-is now a viewer for any model through the app's code. Next: S1 main-street
-shop, then the rest of the Hamlet in `docs/models.md` ("Suggested order").
-Checked headless with the mocks (hamlet, city, session, night, damage 2);
-not yet seen in the Tauri window.
+is now a viewer for any model through the app's code. S1, the main-street
+shop, followed (2026-11-04): the shopfront and awning moved into `lib.py`
+for it, and decals (a ghost sign on its party wall) are exported after the
+AO bake. Next: C3 modern house, then the rest of the Hamlet in
+`docs/models.md` ("Suggested order"). Checked headless in the viewer and
+the hamlet mock; not yet seen in the Tauri window.
 
 Realistic city (2026-11-03): the user found the low-poly look lacking and
 asked for something closer to Cities: Skylines. A prototype building is in
@@ -867,7 +869,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block and C1 farmhouse in the app; the rest of the Hamlet next, one model per session
+      A1 brick block, C1 farmhouse and S1 main-street shop in the app; the rest of the Hamlet next, one model per session
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement

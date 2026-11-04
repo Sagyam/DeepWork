@@ -52,6 +52,8 @@ export interface RealDef {
 const A1_G = 4.5;
 const A1_FL = 3.1;
 const C1_PLATE = 6.1;
+const S1_G = 4.45;
+const S1_FL = 3.3;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -90,6 +92,25 @@ export const DEFS: Record<string, RealDef> = {
     smoke: () => new THREE.Vector3(-4.6, 9.9, 0.2),
     debris: 0xd8d2c4,
   },
+  s1: {
+    id: "s1",
+    w: 9.3,
+    d: 11,
+    front: 1.0,
+    floors: (plan) => Math.min(3, Math.max(2, plan)),
+    stack(floors, roof, r) {
+      // The shop, one or two storeys of flats, the roof; most shops have an awning.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      if (floors > 0 && r() < 0.75) out.push({ piece: "awning", y: 0 });
+      for (let f = 1; f < floors; f++) out.push({ piece: "floor", y: S1_G + (f - 1) * S1_FL });
+      if (roof) out.push({ piece: "roof", y: S1_G + (floors - 1) * S1_FL });
+      return out;
+    },
+    top: (floors) => S1_G + (floors - 1) * S1_FL,
+    height: (floors) => S1_G + (floors - 1) * S1_FL + 2.2,
+    smoke: (floors) => new THREE.Vector3(-4.1, S1_G + (floors - 1) * S1_FL + 2.9, -1.6),
+    debris: 0x8a4e3c,
+  },
 };
 
 /** Loads every model there is; missing ones are left to the kit. Never throws. */
@@ -106,7 +127,7 @@ export async function loadReal(ids = Object.keys(DEFS)): Promise<void> {
         const pieces = new Map<string, RealPart[]>();
         for (const node of gltf.scene.children) {
           node.updateMatrixWorld(true);
-          const name = node.name.replace(new RegExp(`^${id}_`), "").replace(/_cut$/, "");
+          const name = node.name.replace(new RegExp(`^${id}_`), "").replace(/_(cut|decal)$/, "");
           const parts = pieces.get(name) ?? [];
           node.traverse((o) => {
             const mesh = o as THREE.Mesh;
@@ -221,8 +242,8 @@ const SHOPS: [string, string, string, string][] = [
 
 let signCanvas: HTMLCanvasElement | null = null;
 
-/** Shop signs, two columns by four rows of 1024 x 256; a building shows one row. */
-function signs(row: number): THREE.Texture {
+/** Shop signs, two columns by four rows of 1024 x 256; a building shows one row, from column `col` on. */
+function signs(row: number, col = 0): THREE.Texture {
   if (!signCanvas) {
     const c = (signCanvas = document.createElement("canvas"));
     c.width = 2048;
@@ -249,6 +270,62 @@ function signs(row: number): THREE.Texture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
   t.repeat.set(0.5, 0.25);
+  t.offset.set(col * 0.5, row * 0.25);
+  t.anisotropy = 8;
+  return t;
+}
+
+const ADS: [string, string, string, string][] = [
+  ["#3a1f1a", "#efe4cc", "HARRISON'S FLOUR", "the best bread begins here"],
+  ["#1c2433", "#ece6d6", "STAR LAUNDRY", "collars & cuffs · shirts 10¢"],
+  ["#20261e", "#e9dfc2", "OLD MILL TOBACCO", "mild and mellow"],
+  ["#2a1d2c", "#f0e2c8", "BAKER BROS.", "furniture · stoves · carpets"],
+];
+
+let ghostCanvas: HTMLCanvasElement | null = null;
+
+/** Faded advertisements painted on party walls, four rows of 1024 x 320; a wall shows one. */
+function ghosts(row: number): THREE.Texture {
+  if (!ghostCanvas) {
+    const c = (ghostCanvas = document.createElement("canvas"));
+    c.width = 1024;
+    c.height = 1280;
+    const g = c.getContext("2d")!;
+    ADS.forEach(([bg, fg, text, sub], i) => {
+      const y = i * 320;
+      g.globalAlpha = 0.7;
+      g.fillStyle = bg;
+      g.fillRect(16, y + 16, 992, 288);
+      g.globalAlpha = 0.85;
+      g.strokeStyle = fg;
+      g.lineWidth = 8;
+      g.strokeRect(34, y + 34, 956, 252);
+      g.fillStyle = fg;
+      g.textAlign = "center";
+      g.font = "800 112px Impact, 'Arial Black', sans-serif";
+      g.fillText(text, 512, y + 170, 900);
+      g.font = "italic 600 52px Georgia, serif";
+      g.fillText(sub, 512, y + 248, 860);
+    });
+    // Weathered away: flakes and streaks where the paint has gone.
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = "destination-out";
+    let seed = 7;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 9000; i++) {
+      g.globalAlpha = 0.3 + rand() * 0.7;
+      g.fillRect(rand() * 1024, rand() * 1280, 2 + rand() * 9, 2 + rand() * 6);
+    }
+    for (let i = 0; i < 140; i++) {
+      g.globalAlpha = 0.15 + rand() * 0.3;
+      g.fillRect(rand() * 1024, rand() * 1280, 3 + rand() * 10, 40 + rand() * 200);
+    }
+    g.globalCompositeOperation = "source-over";
+  }
+  const t = new THREE.CanvasTexture(ghostCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.25);
   t.offset.set(0, row * 0.25);
   t.anisotropy = 8;
   return t;
@@ -261,7 +338,7 @@ export interface Paint {
   /** Shopfronts, doors and shutters. */
   accent: number;
   roof: number;
-  /** Which row of shop signs. */
+  /** Which shop signs: 0-7, the row and (for one-shop models) the column. */
   signs: number;
 }
 
@@ -270,6 +347,8 @@ const SHOPFRONTS = [0x1f3a2e, 0x4a1c1c, 0x1c2a44, 0x222222, 0x3a2a4a, 0x2e4a52];
 const SIDING = [0xf2efe6, 0xf0e2b8, 0xc9d3bf, 0xb8c6cf, 0xe8ddd0, 0x9a3c30, 0xd9cdb4, 0xf4f1ea];
 const SHUTTERS = [0x1d2a22, 0x1f2d44, 0x222222, 0x6a2a24, 0x3e5a48, 0x4a5a6a];
 const SHINGLES = [0x5a5a5c, 0x6e5a48, 0x4e5660, 0x5c6252, 0x7a6e64, 0x3e3e40];
+/** Pressed-metal cornices: cream, stone, bottle green, oxblood, slate. */
+const CORNICES = [0xe6dcc4, 0xc8beac, 0x2e4434, 0x5a2420, 0x4a5058];
 
 const cache = new Map<string, THREE.Material>();
 /** Glass and lamps, which follow the time of day (see City.light). */
@@ -291,7 +370,7 @@ export function setRealEnv(env: THREE.Texture) {
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign"].includes(role);
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost"].includes(role);
   const key = `${id}:${role}:${damage}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -306,7 +385,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
   };
   const accent = id === "c1" ? pick(SHUTTERS, paint.accent) : pick(SHOPFRONTS, paint.accent);
   switch (role) {
-    case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "a1" ? pick(BRICK_TINTS, paint.wall) : 0xffffff }), 1.6); break;
+    case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
     case "ashlar": m = w(pbr("ashlar", [2.4, 1.8], { roughness: 0.85 }), 1.4); break;
     case "granite": m = w(new THREE.MeshStandardMaterial({ map: tex("granite_col"), roughness: 0.5 }), 0.5); break;
@@ -318,6 +397,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
     case "shingle": m = w(pbr("shingle", [2, 1.12], { roughness: 0.95, color: pick(SHINGLES, paint.roof) }), 0.8); break;
     case "shutter": m = w(pbr("louvre", [1, 1], { roughness: 0.55, color: accent })); break;
     case "trim": m = w(plain(0xeeebe2, 0.55), 0.5); break;
+    case "cornice": m = w(plain(pick(CORNICES, paint.roof), 0.5, 0.2), 1.2); break;
     case "paint": m = w(plain(0xf0ede4, 0.6), 0.6); break;
     case "ceiling": m = w(plain(0xb4d4d2, 0.6)); break;
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
@@ -336,11 +416,14 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
       if (damage < 2) m.userData.night = 6;
       break;
     case "sign": {
-      const t = signs(paint.signs % 4);
+      const t = signs(paint.signs % 4, id === "s1" ? Math.floor(paint.signs / 4) % 2 : 0);
       m = w(plain(0xffffff, 0.35, 0, { map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0 }));
       if (damage < 2) m.userData.night = 0.35;
       break;
     }
+    case "ghost":
+      m = new THREE.MeshStandardMaterial({ map: ghosts(paint.wall % 4), transparent: true, opacity: 0.6, roughness: 0.95, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      break;
     case "awning": m = w(new THREE.MeshStandardMaterial({ map: tex("awning_col"), roughness: 0.92 })); break;
     case "bars": m = new THREE.MeshStandardMaterial({ map: tex("bars", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.35 }); break;
     case "grate": m = new THREE.MeshStandardMaterial({ map: tex("grate", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.35 }); break;

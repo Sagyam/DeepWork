@@ -1,7 +1,7 @@
 // Viewer for the realistic models (blender/real, `bun run models`): one
 // building on its lot, built by the app's own code (models.ts), on a street
 // corner. Open /proto.html in the dev server with
-//   ?model=a1|c1 &floors=7 &seed=3 &damage=0|1|2
+//   ?model=a1|c1|s1 &floors=7 &seed=3 &damage=0|1|2
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
@@ -38,7 +38,7 @@ el.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.5, 4000);
-const H = id === "a1" ? 27 : 9; // roughly the model's height, to frame the views
+const H = DEFS[id] ? DEFS[id].height(DEFS[id].floors(Number(q.get("floors") ?? 7))) : 27; // to frame the views
 const k = H / 27;
 const VIEWS: Record<string, [number[], number[], number?]> = {
   hero: [[25 * Math.max(k, 0.55), 4 * k + 1.2, 30 * Math.max(k, 0.55)], [0, H / 2, 0], 50],
@@ -195,10 +195,10 @@ function grid(model: THREE.Object3D) {
 }
 
 Promise.all([loadKit(), loadReal([id])]).then(() => {
-  const kind = id.startsWith("a") ? "apartment" : "cottage";
+  const kind = ({ a: "apartment", c: "cottage", s: "shop" } as const)[id[0] as "a" | "c" | "s"] ?? "apartment";
   const floors = Number(q.get("floors") ?? 7);
   const seed = Number(q.get("seed") ?? 3);
-  const raw: Spec = { index: 0, kind, style: "classic", grade: kind === "apartment" ? 2 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false };
+  const raw: Spec = { index: 0, kind, style: "classic", grade: kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false };
   if (!DEFS[id]) throw new Error(`no model ${id}`);
   const s = { ...fitReal(raw), x: 0, z: 0, rot: 0 };
   const { group, info } = building(s);

@@ -15,7 +15,7 @@ import random
 
 from mathutils import Vector
 
-from lib import Model, Side, Z, ac_unit, balcony, french, grille, hood, lintel, new_id, pane, railing, sash, sides, sill
+from lib import Model, Side, Z, ac_unit, awning, balcony, french, grille, hood, lintel, new_id, pane, railing, sash, shopfront, sides, sill
 
 ID = "a1"
 W, D = 14.0, 12.0
@@ -53,7 +53,8 @@ def ground(M):
             holes = [(a, b, PLINTH, 3.45) for a, b in shops] + [(entry[0], entry[1], PLINTH, 3.3, 1.0)]
             F.wall("ashlar", -h, h, PLINTH, G, holes, depth=0.3, reveal="stone")
             for i, (a, b) in enumerate(shops):
-                shopfront(F, cut, a, b, sign=i, awning=i == 0)
+                shopfront(F, a, b, PLINTH, 3.45, sign=i, door_left=i == 1)
+            awning(F, shops[0][0] - 0.1, shops[0][1] + 0.1, 3.5)
             entrance(F, *entry)
         else:
             holes = [(u - 0.6, u + 0.6, 1.4, 3.3) for u in BAYS[name]]
@@ -100,61 +101,6 @@ def storey(M, kind, z, f):
             F.box("stone", -h, -h + L, z0 + 0.012, z0 + q - 0.012, 0, 0.025, skip=("back", "left"))
             F.box("stone", h - L, h, z0 + 0.012, z0 + q - 0.012, 0, 0.025, skip=("back", "right"))
     fire_escape(sides(m, W, D)["right"], cut, z, f, stairs=kind != "last", ladder=kind == "first")
-
-
-def shopfront(F, cut, a, b, sign, awning):
-    D_ = 0.3
-    fr = "shopframe"
-    c, e = PLINTH, 3.45
-    t = 2.85  # transom bar
-    door_left = sign == 1
-    # Stallriser, posts, transom bar, head.
-    F.box(fr, a, b, c, c + 0.4, -D_, -D_ + 0.14)
-    F.box(fr, a, a + 0.1, c, e, -D_, -D_ + 0.16)
-    F.box(fr, b - 0.1, b, c, e, -D_, -D_ + 0.16)
-    F.box(fr, a + 0.1, b - 0.1, t - 0.08, t, -D_, -D_ + 0.16)
-    F.box(fr, a + 0.1, b - 0.1, e - 0.08, e, -D_, -D_ + 0.16)
-    wid = new_id()
-    dw = 1.1
-    d0, d1 = (a + 0.1, a + 0.1 + dw) if door_left else (b - 0.1 - dw, b - 0.1)
-    g0, g1 = (d1 + 0.06, b - 0.1) if door_left else (a + 0.1, d0 - 0.06)
-    F.box(fr, d0 - 0.06 if not door_left else d1, d0 if not door_left else d1 + 0.06, c, t, -D_, -D_ + 0.16)
-    # Display window in two lights, and the door.
-    mid = (g0 + g1) / 2
-    F.box(fr, mid - 0.03, mid + 0.03, c + 0.4, t - 0.08, -D_ + 0.02, -D_ + 0.12)
-    pane(F, "shopglass", a, b, c, e, g0, g1, c + 0.4, t - 0.08, -D_ + 0.06, wid)
-    pane(F, "shopglass", a, b, c, e, a + 0.1, b - 0.1, t, e - 0.08, -D_ + 0.06, wid)
-    for u in [a + 0.1 + i * (b - a - 0.2) / 4 for i in range(1, 4)]:
-        F.box(fr, u - 0.025, u + 0.025, t, e - 0.08, -D_ + 0.02, -D_ + 0.12)
-    F.box(fr, d0, d1, c, c + 0.1, -D_ - 0.05, -D_ + 0.04)
-    F.box(fr, d0, d0 + 0.09, c, t - 0.08, -D_ - 0.05, -D_ + 0.04)
-    F.box(fr, d1 - 0.09, d1, c, t - 0.08, -D_ - 0.05, -D_ + 0.04)
-    F.box(fr, d0 + 0.09, d1 - 0.09, c + 0.1, c + 0.35, -D_ - 0.05, -D_ + 0.04)
-    F.box(fr, d0 + 0.09, d1 - 0.09, t - 0.16, t - 0.08, -D_ - 0.05, -D_ + 0.04)
-    pane(F, "shopglass", a, b, c, e, d0 + 0.09, d1 - 0.09, c + 0.35, t - 0.16, -D_, wid)
-    hx = d1 - 0.18 if door_left else d0 + 0.14
-    F.box("brass", hx, hx + 0.04, 1.3, 1.75, -D_ + 0.04, -D_ + 0.08)
-    # Fascia with the shop's sign (u = sign number + 0..1; the app picks the names), between console brackets.
-    F.box("shopframe", a - 0.15, b + 0.15, 3.55, 4.25, 0, 0.12)
-    F.box("shopframe", a - 0.2, b + 0.2, 4.25, 4.33, 0, 0.18)
-    F.quad("sign", a + 0.1, b - 0.1, 3.62, 4.18, 0.121, uvs=[(sign, 0), (sign + 1, 0), (sign + 1, 1), (sign, 1)])
-    for u in (a - 0.32, b + 0.15):
-        F.box("shopframe", u, u + 0.17, 3.3, 4.33, 0, 0.2)
-    if awning:
-        x0, x1 = a - 0.1, b + 0.1
-        top, drop, depth = 3.5, 0.75, 1.5
-        m, p = F.m, F.p
-        for out in (F.n + Z, -F.n - Z):
-            m.poly("awning", [p(x0, top, 0.05), p(x1, top, 0.05), p(x1, top - drop, depth), p(x0, top - drop, depth)], out=out)
-        for out in (F.n, -F.n):
-            m.poly("awning", [p(x0, top - drop, depth), p(x1, top - drop, depth), p(x1, top - drop - 0.28, depth), p(x0, top - drop - 0.28, depth)], out=out)
-        for u in (x0, x1):
-            pts = [p(u, top, 0.05), p(u, top - drop, depth), p(u, top - drop - 0.12, depth)]
-            m.poly("awning", pts, out=F.t)
-            m.poly("awning", pts, out=-F.t)
-        F.box("iron", x0, x1, top - drop - 0.03, top - drop + 0.02, depth - 0.04, depth + 0.01, skip=())
-        for u in (x0 + 0.05, x1 - 0.05):
-            m.strut("iron", p(u, top - 0.6, 0.0), p(u, top - drop, depth - 0.03), 0.03)
 
 
 def entrance(F, a, b):

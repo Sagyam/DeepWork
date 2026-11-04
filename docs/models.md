@@ -7,7 +7,7 @@ git-ignored `ui/public/models/`), load in the app through
 `ui/src/city/real.ts`, and replace the kit style they stand for; any model
 that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
-brick block, and C1, the clapboard farmhouse. This file lists every model
+brick block, C1, the clapboard farmhouse, and S1, the main-street shop. This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
 through it section by section; tick or strike as decisions land.
 
@@ -127,6 +127,8 @@ every model after this one:
   grating, awning canvas, paving, asphalt, grime; with C1, painted
   clapboard, three-tab asphalt shingles and louvred shutters (near-white or
   grey, tinted per building in the app).
+- Canvas textures drawn in the app: shop signs (eight names, a column and a
+  row each) and, with S1, faded ghost-sign advertisements for party walls.
 - The piece pipeline: a model is drawn as a reference stack (ground storey,
   storeys, roof, extras such as a fence panel) so the AO bake sees each
   piece's neighbours, then split into one glTF node per piece with its base
@@ -137,15 +139,20 @@ every model after this one:
   French windows, sills, lintels with keystones, pediment hoods, sweeps for
   cornices, string courses and copings, dentils and modillions, quoins,
   railings with alpha-tested bars, balconies on corbels, fire escapes,
-  shopfronts with stallriser, transom and sign fascia, awnings, recessed
+  shopfronts with stallriser, transom and sign fascia (`lib.shopfront`, any
+  height and width, sign panel optional), awnings (`lib.awning`), recessed
   entrances with canopy, water tank, condensers, chimneys.
+- Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
+  the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
 - App materials (`real.ts`): PBR with weathering (rain streaks, splash,
   corner dirt), window glass that reflects the sky and shows a room behind
   it (walls, floor, furniture, curtains or blinds; lit at night; darkened and
   put out by damage), shop interiors, shop signs from an atlas of eight.
 - Per-building variation by parameters: brick tint, shopfront colour and
-  sign pair (A1); siding, shutter and door, and roof colours (C1).
+  sign pair (A1); siding, shutter and door, and roof colours (C1); brick
+  tint, shopfront and cornice colours, sign, ghost sign, an awning or none,
+  two or three storeys (S1).
 
 ## Decisions (2026-11-03)
 
@@ -182,7 +189,8 @@ every model after this one:
   footprint and stand-back from the street (`DEFS` in `real.ts`); the
   plan's sizes still pick the floor count. A1 is 14 x 12 m and stands 1 m
   back on a paved lot; C1 is 10 x 11.8 m with its porch, 2 m back, behind a
-  picket fence, with a drive. Lots get resized with the master plan.
+  picket fence, with a drive; S1 is 9 x 11 m, 1 m back (its awning reaches
+  over the pavement), with a walled service yard behind. Lots get resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -248,7 +256,7 @@ P2 is variety, so one kind can fill a city.
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
-| S1 | Main-street shop | Two-storey brick, shop under flats, cornice, awning (a smaller sibling of the prototype) | shop classic | brick, stone | 8% | P1 |
+| S1 | Main-street shop | Two-storey brick, shop under flats, cornice, awning (a smaller sibling of the prototype) | shop classic | **done** (2026-11-04): 9 x 11 m, 1 m back; pieces ground / floor / awning / roof for 2-3 storeys; pressed-metal cornice, raised name panel, party wall with a ghost sign; 5.3 k triangles | 8% | P1 |
 | S2 | Corner café | European: painted render, arched windows, oriel, umbrella tables | shop classic (café) | render | 12% | P1 |
 | S3 | Diner | Stainless-steel railcar body, neon sign, booths in the windows | shop diner | new: brushed metal, neon | 18% | P1 |
 | S4 | Brick factory | Sawtooth roof, tall smokestack, loading doors, steel windows | shop factory | brick, new: steel sash, corrugated sheet | 18% | P1 |
@@ -382,7 +390,7 @@ above; none of it changes how models look.
 | Download on first run (pack, manifest, fallback) | ~0.5 |
 | Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
-| P1 buildings (20 left, incl. 3 civic) | ~3 |
+| P1 buildings (19 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
@@ -396,8 +404,7 @@ above; none of it changes how models look.
    variation, and load it in the real app next to the low-poly kit (drawn
    the simple way for now).~~ Done 2026-11-04, with C1.
 2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
-   farmhouse~~, then S1 main-street shop (takes over shop classic; reuses
-   A1's shopfronts), C3 modern house, C4 A-frame cabin, S3 diner, S4 brick
+   farmhouse~~, ~~S1 main-street shop~~ (done 2026-11-04), then C3 modern house, C4 A-frame cabin, S3 diner, S4 brick
    factory, then C2 brick cottage and S2 corner café for variety. After
    that the hamlet has no low-poly buildings left.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and

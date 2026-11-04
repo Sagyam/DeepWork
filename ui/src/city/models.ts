@@ -406,7 +406,7 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
  * exist to take their own variants of it.
  */
 export function realDef(s: Spec): RealDef | null {
-  const id = s.style !== "classic" ? null : s.kind === "apartment" ? "a1" : s.kind === "cottage" ? "c1" : null;
+  const id = s.style !== "classic" ? null : ({ apartment: "a1", cottage: "c1", shop: "s1" } as Record<string, string>)[s.kind];
   return id && hasReal(id) ? DEFS[id] : null;
 }
 
@@ -420,7 +420,7 @@ export function fitReal<T extends Spec>(s: T): T {
   return { ...s, w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), yard, x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard };
 }
 
-const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 4 });
+const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 8 });
 
 /** Adds a piece of a realistic model; glass gets window ids of its own from `shift`. */
 function putReal(p: Parts, def: RealDef, piece: string, paint: Paint, damage: number, info: ModelInfo | null, x: number, y: number, z: number, ry = 0, scale?: THREE.Vector3, shift = 0) {
@@ -484,6 +484,23 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       tree(p, -half + 1.6, back + 1.6, 0.85, s.seed + 2, KERB);
       if (r() < 0.6) tree(p, (r() - 0.5) * 3, back + 1.2, 0.6, s.seed + 4, KERB);
       p.box(mat(0x3f6a34, { flatShading: true }), LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55);
+      break;
+    }
+    case "s1": {
+      // Paved to the pavement, a sandwich board by the door; behind, a
+      // concrete service yard with the bins and the delivery van, walled.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const yardZ = -s.d / 2;
+      p.box(mat(0xa29e96, { roughness: 0.95 }), LOT - 0.4, KERB + 0.02, yardZ - back, 0, 0, (yardZ + back) / 2);
+      const board = mat(0x2a2a2a, { roughness: 0.7 });
+      for (const k of [-1, 1]) p.box(board, 0.6, 0.95, 0.05, 1.6, KERB, front - 0.4 + k * 0.08, 0, -k * 0.17);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, -half + 0.6 + i * 0.85, KERB, yardZ - 0.6);
+      p.box(mat(0x3a4048, { roughness: 0.6, metalness: 0.3 }), 1.6, 1.3, 1.1, -half + 3.0, KERB, yardZ - 0.75);
+      parked(p, 2.2 + r() * 1.5, (yardZ + back) / 2 + 0.2, Math.PI / 2, s.seed + 3);
+      const wall = mat(0x7a4636, { roughness: 0.95 });
+      p.box(wall, LOT - 0.4, 1.5, 0.25, 0, KERB, back + 0.12);
+      for (const sx of [-1, 1]) p.box(wall, 0.25, 1.5, yardZ - back, sx * (half - 0.12), KERB, (yardZ + back) / 2);
       break;
     }
   }

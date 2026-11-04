@@ -54,7 +54,7 @@ bun run models               # every model, ~20 s; or: bun run models -- public/
 # then http://localhost:5173/proto.html?model=c1&view=hero&hour=15
 ```
 
-The viewer shows one model on its lot with the app's own code: `model=a1|c1`,
+The viewer shows one model on its lot with the app's own code: `model=a1|c1|s1`,
 `floors`, `seed` (paint), `damage=0|1|2`, `view=hero|city|detail|roof|back|street`,
 `hour`; `&count=N` is the instanced stress test. Until models are downloaded on
 first run, a local `tauri build` embeds whatever `bun run models` produced and
