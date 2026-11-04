@@ -14,7 +14,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
-import { hasReal, interiorUniforms, loadReal, setRealEnv, setSignals } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, setRealEnv, setSignals } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
@@ -414,8 +414,13 @@ export class City {
     this.base = new THREE.Group();
     this.lampMats = [];
     const parts = new Parts();
-    const asphalt = mat(0x3a3c40, { roughness: 0.95 });
-    const walk = mat(0xa8a49c, { roughness: 0.9 });
+    // With the realistic street furniture come textured streets: asphalt,
+    // paving slabs, granite kerbs, drains and manhole covers.
+    const real = hasReal("street");
+    const asphalt = real ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+    const walk = real ? groundMat("pave", 3.6, { roughness: 0.88 }) : mat(0xa8a49c, { roughness: 0.9 });
+    const kerbStone = mat(0xb6b2aa, { roughness: 0.8 });
+    const iron = mat(0x2a2b2d, { roughness: 0.55, metalness: 0.5 });
     const line = mat(0xe8e0c0, { roughness: 0.6 });
     const pole = mat(0x3c4046, { metalness: 0.6, roughness: 0.4 });
     const bulb = mat(0xfff0d0, { emissive: 0xffd9a0, emissiveIntensity: 0, night: 2.2 });
@@ -426,6 +431,17 @@ export class City {
       // Pavement: a raised ring round the block, kerb on the road side.
       for (const sz of [-1, 1]) parts.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
       for (const sx of [-1, 1]) parts.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
+      if (real) {
+        // Granite kerbs on the road side, a drain grate by each kerb, and
+        // manhole covers in the carriageway.
+        const kx = BLOCK_X / 2 + pw - 0.09;
+        const kz = BLOCK_Z / 2 + pw - 0.09;
+        for (const sz of [-1, 1]) parts.box(kerbStone, BLOCK_X + 2 * pw, KERB + 0.004, 0.18, b.x, 0, b.z + sz * kz);
+        for (const sx of [-1, 1]) parts.box(kerbStone, 0.18, KERB + 0.004, BLOCK_Z + 2 * pw - 0.36, b.x + sx * kx, 0, b.z);
+        for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) parts.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
+        for (const sx of [-1, 1]) parts.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
+        for (const t of [-0.35, 0.35]) parts.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
+      }
       // Dashed centre lines on the roads around the block.
       for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) {
         parts.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
@@ -444,7 +460,6 @@ export class City {
       // Street lamps along the kerb, and trees between them.
       const ex = BLOCK_X / 2 + pw - 0.45;
       const ez = BLOCK_Z / 2 + pw - 0.45;
-      const real = hasReal("street");
       for (const lz of [-1, 1]) {
         for (const t of [-1, -1 / 3, 1 / 3, 1]) {
           const x = b.x + t * (BLOCK_X / 2 - 1);
@@ -471,7 +486,7 @@ export class City {
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
     const e = LOT / 2 - 1.4;
     for (const l of p.emptyLots) {
-      parts.box(mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
+      parts.box(real && hasReal("trees") ? groundMat("grass", 2.2, { roughness: 1, color: 0xd8d0a8 }) : mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
       for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
       for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
       for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
@@ -509,6 +524,27 @@ export class City {
       const mesh = new THREE.Mesh(g, asphalt);
       mesh.receiveShadow = true;
       this.base.add(mesh);
+      if (real) {
+        // Lane markings over the hills: a dashed centre line, solid edge lines.
+        const mp: number[] = [];
+        const quad = (xa: number, xb: number, z0: number, z1: number) => {
+          const ya = ground.height(xa, ROAD_Z) + 0.07;
+          const yb = ground.height(xb, ROAD_Z) + 0.07;
+          mp.push(xa, ya, z0, xb, yb, z0, xb, yb, z1, xa, ya, z0, xb, yb, z1, xa, ya, z1);
+        };
+        for (let x = x0; x + 3 < x1; x += 9) quad(x, x + 3, ROAD_Z - 0.07, ROAD_Z + 0.07);
+        for (let x = x0; x < x1; x += 4) {
+          const xb = Math.min(x1, x + 4);
+          for (const e of [-1, 1]) quad(x, xb, ROAD_Z + e * 4.05 - 0.07, ROAD_Z + e * 4.05 + 0.07);
+        }
+        const lg = new THREE.BufferGeometry();
+        lg.setAttribute("position", new THREE.Float32BufferAttribute(mp, 3));
+        // Wound to face up whatever the order above: draw both sides.
+        const marks = new THREE.Mesh(lg, mat(0xe8e4d8, { roughness: 0.7, side: THREE.DoubleSide }));
+        lg.computeVertexNormals();
+        marks.receiveShadow = true;
+        this.base.add(marks);
+      }
     };
     ribbon(bx + 15, RADIUS - 1);
     ribbon(-RADIUS + 1, bx - 15);

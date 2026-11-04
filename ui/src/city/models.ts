@@ -988,8 +988,8 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
   const { x: X, z: Z } = k;
   const W = BLOCK_X;
   const D = BLOCK_Z;
-  const lawn = mat(0x6a9a48, { roughness: 1 });
-  const paving = mat(0xc4bcae, { roughness: 0.9 });
+  const lawn_ = hasReal("trees") ? lawn() : mat(0x6a9a48, { roughness: 1 });
+  const paving = hasReal("street") ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 }) : mat(0xc4bcae, { roughness: 0.9 });
   const flat = (m: THREE.Material, g: THREE.BufferGeometry, x: number, z: number, y = KERB + 0.02) => p.add(m, g, X + x, y, Z + z, -Math.PI / 2);
   const bench = (x: number, z: number, ry: number) => prop(p, "bench", X + x, Z + z, ry);
   switch (k.kind) {
@@ -1005,14 +1005,14 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       }
       for (const z of [-11.5, 11.5]) for (let x = -27; x <= 27; x += 9) planter(p, X + x, Z + z, k.seed + x * 3 + z, 0.75);
       for (const [x, z] of [[-24, 0], [24, 0]]) {
-        p.box(lawn, 12, KERB + 0.12, 9, X + x, 0, Z + z);
+        p.box(lawn_, 12, KERB + 0.12, 9, X + x, 0, Z + z);
         for (let i = 0; i < 5; i++) tree(p, X + x + (r() - 0.5) * 9, Z + z + (r() - 0.5) * 6, 0.35 + r() * 0.2, k.seed + 40 + i + x, KERB + 0.1);
       }
       for (const [x, z] of [[-14, -6], [14, -6], [-14, 6], [14, 6]]) lampPost(p, pole, bulb, X + x, Z + z);
       break;
     }
     case "park": {
-      p.box(lawn, W, KERB, D, X, 0, Z);
+      p.box(lawn_, W, KERB, D, X, 0, Z);
       // A loop path round the lawn, with a cut through the middle.
       const path = mat(0xc9b896, { roughness: 1 });
       const ax = W / 2 - 6;
@@ -1046,7 +1046,7 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       break;
     }
     case "sports": {
-      p.box(lawn, W, KERB, D, X, 0, Z);
+      p.box(lawn_, W, KERB, D, X, 0, Z);
       const pz = -3;
       const [pw, pd] = [46, 22];
       p.box(mat(0xa85a40, { roughness: 1 }), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
