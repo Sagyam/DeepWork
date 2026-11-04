@@ -8,7 +8,8 @@ git-ignored `ui/public/models/`), load in the app through
 that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, and C3,
-the modern house. This file lists every model
+the modern house; and the props round them (vehicles, trees, street
+furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
 through it section by section; tick or strike as decisions land.
 
@@ -358,13 +359,59 @@ Low-poly next to realistic buildings looks broken, so these follow in turn:
 | Model | Today | Realistic version | Effort |
 |---|---|---|---|
 | Terrain | Faceted, flat-shaded hills, river, lake | Smooth terrain, grass / rock / soil textures, real water | 40% |
-| Trees | Six low-poly species | 4-5 species with leaf cards, billboards far away | 30% |
-| Streets | Flat roads, zebras, lamps | Asphalt, kerbs, paving, lane marks, drains, lamps, hydrants, bins, benches, bus stops, traffic lights | 25% |
-| Automatic parks | Plaza / pond / football ground | Same three with paving, planting, a fountain, a bandstand, stands and floodlights | 30% |
-| Vehicles | Four cars, a bus | Hatchback, saloon, van, taxi, bus, delivery truck | 25% |
+| Trees | ~~Six low-poly species~~ | **done** (2026-11-04): nine species, four shrubs, a hedge, light trees for the woods, lawns (see "Props") | 30% |
+| Streets | ~~Flat roads, zebras, lamps~~ | **done** (2026-11-04): asphalt, kerbs, paving, lane marks, drains, manholes, LED street lights, hydrants, bins, benches, bus stops, traffic signals on a cycle | 25% |
+| Automatic parks | Plaza / pond / football ground | Partly (2026-11-04): paving, lawns, lanterns, benches and trees are realistic; the fountain, bandstand, goals and stands are still the kit's | 30% |
+| Vehicles | ~~Four cars, a bus~~ | **done** (2026-11-04): hatchback, saloon, estate, SUV, coupé, taxi, pickup, van, bus, box truck | 25% |
 | People | One pedestrian | A few figures in varied clothes (small on screen, low detail) | 15% |
 | Tower crane | Lattice crane | More detailed lattice (reuses the fire-escape strut code) | 10% |
-| Bridge | Truss bridge | Steel truss with deck and railings | 10% |
+| Bridge | ~~Truss bridge~~ | **done** (2026-11-04): riveted steel Pratt through truss | 10% |
+
+### Props (2026-11-04)
+
+The user found the realistic houses looked wrong next to the kit's cars,
+trees, bushes, pavements and roads, so the reusable assets went realistic
+in one session, with variations. Each is a props model (`PROPS` in
+`real.ts`): one glb of named pieces at the origin, one AO atlas, loaded
+with the buildings and replaced by the kit where missing. The viewer
+lays any of them out: `/proto.html?props=cars` (see `docs/DEVELOPMENT.md`).
+
+| Model | Module | Pieces | Triangles | How the app varies them |
+|---|---|---|---|---|
+| `cars` | `vehicles.py` | hatch, sedan, estate, suv, coupe, taxi, pickup, van, bus, truck | 3.1-3.5 k each | clear-coat paint from `CAR_PAINTS` per car (instance colours in traffic); parked cars pick a body by how common it is |
+| `trees` | `trees.py` | oak, maple, linden, birch, cherry, spruce, pine, poplar, young; bush, bush_wide, shrub, flowers, hedge; forest_a-e | 0.5-2 k a tree, ~170 a shrub, ~120 a wood tree | species by frequency, foliage tint (`FOLIAGE`), size from the kit's scale, turn; hedges stretched to length |
+| `street` | `street.py` | lamp_led, lamp_heritage, lamp_park, signal_mast, signal_post, fence_panel, fence_rail, fence_iron, wall_brick, hydrant, bin, bench, bollard, busstop | 30-310 each | fence and wall runs stretched to fit (`fenceRun`); signals on two phases |
+| `bridge` | `bridge.py` | bridge | 5.6 k | |
+
+- **Vehicles** are lofted: a cross-section (rocker, door, shoulder, glass,
+  roof) interpolated between keyframes along the car, from a few design
+  lines per car (`keys()`: windscreen, roof and back-glass positions,
+  heights of the nose, hood, belt, roof and deck). Wheel arches are cut by
+  raising the section's floor over the wheels, with dark liners behind;
+  lamps are bands of the skin at the nose and tail; the nose is the grille.
+  Traffic (`traffic.ts`) draws them instanced, lamps lit at night; parked
+  cars share their materials but stay dark.
+- **Trees** grow branch tubes recursively from a seed and cluster leaf
+  cards (alpha-tested, two-sided) round the twigs and along the outer
+  branches, inside the crown's envelope. Leaf, needle, blossom and bloom
+  cards are drawn procedurally (`leaf_textures`); the app bends the cards'
+  normals out from each crown (`bendLeaves`) so it shades as one mass. The
+  woods (`land.ts`) instance five light trees at the kit forest's sizes,
+  on canopy textures whose gaps are filled with shade so mipmaps do not
+  thin a far wood away. Lawns are a mown-grass texture mapped by world
+  position (`groundMat`), as are the streets' asphalt and paving.
+- **Street furniture**: kerb lamps reach over the road; from a town on,
+  each block corner has a mast-arm or post signal on opposite phases of a
+  30 s cycle (`setSignals`, with walk signals); every block gets a hydrant,
+  bins and a bench, and from a city a bus stop. Yards use the fences and
+  walls (back gardens close-board or post-and-rail, A1 and S1 brick walls,
+  townhouse railings); parks the lanterns and benches.
+- **Library additions**: `lib.blur` and `Model.export(..., smooth=)` blur
+  the AO bake, whose sampling noise shows on glossy props lit mostly by the
+  sky; a model module may carry its own `TEXTURES`, made with it.
+
+Not done: the kit's people, crane and park pieces (fountain, bandstand,
+goals, bleachers), and the terrain.
 
 ## Last: performance
 
@@ -429,7 +476,8 @@ above; none of it changes how models look.
 6. The first civic landmarks (L5-L7) on their reserved ground.
 7. The rest of P1, then building states.
 8. Surroundings: streets, trees and terrain first, as they fill the most
-   screen.
+   screen. Streets, trees, vehicles and the bridge done 2026-11-04 (see
+   "Props"); terrain, people, the crane and the parks' pieces left.
 9. P2 variety.
 10. Last: performance.
 

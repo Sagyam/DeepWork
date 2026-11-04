@@ -45,18 +45,26 @@ Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
 `city.demo("collapse" | "build" | "damage")` plays one transition.
 
 The realistic models (`docs/models.md`) are built with Blender into the
-git-ignored `ui/public/models/` (~25 MB); without them the app draws the
+git-ignored `ui/public/models/` (~60 MB); without them the app draws the
 low-poly kit instead:
 
 ```sh
 cd ui
-bun run models               # every model, ~20 s; or: bun run models c1 --no-tex
+bun run models               # every model, a few minutes; or: bun run models c1 --no-tex
 # then http://localhost:5173/proto.html?model=c1&view=hero&hour=15
 ```
 
+Models: the buildings `a1 c1 c3 s1` and the props `cars trees street bridge`
+(`--no-tex` skips the shared texture library; a model's own textures, such
+as the leaves, are always made with it).
+
 The viewer shows one model on its lot with the app's own code: `model=a1|c1|c3|s1`,
 `floors`, `seed` (paint), `damage=0|1|2`, `view=hero|city|detail|roof|back|street`,
-`hour`; `&count=N` is the instanced stress test. Until models are downloaded on
+`hour`; `&count=N` is the instanced stress test. `?props=cars|trees|street|bridge`
+lays out a props model's pieces instead (`&only=suv,hatch` picks and orders
+them, `&gap=` spaces them, `&ry=` turns them, `view=hero|close|low|far`);
+`&cam=x,y,z&at=x,y,z&fov=` places the camera anywhere and `&signal=s` fixes
+the traffic signals' cycle. Until models are downloaded on
 first run, a local `tauri build` embeds whatever `bun run models` produced and
 CI builds ship without them.
 

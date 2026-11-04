@@ -687,6 +687,19 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Realistic props (2026-11-04): the user did not like the new buildings in
+front of the kit's cars, trees, bushes, pavements and roads, so those went
+realistic, with variations: props models `cars` (ten lofted vehicles,
+parked and in traffic), `trees` (nine species, shrubs, a hedge, light
+trees for the woods, a lawn texture), `street` (three street lights, mast
+and post traffic signals on a cycle, four fences and walls, hydrant, bin,
+bench, bollard, bus stop) and `bridge` (steel Pratt truss), each a module
+in `ui/blender/real/` listed in `PROPS` (`city/real.ts`) with the kit as
+fallback; streets and lawns take library textures mapped by world position.
+Details in `docs/models.md` ("Props"). Left in the kit: people, the crane,
+the parks' fountain, bandstand and stands, and the terrain. Checked
+headless in the viewer and the hamlet and city mocks.
+
 Realistic models in the app (2026-11-04): the user asked for the models
 plan, Hamlet first, one model per session. The prototype became the model
 pipeline: `ui/blender/real/` (`lib.py` shared textures, helpers, piece
@@ -872,7 +885,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block, C1 farmhouse, S1 main-street shop and C3 modern house in the app; the rest of the Hamlet next, one model per session
+      A1 brick block, C1 farmhouse, S1 main-street shop and C3 modern house in the app; the rest of the Hamlet next, one model per session;
+      props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement
