@@ -544,7 +544,7 @@ TypeScript + three.js frontend, built with bun.
     baked AO on UV1, world-space grime and interior-mapped glass. A model
     replaces a kit style (`realDef` in `models.ts`: A1 for classic
     apartments, C1 for classic cottages, C3 for modern cottages, C4 for
-    A-frame cottages, S1 for classic shops; each `DEFS` entry names the kind and style it takes) at its own real-world size on the
+    A-frame cottages, S1 for classic shops, S3 for diners; each `DEFS` entry names the kind and style it takes) at its own real-world size on the
     lot (`fitReal`), stacked from its pieces; damage darkens it and puts its
     rooms out, damage 2 drops the roof and top storeys under wreckage.
   - `city/kit.ts` loads the kit before the scene starts (`City.create`).
@@ -718,9 +718,14 @@ batten, gravel, sedum and solar textures, and `lib.glazing` for modern
 windows and glass walls (home rooms now widen to fit them). C4, the A-frame
 cabin, followed: cedar shake and tongue-and-groove board textures, gable
 walls and glazing clipped to the A, a shed dormer cut into the roof; its
-yard has conifers (`tree()` takes a species list). Next: S3 diner, S4
-brick factory, then C2 and S2; the rest of the Hamlet in `docs/models.md` ("Suggested order"). Checked headless in the viewer and
-the hamlet mock; not yet seen in the Tauri window.
+yard has conifers (`tree()` takes a species list). S3, the diner, followed:
+fluted stainless and glass block textures, lettering in Blender's bundled
+font (`lib.letters` for channel letters, `lib.neon` for tubes along their
+outlines), a "diner" room in the window shader (booths, counter, stools,
+customers), neon that lights at night and polished metal that reflects the
+sky. Next: S4 brick factory, then C2 and S2; the rest of the Hamlet in
+`docs/models.md` ("Suggested order"). Checked headless in the viewer and
+the hamlet and city mocks; not yet seen in the Tauri window.
 
 Realistic city (2026-11-03): the user found the low-poly look lacking and
 asked for something closer to Cities: Skylines. A prototype building is in
@@ -888,7 +893,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block, C1 farmhouse, S1 main-street shop, C3 modern house and C4 A-frame cabin in the app; the rest of the Hamlet next, one model per session;
+      A1 brick block, C1 farmhouse, S1 main-street shop, C3 modern house, C4 A-frame cabin and S3 diner in the app; the rest of the Hamlet next, one model per session;
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 

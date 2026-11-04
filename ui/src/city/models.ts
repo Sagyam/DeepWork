@@ -530,6 +530,26 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-3.9, 3.9]) if (r() < 0.8) shrub(p, x, 4.5, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "s3": {
+      // An asphalt forecourt to the pavement with a car drawn up beside the
+      // steps and shrubs either side of them; behind, a concrete service yard
+      // round the kitchen with bins, a grease drum and gas bottles, fenced.
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const line = mat(0xe8e4d8, { roughness: 0.7 });
+      for (const x of [-6.9, -1.7]) p.box(line, 0.12, KERB + 0.01, 2.2, x, 0, front - 2.0);
+      parked(p, -4.3, front - 2.0, Math.PI / 2, s.seed + 3);
+      for (const x of [-1.9, 1.9]) shrub(p, x, 3.75, s.seed * 5 + x * 3, KERB, 0.75);
+      const yardZ = -1.8; // the diner's back wall
+      p.box(mat(0xa29e96, { roughness: 0.95 }), LOT - 0.4, KERB + 0.02, yardZ - back, 0, 0, (yardZ + back) / 2);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.7 - i * 0.85, KERB, back + 0.7);
+      p.add(mat(0x3a5a8a, { roughness: 0.5, metalness: 0.3 }), new THREE.CylinderGeometry(0.29, 0.29, 0.88, 14), -half + 0.8, KERB + 0.44, back + 0.7);
+      const gas = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.2 });
+      for (const x of [-5.2, -4.6]) p.add(gas, new THREE.CapsuleGeometry(0.19, 0.95, 4, 12), x, KERB + 0.67, -3.0);
+      if (hasReal("street")) fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      break;
+    }
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.

@@ -496,6 +496,45 @@ def boards_tex(t, n=1024):
     t.save("boards_nrm", normals(v ** 0.5 + 0.05 * grain, 4.0))
 
 
+def fluted_tex(t, n=1024):
+    """Fluted stainless steel, the diner's skin: rounded horizontal ribs every
+    0.025 m between flat lands, brushed along their length; tile 1 x 0.4 m."""
+    rows = 16
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    fy = (y / (n / rows)) % 1
+    rib = np.clip(np.abs(fy - 0.5) / 0.38, 0, 1)
+    h = np.sqrt(np.clip(1 - rib ** 2, 0, 1))  # half-round ribs
+    brush = fbm(n, 4, 6, 201, stretch=(1, 48))  # long streaks along the ribs
+    fine = fbm(n, 8, 5, 202, stretch=(1, 96))
+    col = np.ones((n, n, 3), np.float32) * srgb(206, 210, 214)
+    col *= (0.84 + 0.12 * brush + 0.08 * fine)[..., None]
+    col *= (0.82 + 0.18 * h)[..., None]
+    rough = 0.2 + 0.14 * brush + 0.1 * (1 - h)
+    t.save("fluted_col", col)
+    t.save("fluted_nrm", normals(h + 0.01 * fine, 3.0))
+    t.save("fluted_rgh", rough)
+
+
+def glassblock_tex(t, n=1024):
+    """Glass blocks, 0.2 m with 1 cm joints: 4 x 4 blocks, tile 0.8 m. Each
+    block's face is moulded in vertical flutes ("Decora"), pale green glass
+    with a bevel round it; the app lights them from behind at night."""
+    k = 4
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    fx, fy = (x / (n / k)) % 1, (y / (n / k)) % 1
+    e = np.minimum(np.minimum(fx, 1 - fx), np.minimum(fy, 1 - fy)) * 0.2  # m to the joint
+    joint = e < 0.005
+    bevel = np.clip((e - 0.005) / 0.014, 0, 1)
+    flute = 0.5 + 0.5 * np.cos(fx * math.tau * 7)
+    wave = fbm(n, 8, 4, 211)
+    col = np.ones((n, n, 3), np.float32) * srgb(164, 196, 192)
+    col *= (0.62 + 0.3 * flute + 0.12 * (wave - 0.5))[..., None] * (0.55 + 0.45 * bevel)[..., None]
+    col[joint] = srgb(196, 192, 184)
+    h = np.where(joint, 0.0, 0.4 + 0.6 * bevel ** 0.5) + 0.25 * flute * bevel
+    t.save("glassblock_col", col)
+    t.save("glassblock_nrm", normals(h, 4.0))
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -525,7 +564,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, ground_tex, grime_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, ground_tex, grime_tex,
 )
 
 
@@ -641,6 +680,28 @@ class Mesh:
                     continue
                 self.poly(role, [r0[i], r0[j], r1[j], r1[i]], out=out)
 
+    def tube(self, role, pts, r, up, closed=True, seg=6):
+        """A round tube of radius r along points (neon, pipe rails); `up` is the
+        normal of the plane the path lies in (or any vector off its tangents)."""
+        pts = [Vector(p) for p in pts]
+        n, up = len(pts), Vector(up).normalized()
+        rings = []
+        for i in range(n):
+            a = pts[i - 1] if closed or i else pts[i]
+            b = pts[(i + 1) % n] if closed or i < n - 1 else pts[i]
+            t = (b - a).normalized()
+            side = t.cross(up).normalized()
+            rings.append([pts[i] + (side * math.cos(k / seg * math.tau) + up * math.sin(k / seg * math.tau)) * r for k in range(seg)])
+        for i in range(n if closed else n - 1):
+            r0, r1 = rings[i], rings[(i + 1) % n]
+            for k in range(seg):
+                j = (k + 1) % seg
+                mid = (r0[k] + r0[j] + r1[k] + r1[j]) / 4 - (pts[i] + pts[(i + 1) % n]) / 2
+                self.poly(role, [r0[k], r0[j], r1[j], r1[k]], out=mid, smooth=True)
+        if not closed:
+            for ring, p, q in ((rings[0], pts[0], pts[1]), (rings[-1], pts[-1], pts[-2])):
+                self.poly(role, ring, out=p - q)
+
     def finish(self, sharp=None):
         """`sharp` (radians): edges whose faces meet at a steeper angle shade hard, the rest smooth."""
         bmesh.ops.remove_doubles(self.bm, verts=self.bm.verts, dist=0.0004)
@@ -716,6 +777,83 @@ def sides(m, W, D, cx=0.0, cy=0.0, z=0.0):
         "back": Side(m, (cx, cy + D / 2, z), (-1, 0, 0), (0, 1, 0)),
         "left": Side(m, (cx - W / 2, cy, z), (0, -1, 0), (-1, 0, 0)),
     }
+
+
+# ---- lettering -------------------------------------------------------------------------
+
+
+def _text_mesh(body, size, extrude, offset, res, spacing):
+    cu = bpy.data.curves.new("glyphs", "FONT")
+    cu.body = body
+    cu.size = size
+    cu.extrude = extrude
+    cu.offset = offset
+    cu.resolution_u = res
+    cu.space_character = spacing
+    cu.fill_mode = "BOTH"
+    ob = bpy.data.objects.new("glyphs", cu)
+    bpy.context.scene.collection.objects.link(ob)
+    me = bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    bpy.data.objects.remove(ob)
+    bpy.data.curves.remove(cu)
+    vs = [v.co.copy() for v in me.vertices]
+    # Centre on the letters' bounding box (cap height, not the font's line box).
+    c = Vector(((min(v.x for v in vs) + max(v.x for v in vs)) / 2, (min(v.y for v in vs) + max(v.y for v in vs)) / 2, 0))
+    return me, [v - c for v in vs]
+
+
+def glyphs(body, size, extrude=0.04, offset=0.0, res=3, spacing=1.0):
+    """Solid letters in Blender's bundled font, as polygons of (x, y, z): x along
+    the line, y up, z out of the face (from -extrude to +extrude), centred on
+    the origin. `offset` thickens (or thins) the strokes, in metres."""
+    me, vs = _text_mesh(body, size, extrude, offset, res, spacing)
+    polys = [[vs[i] for i in p.vertices] for p in me.polygons]
+    bpy.data.meshes.remove(me)
+    return polys
+
+
+def outlines(body, size, offset=0.0, res=3, spacing=1.0):
+    """The letters' outlines as closed loops of (x, y, 0), for neon tubes: the
+    boundary of the flat-filled text; a negative `offset` pulls them inside the
+    strokes. Centred like glyphs() with the same arguments (offset aside)."""
+    me, vs = _text_mesh(body, size, 0.0, offset, res, spacing)
+    bm = bmesh.new()
+    bm.from_mesh(me)
+    bpy.data.meshes.remove(me)
+    bm.verts.ensure_lookup_table()
+    nxt = {}
+    for e in bm.edges:
+        if len(e.link_faces) == 1:
+            # Follow the face's winding so every loop runs the same way round.
+            f = e.link_faces[0]
+            for loop in f.loops:
+                if loop.edge == e:
+                    nxt[loop.vert.index] = loop.link_loop_next.vert.index
+    loops, seen = [], set()
+    for start in nxt:
+        if start in seen:
+            continue
+        loop, v = [], start
+        while v not in seen and v in nxt:
+            seen.add(v)
+            loop.append(vs[v].copy())
+            v = nxt[v]
+        if len(loop) > 2:
+            loops.append(loop)
+    bm.free()
+    return loops
+
+
+def letters(m, role, F, u, z, w, body, size, depth=0.06, offset=0.0, spacing=1.0):
+    """Solid letters standing `depth` proud of facade F, centred at (u, z), face at w + depth."""
+    for poly in glyphs(body, size, depth / 2, offset, spacing=spacing):
+        m.poly(role, [F.p(u + v.x, z + v.y, w + depth / 2 + v.z) for v in poly])
+
+
+def neon(m, role, F, u, z, w, body, size, r=0.012, inset=0.03, offset=0.0, spacing=1.0):
+    """Neon tubes following the letters' outlines `inset` inside them, on facade F at depth w."""
+    for loop in outlines(body, size, offset - inset, spacing=spacing):
+        m.tube(role, [F.p(u + v.x, z + v.y, w) for v in loop], r, F.n, seg=5)
 
 
 # ---- windows and common components -------------------------------------------------
