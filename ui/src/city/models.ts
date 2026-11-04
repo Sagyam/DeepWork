@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
-import { CAR_PAINTS, DEFS, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
+import { CAR_PAINTS, DEFS, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -472,7 +472,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
     case "c1": {
       // Lawn, a picket fence along the street, a path to the porch steps,
       // a drive down the side with the car, trees, a hedge at the back.
-      p.box(mat(0x6f9a4f, { roughness: 1 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const fz = front - 0.45;
       const steps = s.d / 2;
       p.box(paving, 1.2, KERB + 0.03, fz - steps + 0.2, 0, 0, (fz + steps) / 2);
@@ -484,21 +484,24 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       tree(p, -half + 1.4, front - 3.2, 0.75, s.seed + 1, KERB);
       tree(p, -half + 1.6, back + 1.6, 0.85, s.seed + 2, KERB);
       if (r() < 0.6) tree(p, (r() - 0.5) * 3, back + 1.2, 0.6, s.seed + 4, KERB);
-      p.box(mat(0x3f6a34, { flatShading: true }), LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55);
+      hedge(p, LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55, s.seed);
+      // Shrubs along the porch, either side of the steps.
+      for (const x of [-3.9, -2.4, 2.4, 3.9]) if (r() < 0.8) shrub(p, x, steps + 0.7, s.seed * 5 + x * 3);
       break;
     }
     case "c3": {
       // Lawn; a drive to the garage with the car on it, stepping slabs to
       // the recessed door, a hedge along the street and across the back.
-      p.box(mat(0x6f9a4f, { roughness: 1 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const gz = 3.95; // the garage door
       p.box(mat(0xa29e96, { roughness: 0.95 }), 3.6, KERB + 0.03, front - gz, 4.2, 0, (front + gz) / 2);
       parked(p, 4.2, gz + 2.5, Math.PI, s.seed + 3);
       for (let z = 4.65; z < front - 0.5; z += 0.9) p.box(paving, 1.3, KERB + 0.04, 0.6, 0.6, 0, z);
-      const hedge = mat(0x3f6a34, { flatShading: true });
-      p.box(hedge, half - 0.3, KERB + 0.7, 0.6, (-half - 0.3) / 2, 0, front - 0.5);
-      p.box(hedge, half - 6.2, KERB + 0.7, 0.6, (half + 6.2) / 2, 0, front - 0.5);
-      p.box(hedge, LOT - 0.4, KERB + 1.4, 0.7, 0, 0, back + 0.55);
+      hedge(p, half - 0.3, KERB + 0.7, 0.6, (-half - 0.3) / 2, 0, front - 0.5, s.seed);
+      hedge(p, half - 6.2, KERB + 0.7, 0.6, (half + 6.2) / 2, 0, front - 0.5, s.seed);
+      hedge(p, LOT - 0.4, KERB + 1.4, 0.7, 0, 0, back + 0.55, s.seed);
+      // A border of shrubs under the living-room glass.
+      for (const x of [-5.2, -3.9, -2.6]) if (r() < 0.85) shrub(p, x, 4.45, s.seed * 7 + x * 3);
       tree(p, -half + 2.0, front - 2.2, 0.7, s.seed + 1, KERB);
       if (r() < 0.7) tree(p, 3.5 + r() * 3, back + 1.2, 0.8, s.seed + 2, KERB);
       break;
@@ -539,9 +542,63 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
 }
 
 const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
+/** Realistic species, by how common they are in town. */
+const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
+const SHRUBS = ["bush", "bush", "bush_wide", "shrub", "flowers"];
 
+/** Paint for a realistic prop: `wall` picks its tint (foliage, car paint). */
+const tintOf = (i: number): Paint => ({ wall: i, accent: 0, roof: 0, signs: 0 });
+
+/** A lawn: mown grass from the realistic library when loaded, else flat green. */
+export function lawn(): THREE.Material {
+  return hasReal("trees") ? groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8 }) : mat(0x6f9a4f, { roughness: 1 });
+}
+
+/**
+ * A clipped hedge where a box would be (w along x, d along z, from y up to
+ * y + h): realistic segments stretched to fit when loaded, else the box.
+ */
+export function hedge(p: Parts, w: number, h: number, d: number, x: number, y: number, z: number, seed: number) {
+  if (!hasReal("trees")) {
+    p.box(mat(0x3f6a34, { flatShading: true }), w, h, d, x, y, z);
+    return;
+  }
+  const alongX = w >= d;
+  const L = alongX ? w : d;
+  const D = alongX ? d : w;
+  const base = Math.max(y, KERB);
+  const n = Math.max(1, Math.round(L / 2));
+  const scale = new THREE.Vector3(L / n / 2, (y + h - base) / 1.25, D / 0.7);
+  for (let i = 0; i < n; i++) {
+    const t = -L / 2 + (i + 0.5) * (L / n);
+    for (const { role, geo } of realPiece("trees", "hedge")) p.add(realMat("trees", role, tintOf(seed), 0), geo, alongX ? x + t : x, base, alongX ? z : z + t, 0, alongX ? 0 : Math.PI / 2, 0, scale);
+  }
+}
+
+/** A garden shrub (nothing without the realistic trees: the kit has none). */
+export function shrub(p: Parts, x: number, z: number, seed: number, y = KERB, s = 1) {
+  if (!hasReal("trees")) return;
+  const r = rng(Math.floor(seed));
+  const name = SHRUBS[Math.floor(r() * SHRUBS.length)];
+  const k = s * (0.8 + r() * 0.4);
+  const scale = new THREE.Vector3(k, k * (0.85 + r() * 0.3), k);
+  const ry = r() * Math.PI * 2;
+  const tint = tintOf(Math.floor(r() * 6));
+  for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
+}
+
+/** A tree; `s` was the kit's scale (0.35-1.2), which picks the realistic tree's size too. */
 export function tree(p: Parts, x: number, z: number, s: number, seed: number, y = 0) {
   const r = rng(seed);
+  if (hasReal("trees")) {
+    const name = SPECIES[Math.floor(r() * SPECIES.length)];
+    const k = 0.5 + 0.55 * s;
+    const scale = new THREE.Vector3(k, k * (0.88 + r() * 0.24), k);
+    const ry = r() * Math.PI * 2;
+    const tint = tintOf(Math.floor(r() * 6));
+    for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
+    return;
+  }
   const name = TREES[Math.floor(r() * TREES.length)];
   const leaf = kitMat({ color: LEAVES[Math.floor(r() * LEAVES.length)], rough: 0.9 }, 0);
   const roles: Record<string, THREE.MeshStandardMaterial> = {
@@ -599,16 +656,15 @@ function yard(p: Parts, s: Spec, r: () => number) {
   const cz = -s.yard;
   const front = LOT / 2 - s.yard;
   const back = -LOT / 2 - s.yard;
-  const lawn = mat(0x6f9a4f, { roughness: 1 });
+  const grass = lawn();
   const paving = mat(0xbab4a8, { roughness: 0.9 });
   const concrete = mat(0xa29e96, { roughness: 0.95 });
-  const hedge = mat(0x3f6a34, { flatShading: true });
   const half = LOT / 2 - 0.2;
   const ground = (m: THREE.Material) => p.box(m, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
   const path = (x: number, w = 1.4) => p.box(paving, w, KERB + 0.03, front - s.d / 2, x, 0, (front + s.d / 2) / 2);
   switch (s.kind) {
     case "cottage": {
-      ground(lawn);
+      ground(grass);
       const side = r() < 0.5 ? -1 : 1;
       // A drive up to the garage (modern) or along the side of the house, a
       // car on it, and a path to the door.
@@ -624,7 +680,7 @@ function yard(p: Parts, s: Spec, r: () => number) {
       const gaps = [[dx - dw / 2 - 0.1, dx + dw / 2 + 0.1], [px - 0.7, px + 0.7]].sort((a, b) => a[0] - b[0]);
       let x0 = -half;
       for (const [g0, g1] of [...gaps, [half, half]]) {
-        if (g0 > x0 + 0.4) p.box(hedge, g0 - x0, KERB + 0.75, 0.6, (x0 + g0) / 2, 0, front - 0.5);
+        if (g0 > x0 + 0.4) hedge(p, g0 - x0, KERB + 0.75, 0.6, (x0 + g0) / 2, 0, front - 0.5, s.seed);
         x0 = Math.max(x0, g1);
       }
       // Garden: trees, maybe a shed, and a fence round the back.
@@ -655,7 +711,7 @@ function yard(p: Parts, s: Spec, r: () => number) {
       break;
     }
     case "apartment": {
-      ground(lawn);
+      ground(grass);
       path(0, s.style === "townhouse" ? s.w : 2);
       if (s.style !== "townhouse") {
         tree(p, -s.w / 2 + 0.8, front - 1.2, 0.6, s.seed + 1, KERB);

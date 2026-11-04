@@ -459,9 +459,9 @@ TEXTURES = (
 )
 
 
-def textures(out):
+def textures(out, which=None):
     t = Tex(out)
-    for f in TEXTURES:
+    for f in which or TEXTURES:
         f(t)
         print("texture", f.__name__)
 

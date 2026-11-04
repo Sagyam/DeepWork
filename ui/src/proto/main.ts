@@ -55,6 +55,7 @@ if (props) {
   VIEWS.hero = [[4, 5.5, 16], [0, 1.0, 0], 50];
   VIEWS.close = [[3.5, 2.2, 7.5], [0, 0.9, 0], 45];
   VIEWS.low = [[-6, 1.4, 9], [0, 1.2, 0], 55];
+  VIEWS.far = [[6, 7, 38], [0, 4.5, 0], 50];
 }
 if (stress) VIEWS.city = [[extent * 0.75 + 40, extent * 0.6 + 35, extent * 0.9 + 50], [0, 6, 0], 40];
 const [pos, target, fov] = VIEWS[view] ?? VIEWS.hero;

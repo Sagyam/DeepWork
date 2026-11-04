@@ -149,7 +149,7 @@ export const DEFS: Record<string, RealDef> = {
  * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
  * the kit's props.
  */
-export const PROPS = ["cars"];
+export const PROPS = ["cars", "trees"];
 
 /** Loads every model there is; missing ones are left to the kit. Never throws. */
 export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<void> {
@@ -179,6 +179,7 @@ export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<
           });
           pieces.set(name, parts);
         }
+        if (id === "trees") for (const parts of pieces.values()) bendLeaves(parts);
         loaded.set(id, { pieces, ao });
       } catch {
         // Not built (bun run models) or not downloaded yet: the kit draws this style.
@@ -188,6 +189,42 @@ export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<
 }
 
 export const hasReal = (id: string) => loaded.has(id);
+
+/** Leaf-card roles: alpha-tested, two-sided, normals bent out from the crown. */
+const LEAVES = ["leaf", "smallleaf", "needles", "blossom", "bloom"];
+
+/**
+ * Points each leaf card's normals away from the middle of its crown (the
+ * cards' bounding box), mostly: a crown then shades as one soft mass, lit
+ * on the sun's side and dark underneath, instead of a heap of flat cards.
+ */
+function bendLeaves(parts: RealPart[]) {
+  const leaves = parts.filter((p) => LEAVES.includes(p.role));
+  if (!leaves.length) return;
+  const box = new THREE.Box3();
+  for (const { geo } of leaves) {
+    geo.computeBoundingBox();
+    box.union(geo.boundingBox!);
+  }
+  const c = box.getCenter(new THREE.Vector3());
+  const half = box.getSize(new THREE.Vector3()).multiplyScalar(0.5).max(new THREE.Vector3(0.3, 0.3, 0.3));
+  // Bend toward a point a little below the middle, so tops face the sky.
+  c.y -= half.y * 0.25;
+  const v = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  for (const { geo } of leaves) {
+    const pos = geo.getAttribute("position") as THREE.BufferAttribute;
+    const nrm = geo.getAttribute("normal") as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      v.fromBufferAttribute(pos, i).sub(c).divide(half).normalize();
+      n.fromBufferAttribute(nrm, i);
+      if (n.dot(v) < 0) n.negate();
+      n.lerp(v, 0.8).normalize();
+      nrm.setXYZ(i, n.x, n.y, n.z);
+    }
+    nrm.needsUpdate = true;
+  }
+}
 
 /** A loaded model's baked AO (for the viewer's debug view). */
 export const realAo = (id: string) => loaded.get(id)?.ao;
@@ -405,6 +442,8 @@ const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
 const TIMBER = [0xe6b488, 0xc4c2bc, 0x4a4644, 0xd2905e, 0xf0cc96];
 /** Window frames, copings and doors: anthracite (most), black, bronze. */
 const FRAMES = [0x33373b, 0x1e1f21, 0x33373b, 0x6e5e4a, 0x40454a];
+/** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
+const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
 export const CAR_PAINTS = [0xeceae6, 0x16181b, 0xa9adb1, 0x5c6066, 0xeceae6, 0x1f3550, 0x9c1f22, 0x2e4a3c, 0xb8ab90, 0x5a1c26, 0x7e8a94, 0x16181b];
 
@@ -423,6 +462,42 @@ export function setRealEnv(env: THREE.Texture) {
 }
 
 /**
+ * Leaf cards: the cluster texture alpha-tested, both sides lit as the front
+ * (the normals are bent out from the crown, see bendLeaves), baked AO.
+ */
+function foliage(name: string, color: number, ao: THREE.Texture): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ map: tex(`${name}_col`), color, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.78, aoMap: ao, aoMapIntensity: 0.55 });
+  m.onBeforeCompile = (sh) => {
+    sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_begin>", THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", ""));
+  };
+  m.customProgramCacheKey = () => "foliage";
+  return m;
+}
+
+/**
+ * A tiling ground material (grass, paving, asphalt) mapped by world x / z,
+ * so boxes of any size share it without UVs of their own; `tile` in metres.
+ */
+export function groundMat(name: string, tile: number, opts: Std & { normal?: number } = {}): THREE.MeshStandardMaterial {
+  const key = `ground:${name}:${tile}:${JSON.stringify(opts)}`;
+  let m = cache.get(key) as THREE.MeshStandardMaterial | undefined;
+  if (m) return m;
+  const { normal = 1, ...rest } = opts;
+  m = new THREE.MeshStandardMaterial({ map: tex(`${name}_col`), normalMap: tex(`${name}_nrm`, [1, 1], false), roughness: 0.9, ...rest });
+  m.normalScale.set(normal, -normal);
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTile = { value: 1 / tile };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nuniform float uTile;")
+      .replace("#include <uv_vertex>", "#include <uv_vertex>\nvec2 gUv = (modelMatrix * vec4(position, 1.0)).xz * uTile;\nvMapUv = gUv;\nvNormalMapUv = gUv;");
+  };
+  m.customProgramCacheKey = () => "ground";
+  m.userData.real = true;
+  cache.set(key, m);
+  return m;
+}
+
+/**
  * The material for a role of model `id`, for one building's paint and
  * damage (0-2). Shared between buildings with the same choices; `variant`
  * keeps a set apart (traffic's lamps light at night, parked cars' do not).
@@ -431,7 +506,7 @@ export function setRealEnv(env: THREE.Texture) {
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "carpaint"].includes(role);
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "carpaint", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -533,6 +608,17 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "led":
       m = plain(0x2a1400, 0.4, 0, { emissive: 0xffa020, emissiveIntensity: 0 });
       if (variant === "traffic") Object.assign(m.userData, { night: 1.8, day: 0.5 });
+      break;
+    // Trees and shrubs.
+    case "bark": m = w(pbr("bark", [1, 2], { roughness: 0.95, normal: 1.2 })); break;
+    case "birch": m = w(new THREE.MeshStandardMaterial({ map: tex("birch_col", [1, 1]), roughness: 0.8 })); break;
+    case "hedge": m = w(pbr("hedge", [1.5, 1.5], { roughness: 0.85, color: pick(FOLIAGE, paint.wall) })); break;
+    case "leaf":
+    case "smallleaf":
+    case "needles":
+    case "blossom":
+    case "bloom":
+      m = foliage(role, role === "blossom" || role === "bloom" ? 0xffffff : pick(FOLIAGE, paint.wall), ao);
       break;
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
