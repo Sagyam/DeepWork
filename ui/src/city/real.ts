@@ -144,8 +144,15 @@ export const DEFS: Record<string, RealDef> = {
   },
 };
 
+/**
+ * Models that are not buildings: the props the city is dressed with
+ * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
+ * the kit's props.
+ */
+export const PROPS = ["cars"];
+
 /** Loads every model there is; missing ones are left to the kit. Never throws. */
-export async function loadReal(ids = Object.keys(DEFS)): Promise<void> {
+export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<void> {
   const tex = new THREE.TextureLoader();
   await Promise.all(
     ids.map(async (id) => {
@@ -154,6 +161,12 @@ export async function loadReal(ids = Object.keys(DEFS)): Promise<void> {
         const [gltf, ao] = await Promise.all([new GLTFLoader().loadAsync(`${BASE}${id}.glb`), tex.loadAsync(`${BASE}${id}_ao.png`)]);
         ao.flipY = false;
         ao.channel = 1;
+        // Props are small on screen: mipmaps would blend each island of the
+        // atlas with its neighbours (tyres, underbodies) into blotches.
+        if (PROPS.includes(id)) {
+          ao.generateMipmaps = false;
+          ao.minFilter = THREE.LinearFilter;
+        }
         ao.colorSpace = THREE.NoColorSpace;
         const pieces = new Map<string, RealPart[]>();
         for (const node of gltf.scene.children) {
@@ -175,6 +188,12 @@ export async function loadReal(ids = Object.keys(DEFS)): Promise<void> {
 }
 
 export const hasReal = (id: string) => loaded.has(id);
+
+/** A loaded model's baked AO (for the viewer's debug view). */
+export const realAo = (id: string) => loaded.get(id)?.ao;
+
+/** The pieces a loaded model has, in file order. */
+export const realPieces = (id: string): string[] => [...(loaded.get(id)?.pieces.keys() ?? [])];
 
 export function realPiece(id: string, name: string): RealPart[] {
   const p = loaded.get(id)?.pieces.get(name);
@@ -386,6 +405,8 @@ const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
 const TIMBER = [0xe6b488, 0xc4c2bc, 0x4a4644, 0xd2905e, 0xf0cc96];
 /** Window frames, copings and doors: anthracite (most), black, bronze. */
 const FRAMES = [0x33373b, 0x1e1f21, 0x33373b, 0x6e5e4a, 0x40454a];
+/** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
+export const CAR_PAINTS = [0xeceae6, 0x16181b, 0xa9adb1, 0x5c6066, 0xeceae6, 0x1f3550, 0x9c1f22, 0x2e4a3c, 0xb8ab90, 0x5a1c26, 0x7e8a94, 0x16181b];
 
 const cache = new Map<string, THREE.Material>();
 /** Glass and lamps, which follow the time of day (see City.light). */
@@ -403,12 +424,15 @@ export function setRealEnv(env: THREE.Texture) {
 
 /**
  * The material for a role of model `id`, for one building's paint and
- * damage (0-2). Shared between buildings with the same choices.
+ * damage (0-2). Shared between buildings with the same choices; `variant`
+ * keeps a set apart (traffic's lamps light at night, parked cars' do not).
+ * Car paint takes CAR_PAINTS[paint.wall], or white for paint.wall < 0 so
+ * instance colours tint it.
  */
-export function realMat(id: string, role: string, paint: Paint, damage: number): THREE.Material {
+export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu"].includes(role);
-  const key = `${id}:${role}:${damage}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "carpaint"].includes(role);
+  const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
@@ -479,12 +503,44 @@ export function realMat(id: string, role: string, paint: Paint, damage: number):
     case "awning": m = w(new THREE.MeshStandardMaterial({ map: tex("awning_col"), roughness: 0.92 })); break;
     case "bars": m = new THREE.MeshStandardMaterial({ map: tex("bars", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.35 }); break;
     case "grate": m = new THREE.MeshStandardMaterial({ map: tex("grate", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.35 }); break;
+    // Vehicles.
+    case "carpaint": {
+      const car = new THREE.MeshPhysicalMaterial({ color: paint.wall < 0 ? 0xffffff : pick(CAR_PAINTS, paint.wall), roughness: 0.45, metalness: 0.2, clearcoat: 1, clearcoatRoughness: 0.05 });
+      if (skyEnv) car.envMap = skyEnv;
+      glassMats.add(car);
+      m = w(car);
+      break;
+    }
+    case "carglass": m = sheen({ color: 0x0b0e12, roughness: 0.04, metalness: 0.1 }); break;
+    case "rubber": m = w(plain(0x1a1b1d, 0.65)); break;
+    case "chrome": m = w(plain(0xd8dce0, 0.12, 1)); break;
+    case "rim": m = w(plain(0xc8ccd0, 0.32, 0.6)); break;
+    case "tyre": m = w(plain(0x262628, 0.9)); break;
+    case "plate": m = w(plain(0xe8e6dc, 0.4)); break;
+    case "cargo": m = w(plain(0xe6e6e2, 0.5, 0.2)); break;
+    case "headlight":
+      m = plain(0xf4f2ea, 0.1, 0.3, { emissive: 0xfff2d0, emissiveIntensity: 0 });
+      if (variant === "traffic") m.userData.night = 3;
+      break;
+    case "taillight":
+      m = plain(0x7a0e0c, 0.25, 0, { emissive: 0xff2010, emissiveIntensity: 0 });
+      if (variant === "traffic") Object.assign(m.userData, { night: 2.2, day: 0.15 });
+      break;
+    case "taxisign":
+      m = plain(0xffd040, 0.4, 0, { emissive: 0xffd040, emissiveIntensity: 0 });
+      if (variant === "traffic") Object.assign(m.userData, { night: 1.6, day: 0.2 });
+      break;
+    case "led":
+      m = plain(0x2a1400, 0.4, 0, { emissive: 0xffa020, emissiveIntensity: 0 });
+      if (variant === "traffic") Object.assign(m.userData, { night: 1.8, day: 0.5 });
+      break;
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room("lobby"); break;
     default: m = plain(0xff00ff);
   }
   if (damage && !role.endsWith("glass")) (m as THREE.MeshStandardMaterial).color.multiplyScalar(shade);
+  m.userData.real = true;
   cache.set(key, m);
   return m;
 }

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
-import { DEFS, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
+import { CAR_PAINTS, DEFS, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -65,7 +65,8 @@ export class Parts {
   /**
    * With `tint`, every material's colour is baked into the vertex colours
    * (times any baked occlusion) and all geometry shares `tint`: one draw
-   * for a whole yard of props, at the cost of their gloss.
+   * for a whole yard of props, at the cost of their gloss. Realistic
+   * models' materials (`userData.real`) keep their own.
    */
   constructor(private tint?: THREE.Material) {}
 
@@ -80,7 +81,7 @@ export class Parts {
     const geo = g.index ? g.toNonIndexed() : g.clone();
     geo.applyMatrix4(this.m);
     for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv", "uv1", "color"].includes(k)) geo.deleteAttribute(k);
-    if (this.tint) {
+    if (this.tint && !material.userData.real) {
       const c = (material as THREE.MeshStandardMaterial).color ?? new THREE.Color(1, 1, 1);
       const n = geo.getAttribute("position").count;
       const ao = geo.getAttribute("color");
@@ -554,9 +555,18 @@ export function tree(p: Parts, x: number, z: number, s: number, seed: number, y 
   for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, y, z, 0, ry, 0, scale);
 }
 
-/** A parked car from the traffic kit, nose toward +z before ry. */
+/** Realistic cars that park on drives and in bays, by how common they are. */
+const PARKED = ["hatch", "sedan", "estate", "suv", "hatch", "sedan", "suv", "coupe", "pickup", "van", "estate", "hatch"];
+
+/** A parked car, nose toward +z before ry: a realistic one if they are loaded, else from the traffic kit. */
 export function parked(p: Parts, x: number, z: number, ry: number, seed: number, y = KERB) {
   const r = rng(seed);
+  if (hasReal("cars")) {
+    const name = PARKED[Math.floor(r() * PARKED.length)];
+    const paint: Paint = { wall: Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
+    for (const { role, geo } of realPiece("cars", name)) p.add(realMat("cars", role, paint, 0), geo, x, y, z, 0, ry, 0);
+    return;
+  }
   const model = ["car_sedan", "car_hatch", "car_sedan", "car_van"][Math.floor(r() * 4)];
   const body = kitMat({ color: CAR_PAINT[Math.floor(r() * CAR_PAINT.length)], rough: 0.5, metal: 0.15 }, 0);
   for (const { role, geo } of piece(model).parts) p.add(role === "body" ? body : kitMat(ROLES[role] ?? ROLES.dark, 0), geo, x, y, z, 0, ry, 0);

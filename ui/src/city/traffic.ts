@@ -6,6 +6,7 @@
 import * as THREE from "three";
 import { piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, PAVEMENT, ROAD, blockLoop, rng, type CityPlan, type Loop } from "./plan";
+import { CAR_PAINTS, hasReal, realMat, realPiece } from "./real";
 
 const CAR_PAINT = [0xb8252a, 0x1f4e8c, 0xe8e6e0, 0x2a2c30, 0x8a8f96, 0x2f6b4a, 0xd9a03a, 0x6a2a4a, 0x3a7fb8, 0xc8c2b4];
 const BUS_PAINT = [0xc0392b, 0x2e6fb5, 0x2a9a5a];
@@ -43,7 +44,7 @@ const LOOKS: Record<string, Look> = {
 /** Roles whose colour varies per instance, and the palette to pick from. */
 type Paint = Partial<Record<string, number[]>>;
 
-/** One kit model drawn many times: an InstancedMesh per material role. */
+/** One model drawn many times: an InstancedMesh per material role. */
 class Fleet {
   meshes: THREE.InstancedMesh[] = [];
   private m = new THREE.Matrix4();
@@ -52,8 +53,8 @@ class Fleet {
   private one = new THREE.Vector3(1, 1, 1);
   private up = new THREE.Vector3(0, 1, 0);
 
-  constructor(name: string, count: number, paint: Paint, mats: (role: string) => THREE.MeshStandardMaterial, r: () => number) {
-    for (const { role, geo } of piece(name).parts) {
+  constructor(parts: { role: string; geo: THREE.BufferGeometry }[], count: number, paint: Paint, mats: (role: string) => THREE.Material, r: () => number) {
+    for (const { role, geo } of parts) {
       const mesh = new THREE.InstancedMesh(geo, mats(role), Math.max(1, count));
       mesh.count = count;
       mesh.castShadow = true;
@@ -91,6 +92,12 @@ interface Mover {
   bob: number;
 }
 
+/** The kit model standing in for each realistic vehicle when those are not loaded. */
+const KIT: Record<string, string> = {
+  hatch: "car_hatch", sedan: "car_sedan", estate: "car_sedan", suv: "car_sedan", coupe: "car_hatch",
+  taxi: "car_taxi", pickup: "car_van", van: "car_van", truck: "car_van", bus: "bus",
+};
+
 /** Vehicles per block and people per block, by tier. */
 const CARS = [1, 2, 3, 4];
 const PEOPLE = [2, 4, 7, 11];
@@ -100,6 +107,8 @@ export class Traffic {
   private movers: Mover[] = [];
   private fleets: Fleet[] = [];
   private mats = new Map<string, THREE.MeshStandardMaterial>();
+  /** Realistic vehicles' lamps, which follow the night too. */
+  private lamps = new Set<THREE.MeshStandardMaterial>();
 
   private mat = (role: string) => {
     let m = this.mats.get(role);
@@ -132,20 +141,33 @@ export class Traffic {
         const k = r();
         const model =
           tier >= 2 && i === 0 && b % 3 === 0 ? "bus"
-          : tier >= 2 && k < 0.22 ? "car_taxi"
-          : k < 0.38 ? "car_van"
-          : k < 0.65 ? "car_hatch"
-          : "car_sedan";
+          : tier >= 2 && k < 0.18 ? "taxi"
+          : k < 0.26 ? "van"
+          : tier >= 1 && k < 0.3 ? "truck"
+          : k < 0.48 ? "hatch"
+          : k < 0.64 ? "sedan"
+          : k < 0.78 ? "suv"
+          : k < 0.88 ? "estate"
+          : k < 0.94 ? "pickup"
+          : "coupe";
         plans.push({ model, block: b, i, n });
       }
     });
     const count = (m: string) => plans.filter((v) => v.model === m).length;
     const fleets = new Map<string, Fleet>();
-    for (const model of ["car_sedan", "car_hatch", "car_van", "car_taxi", "bus"]) {
+    const real = hasReal("cars");
+    this.lamps.clear();
+    const realMats = (role: string) => {
+      const m = realMat("cars", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "traffic") as THREE.MeshStandardMaterial;
+      if (m.userData.night) this.lamps.add(m);
+      return m;
+    };
+    for (const model of Object.keys(KIT)) {
       const n = count(model);
       if (!n) continue;
-      const paint: Paint = { body: model === "car_taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : CAR_PAINT };
-      fleets.set(model, new Fleet(model, n, paint, this.mat, r));
+      const colours = model === "taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : real ? CAR_PAINTS : CAR_PAINT;
+      if (real) fleets.set(model, new Fleet(realPiece("cars", model), n, { carpaint: colours }, realMats, r));
+      else fleets.set(model, new Fleet(piece(KIT[model]).parts, n, { body: colours }, this.mat, r));
     }
     const slots = new Map<string, number>();
     // The lane next to the block: a quarter of the way across the carriageway.
@@ -162,7 +184,7 @@ export class Traffic {
     }
 
     const walkers = p.blocks.length * PEOPLE[tier];
-    const people = new Fleet("person", walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
+    const people = new Fleet(piece("person").parts, walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
     const walks = p.blocks.flatMap((b) => [
       blockLoop(b.x, b.z, BLOCK_X / 2 + 0.5, BLOCK_Z / 2 + 0.5, 0.8),
       blockLoop(b.x, b.z, BLOCK_X / 2 + 1.25, BLOCK_Z / 2 + 1.25, 1.2),
@@ -193,7 +215,7 @@ export class Traffic {
 
   /** 0 by day, 1 at night. */
   setNight(night: number) {
-    for (const m of this.mats.values()) {
+    for (const m of [...this.mats.values(), ...this.lamps]) {
       if (m.userData.night) m.emissiveIntensity = m.userData.night * Math.max(night, m.userData.day ?? 0);
     }
   }

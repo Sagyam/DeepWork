@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import lib  # noqa: E402
 
-MODELS = {"a1": "a1_apartment", "c1": "c1_farmhouse", "c3": "c3_modern", "s1": "s1_shop"}
+MODELS = {"a1": "a1_apartment", "c1": "c1_farmhouse", "c3": "c3_modern", "s1": "s1_shop", "cars": "vehicles"}
 
 argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 flags = {a for a in argv if a.startswith("--")}

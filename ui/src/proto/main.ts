@@ -5,6 +5,8 @@
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
+// ?props=cars shows a props model's pieces side by side instead
+// (&only=hatch,suv picks and orders them, &gap=3.4 the spacing, &ry the turn).
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
@@ -15,12 +17,13 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { loadKit } from "../city/kit";
 import { building, fitReal, KERB } from "../city/models";
 import { LOT, PAVEMENT, type Spec } from "../city/plan";
-import { DEFS, interiorUniforms, loadReal, setRealEnv } from "../city/real";
+import { DEFS, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv } from "../city/real";
 
 const q = new URLSearchParams(location.search);
 const hour = Number(q.get("hour") ?? 15);
 const view = q.get("view") ?? "hero";
-const id = q.get("model") ?? "a1";
+const props = q.get("props");
+const id = props ?? q.get("model") ?? "a1";
 const count = Number(q.get("count") ?? 1);
 const stress = count > 1;
 const SPACING = LOT + 8;
@@ -38,7 +41,7 @@ el.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.5, 4000);
-const H = DEFS[id] ? DEFS[id].height(DEFS[id].floors(Number(q.get("floors") ?? 7))) : 27; // to frame the views
+const H = DEFS[id] ? DEFS[id].height(DEFS[id].floors(Number(q.get("floors") ?? 7))) : props ? 6 : 27; // to frame the views
 const k = H / 27;
 const VIEWS: Record<string, [number[], number[], number?]> = {
   hero: [[25 * Math.max(k, 0.55), 4 * k + 1.2, 30 * Math.max(k, 0.55)], [0, H / 2, 0], 50],
@@ -48,6 +51,11 @@ const VIEWS: Record<string, [number[], number[], number?]> = {
   back: [[-22 * Math.max(k, 0.55), 6 * k + 1, -21 * Math.max(k, 0.55)], [0, H / 2, 0], 46],
   street: [[-6, 1.7, 12], [2, 3.5 * k + 1, 6], 55],
 };
+if (props) {
+  VIEWS.hero = [[4, 5.5, 16], [0, 1.0, 0], 50];
+  VIEWS.close = [[3.5, 2.2, 7.5], [0, 0.9, 0], 45];
+  VIEWS.low = [[-6, 1.4, 9], [0, 1.2, 0], 55];
+}
 if (stress) VIEWS.city = [[extent * 0.75 + 40, extent * 0.6 + 35, extent * 0.9 + 50], [0, 6, 0], 40];
 const [pos, target, fov] = VIEWS[view] ?? VIEWS.hero;
 camera.position.fromArray(pos);
@@ -194,7 +202,39 @@ function grid(model: THREE.Object3D) {
   }
 }
 
-Promise.all([loadKit(), loadReal([id])]).then(() => {
+/** A props model's pieces in a row along x on an open street, each in its own paint. */
+function lineup() {
+  const only = q.get("only")?.split(",") ?? realPieces(id);
+  const gap = Number(q.get("gap") ?? 3.4);
+  const ry = Number(q.get("ry") ?? -0.45);
+  const g = new THREE.Group();
+  const asphalt = new THREE.Mesh(metres(new THREE.PlaneGeometry(400, 400).rotateX(-Math.PI / 2)), new THREE.MeshStandardMaterial({ map: ground("asphalt_col", 6), normalMap: ground("asphalt_nrm", 6, false), roughness: 0.9 }));
+  asphalt.receiveShadow = true;
+  g.add(asphalt);
+  only.forEach((name, i) => {
+    const x = (i - (only.length - 1) / 2) * gap;
+    const paint = { wall: i * 5 + Number(q.get("seed") ?? 0), accent: i, roof: i, signs: i };
+    for (const { role, geo } of realPiece(id, name)) {
+      const debugAo = q.get("debug") === "ao";
+      const m = new THREE.Mesh(geo, debugAo ? new THREE.MeshBasicMaterial({ aoMap: realAo(id)!, color: 0xffffff }) : realMat(id, role, paint, 0, night ? "traffic" : ""));
+      const mm = m.material as THREE.MeshStandardMaterial;
+      if (night && mm.userData.night) mm.emissiveIntensity = mm.userData.night;
+      m.position.set(x, 0.01, 0);
+      m.rotation.y = ry;
+      m.castShadow = q.get("shadow") !== "0";
+      m.receiveShadow = true;
+      g.add(m);
+    }
+  });
+  scene.add(g);
+}
+
+Promise.all([loadKit(), loadReal([id, ...PROPS])]).then(() => {
+  if (props) {
+    lineup();
+    frames = 0;
+    return;
+  }
   if (!DEFS[id]) throw new Error(`no model ${id}`);
   const { kind, style } = DEFS[id];
   const floors = Number(q.get("floors") ?? 7);

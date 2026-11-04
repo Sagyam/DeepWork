@@ -894,11 +894,11 @@ class Model:
         self.at.append(Vector(at))
         WID[0] = 0
 
-    def export(self, out, bake=True, size=2048, samples=96):
+    def export(self, out, bake=True, size=2048, samples=96, smooth=0.0):
         ob, co = self.m.finish(), self.cut.finish()
         tris = sum(len(p.vertices) - 2 for p in ob.data.polygons) + sum(len(p.vertices) - 2 for p in co.data.polygons)
         print(self.id, "triangles", tris, "pieces", len(self.names))
-        bake_ao(ob, os.path.join(out, f"{self.id}_ao.png"), bake, size, samples)
+        bake_ao(ob, os.path.join(out, f"{self.id}_ao.png"), bake, size, samples, smooth)
         parts = split(ob, self.names, self.at, "") + split(co, self.names, self.at, "_cut")
         if self.decal.bm.faces:
             parts += split(self.decal.finish(), self.names, self.at, "_decal")
@@ -933,8 +933,23 @@ def split(ob, names, at, suffix):
     return out
 
 
-def bake_ao(ob, path, bake=True, size=2048, samples=96):
-    """Lightmap UVs (UV1, "Light") over the whole model, and AO baked in Cycles onto them."""
+def blur(px, size, sigma):
+    """Separable Gaussian blur of a (size x size) array; islands' baked margins keep it from bleeding."""
+    r = int(sigma * 3)
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    a = px.reshape(size, size)
+    a = np.apply_along_axis(lambda v: np.convolve(np.pad(v, r, mode="edge"), k, "valid"), 0, a)
+    a = np.apply_along_axis(lambda v: np.convolve(np.pad(v, r, mode="edge"), k, "valid"), 1, a)
+    return a.ravel()
+
+
+def bake_ao(ob, path, bake=True, size=2048, samples=96, smooth=0.0):
+    """Lightmap UVs (UV1, "Light") over the whole model, and AO baked in Cycles onto them.
+
+    `smooth` blurs the bake (sigma in pixels) to take out sampling noise,
+    which shows on glossy props lit mostly by the sky.
+    """
     me = ob.data
     light = me.uv_layers.new(name="Light")
     me.uv_layers.active = light
@@ -972,6 +987,11 @@ def bake_ao(ob, path, bake=True, size=2048, samples=96):
     ob.select_set(True)
     sc.render.bake.margin = 8
     bpy.ops.object.bake(type="AO", use_clear=True)
+    if smooth:
+        px = np.array(img.pixels[:], np.float32).reshape(-1, 4)
+        v = blur(px[:, 0], size, smooth)
+        px[:, 0] = px[:, 1] = px[:, 2] = v
+        img.pixels.foreach_set(px.ravel())
     img.filepath_raw = path
     img.file_format = "PNG"
     img.save()
