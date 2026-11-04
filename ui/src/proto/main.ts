@@ -7,6 +7,8 @@
 // mesh each with &draw=separate).
 // ?props=cars shows a props model's pieces side by side instead
 // (&only=hatch,suv picks and orders them, &gap=3.4 the spacing, &ry the turn).
+// &cam=x,y,z&at=x,y,z&fov=45 places the camera anywhere; &signal=s fixes the
+// traffic signals' cycle at s seconds.
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
@@ -15,9 +17,9 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { loadKit } from "../city/kit";
-import { building, fitReal, KERB } from "../city/models";
+import { building, fitReal, furniture, KERB, Parts } from "../city/models";
 import { LOT, PAVEMENT, type Spec } from "../city/plan";
-import { DEFS, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv } from "../city/real";
+import { DEFS, hasReal, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
 
 const q = new URLSearchParams(location.search);
 const hour = Number(q.get("hour") ?? 15);
@@ -58,7 +60,8 @@ if (props) {
   VIEWS.far = [[6, 7, 38], [0, 4.5, 0], 50];
 }
 if (stress) VIEWS.city = [[extent * 0.75 + 40, extent * 0.6 + 35, extent * 0.9 + 50], [0, 6, 0], 40];
-const [pos, target, fov] = VIEWS[view] ?? VIEWS.hero;
+if (q.has("cam")) VIEWS.custom = [q.get("cam")!.split(",").map(Number), (q.get("at") ?? "0,1,0").split(",").map(Number), Number(q.get("fov") ?? 45)];
+const [pos, target, fov] = VIEWS[q.has("cam") ? "custom" : view] ?? VIEWS.hero;
 camera.position.fromArray(pos);
 camera.fov = fov ?? 42;
 camera.updateProjectionMatrix();
@@ -159,6 +162,24 @@ function street(cz: number) {
   }
   const pole = new THREE.MeshStandardMaterial({ color: 0x232527, roughness: 0.5, metalness: 0.5 });
   const bulb = new THREE.MeshStandardMaterial({ color: 0xfff2d8, emissive: 0xffd9a0, emissiveIntensity: night ? 6 : 0.2 });
+  if (hasReal("street")) {
+    // The realistic street furniture: lamps reaching over the road, signals
+    // at the near corner, a hydrant and a bin.
+    const parts = new Parts();
+    const e = pw / 2 - 0.55;
+    furniture(parts, "lamp_led", -pw / 2 + 0.6, KERB, cz + e, 0);
+    furniture(parts, "lamp_led", pw / 2 - 0.6, KERB, cz - e, Math.PI);
+    furniture(parts, "signal_mast", e, KERB, cz + e, Math.PI / 2, undefined, "a");
+    furniture(parts, "signal_post", -e, KERB, cz - e, Math.PI, undefined, "b");
+    furniture(parts, "hydrant", 3, KERB, cz + pw / 2 - 0.4);
+    furniture(parts, "bin", pw / 2 - 0.4, KERB, cz + 4);
+    parts.into(g);
+    g.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (m?.userData?.night) m.emissiveIntensity = night ? m.userData.night : 0;
+    });
+    return g;
+  }
   for (const [x, z] of [[pw / 2 - 0.6, cz + pw / 2 - 0.6], [-pw / 2 + 0.6, cz + pw / 2 - 0.6], [pw / 2 - 0.6, cz - pw / 2 + 0.6]]) {
     const s = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 5.5, 12), pole);
     s.position.set(x, 2.75 + KERB, z);
@@ -279,6 +300,7 @@ renderer.setAnimationLoop(() => {
   const t0 = performance.now();
   renderer.info.reset();
   controls.update();
+  setSignals(Number(q.get("signal") ?? t0 / 1000), night ? 1 : 0);
   composer.render();
   if (sync) {
     const gl = renderer.getContext();

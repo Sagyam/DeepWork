@@ -14,12 +14,12 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
-import { interiorUniforms, loadReal, setRealEnv } from "./real";
+import { hasReal, interiorUniforms, loadReal, setRealEnv, setSignals } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
-import { building, fitReal, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
+import { building, fitReal, furniture, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
@@ -444,10 +444,16 @@ export class City {
       // Street lamps along the kerb, and trees between them.
       const ex = BLOCK_X / 2 + pw - 0.45;
       const ez = BLOCK_Z / 2 + pw - 0.45;
+      const real = hasReal("street");
       for (const lz of [-1, 1]) {
         for (const t of [-1, -1 / 3, 1 / 3, 1]) {
           const x = b.x + t * (BLOCK_X / 2 - 1);
           const z = b.z + lz * ez;
+          if (real) {
+            // The arm reaches out over the road.
+            furniture(parts, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
+            continue;
+          }
           parts.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
           parts.box(pole, 0.2, 0.15, 1.4, x, KERB + 4.9, z + lz * 0.6);
           parts.box(bulb, 0.5, 0.18, 0.5, x, KERB + 4.75, z + lz * 1.1);
@@ -457,6 +463,7 @@ export class City {
         }
       }
       for (const sx of [-1, 1]) tree(parts, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
+      if (real) this.streetFurniture(parts, b, p.tier);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
     // Empty lots: rough grass with survey stakes, waiting to be built on.
@@ -512,12 +519,40 @@ export class City {
     }
     parts.into(this.base);
     this.base.traverse((o) => {
-      if (o instanceof THREE.Mesh) o.castShadow = o.material !== asphalt && o.material !== walk;
+      if (o instanceof THREE.Mesh) {
+        o.castShadow = o.material !== asphalt && o.material !== walk;
+        // Realistic lamps (street lights, park lanterns) light up at night too.
+        const m = o.material as THREE.MeshStandardMaterial;
+        if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
+      }
     });
     this.scene.add(this.base);
     this.applyNight({ height: 0, emitters: [], beacons: [], night: this.lampMats, debris: 0 });
     this.traffic.build(p);
     this.fitShadows(p);
+  }
+
+  /**
+   * The realistic pavement furniture round a block: from a town on, traffic
+   * signals at its corners (mast arms over the roads running along z, posts
+   * for those along x, on opposite phases); a hydrant, litter bins and a
+   * bench; a bus stop from a city on.
+   */
+  private streetFurniture(parts: Parts, b: { x: number; z: number }, tier: number) {
+    const pw = PAVEMENT;
+    const cx = BLOCK_X / 2 + pw - 0.55;
+    const cz = BLOCK_Z / 2 + pw - 0.55;
+    const kerb = BLOCK_Z / 2 + pw - 0.4;
+    if (tier >= 1) {
+      furniture(parts, "signal_mast", b.x + cx, KERB, b.z + cz, Math.PI / 2, undefined, "a");
+      furniture(parts, "signal_mast", b.x - cx, KERB, b.z - cz, -Math.PI / 2, undefined, "a");
+      furniture(parts, "signal_post", b.x - cx, KERB, b.z + cz, 0, undefined, "b");
+      furniture(parts, "signal_post", b.x + cx, KERB, b.z - cz, Math.PI, undefined, "b");
+    }
+    furniture(parts, "hydrant", b.x, KERB, b.z + kerb, 0);
+    for (const sx of [-1, 1]) furniture(parts, "bin", b.x + sx * (BLOCK_X / 2 - 3.2), KERB, b.z - sx * kerb, sx > 0 ? 0 : Math.PI);
+    furniture(parts, "bench", b.x - 20.7, KERB, b.z + BLOCK_Z / 2 + pw - 1.3, 0);
+    if (tier >= 2) furniture(parts, "busstop", b.x + 20.7, KERB, b.z - (BLOCK_Z / 2 + pw - 1.0), Math.PI);
   }
 
   private fitShadows(p: CityPlan) {
@@ -714,6 +749,7 @@ export class City {
     this.fx.update(dt, wind);
     this.land.update(dt);
     this.traffic.update(dt);
+    setSignals(this.t, this.night);
 
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 0.8);

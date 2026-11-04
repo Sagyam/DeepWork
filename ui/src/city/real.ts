@@ -149,7 +149,7 @@ export const DEFS: Record<string, RealDef> = {
  * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
  * the kit's props.
  */
-export const PROPS = ["cars", "trees"];
+export const PROPS = ["cars", "trees", "street"];
 
 /** Loads every model there is; missing ones are left to the kit. Never throws. */
 export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<void> {
@@ -461,6 +461,30 @@ export function setRealEnv(env: THREE.Texture) {
   }
 }
 
+/** Signal lenses, by role and phase ("a" or "b": the two roads at a crossing); see setSignals. */
+const signals: { m: THREE.MeshStandardMaterial; role: string; phase: string }[] = [];
+const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, sig_green: 0x3aff8a, ped_red: 0xff3a1a, ped_white: 0xf4f0e6 };
+
+/**
+ * Runs the traffic signals: a 30 s cycle in which road "a" gets green,
+ * amber, then red while road "b" waits, and the other way round; the
+ * walk signal shows white across the road that has red. `night` (0-1)
+ * brightens the lit lenses.
+ */
+export function setSignals(t: number, night = 0) {
+  const T = 30;
+  const c = ((t % T) + T) % T;
+  const lit = (phase: string) => {
+    const k = phase === "a" ? c : (c + T / 2) % T;
+    return k < 12 ? "green" : k < 15 ? "amber" : "red";
+  };
+  for (const { m, role, phase } of signals) {
+    const state = lit(phase);
+    const on = role === "ped_white" ? state === "red" : role === "ped_red" ? state !== "red" : role === `sig_${state}`;
+    m.emissiveIntensity = on ? 2.2 + 3 * night : 0;
+  }
+}
+
 /**
  * Leaf cards: the cluster texture alpha-tested, both sides lit as the front
  * (the normals are bent out from the crown, see bendLeaves), baked AO.
@@ -609,6 +633,21 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x2a1400, 0.4, 0, { emissive: 0xffa020, emissiveIntensity: 0 });
       if (variant === "traffic") Object.assign(m.userData, { night: 1.8, day: 0.5 });
       break;
+    // Street furniture.
+    case "galv": m = w(plain(0x9a9ea2, 0.42, 0.7), 0.4); break;
+    case "hydrant": m = w(plain(0xb02a1e, 0.45, 0.15), 0.4); break;
+    case "panel": m = w(plain(0xf0f0ec, 0.5)); break;
+    case "busflag": m = w(plain(0x1d6a3c, 0.4)); break;
+    case "sig_red":
+    case "sig_amber":
+    case "sig_green":
+    case "ped_red":
+    case "ped_white": {
+      const lens = new THREE.MeshStandardMaterial({ color: new THREE.Color(LENS[role]).multiplyScalar(0.18), roughness: 0.2, emissive: LENS[role], emissiveIntensity: 0 });
+      signals.push({ m: lens, role, phase: variant || "a" });
+      m = lens;
+      break;
+    }
     // Trees and shrubs.
     case "bark": m = w(pbr("bark", [1, 2], { roughness: 0.95, normal: 1.2 })); break;
     case "birch": m = w(new THREE.MeshStandardMaterial({ map: tex("birch_col", [1, 1]), roughness: 0.8 })); break;

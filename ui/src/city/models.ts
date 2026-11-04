@@ -466,7 +466,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const bin = mat(0x2a4a34, { roughness: 0.6 });
       for (let i = 0; i < 3; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6 - i * 0.85, KERB, back + 0.7);
-      p.box(mat(0x7a4636, { roughness: 0.95 }), LOT - 0.4, 1.6, 0.25, 0, KERB, back + 0.12);
+      if (hasReal("street")) fenceRun(p, "wall_brick", half, back + 0.12, -half, back + 0.12, 1.5);
+      else p.box(mat(0x7a4636, { roughness: 0.95 }), LOT - 0.4, 1.6, 0.25, 0, KERB, back + 0.12);
       break;
     }
     case "c1": {
@@ -518,9 +519,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, -half + 0.6 + i * 0.85, KERB, yardZ - 0.6);
       p.box(mat(0x3a4048, { roughness: 0.6, metalness: 0.3 }), 1.6, 1.3, 1.1, -half + 3.0, KERB, yardZ - 0.75);
       parked(p, 2.2 + r() * 1.5, (yardZ + back) / 2 + 0.2, Math.PI / 2, s.seed + 3);
-      const wall = mat(0x7a4636, { roughness: 0.95 });
-      p.box(wall, LOT - 0.4, 1.5, 0.25, 0, KERB, back + 0.12);
-      for (const sx of [-1, 1]) p.box(wall, 0.25, 1.5, yardZ - back, sx * (half - 0.12), KERB, (yardZ + back) / 2);
+      if (hasReal("street")) {
+        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.45);
+        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.45);
+        fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.45);
+      } else {
+        const wall = mat(0x7a4636, { roughness: 0.95 });
+        p.box(wall, LOT - 0.4, 1.5, 0.25, 0, KERB, back + 0.12);
+        for (const sx of [-1, 1]) p.box(wall, 0.25, 1.5, yardZ - back, sx * (half - 0.12), KERB, (yardZ + back) / 2);
+      }
       break;
     }
   }
@@ -572,6 +579,29 @@ export function hedge(p: Parts, w: number, h: number, d: number, x: number, y: n
   for (let i = 0; i < n; i++) {
     const t = -L / 2 + (i + 0.5) * (L / n);
     for (const { role, geo } of realPiece("trees", "hedge")) p.add(realMat("trees", role, tintOf(seed), 0), geo, alongX ? x + t : x, base, alongX ? z : z + t, 0, alongX ? 0 : Math.PI / 2, 0, scale);
+  }
+}
+
+/** A piece of the realistic street furniture; `phase` ("a" / "b") picks a crossing's signal cycle. */
+export function furniture(p: Parts, name: string, x: number, y: number, z: number, ry = 0, scale?: THREE.Vector3, phase = "") {
+  for (const { role, geo } of realPiece("street", name)) p.add(realMat("street", role, tintOf(0), 0, phase), geo, x, y, z, 0, ry, 0, scale);
+}
+
+/**
+ * A fence or wall (a street piece: fence_panel, fence_rail, fence_iron,
+ * wall_brick) from (x0, z0) to (x1, z1), its 2.4 m panels stretched to fit;
+ * `h` scales its height. Its face (the piece's front) is to the right of the run.
+ */
+export function fenceRun(p: Parts, name: string, x0: number, z0: number, x1: number, z1: number, h = 1, y = KERB) {
+  const dx = x1 - x0;
+  const dz = z1 - z0;
+  const L = Math.hypot(dx, dz);
+  const n = Math.max(1, Math.round(L / 2.4));
+  const ry = Math.atan2(-dz, dx);
+  const scale = new THREE.Vector3(L / n / 2.4, h, 1);
+  for (let i = 0; i < n; i++) {
+    const t = (i + 0.5) / n;
+    furniture(p, name, x0 + dx * t, y, z0 + dz * t, ry, scale);
   }
 }
 
@@ -687,10 +717,19 @@ function yard(p: Parts, s: Spec, r: () => number) {
       tree(p, -side * (s.w / 2 + 2.0), s.d / 2 + 1.8, 0.7, s.seed + 1, KERB);
       tree(p, (r() - 0.5) * s.w, back + 2.2, 0.85, s.seed + 2, KERB);
       if (r() < 0.6) p.box(mat(0x7a5a3e), 1.6, 2.0, 1.4, -side * (half - 1.2), KERB, back + 1.2);
-      const fence = mat(0xe8e0d0, { roughness: 0.8 });
       const run = LOT / 2 + s.yard;
-      p.box(fence, LOT - 0.4, 1.1, 0.08, 0, KERB, back + 0.25);
-      for (const sx of [-1, 1]) p.box(fence, 0.08, 1.1, run, sx * half, KERB, back + run / 2 + 0.25);
+      if (hasReal("street")) {
+        // Close-board or post-and-rail round the back garden.
+        const kind = r() < 0.6 ? "fence_panel" : "fence_rail";
+        const h = kind === "fence_panel" ? 0.85 : 1;
+        fenceRun(p, kind, half, back + 0.25, -half, back + 0.25, h);
+        fenceRun(p, kind, -half, back + 0.25, -half, back + 0.25 + run, h);
+        fenceRun(p, kind, half, back + 0.25 + run, half, back + 0.25, h);
+      } else {
+        const fence = mat(0xe8e0d0, { roughness: 0.8 });
+        p.box(fence, LOT - 0.4, 1.1, 0.08, 0, KERB, back + 0.25);
+        for (const sx of [-1, 1]) p.box(fence, 0.08, 1.1, run, sx * half, KERB, back + run / 2 + 0.25);
+      }
       break;
     }
     case "shop": {
@@ -717,7 +756,8 @@ function yard(p: Parts, s: Spec, r: () => number) {
         tree(p, -s.w / 2 + 0.8, front - 1.2, 0.6, s.seed + 1, KERB);
         tree(p, s.w / 2 - 0.8, front - 1.2, 0.6, s.seed + 2, KERB);
       } else {
-        p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 0.9, 0.06, 0, KERB, front - 0.3);
+        if (hasReal("street")) fenceRun(p, "fence_iron", -half, front - 0.3, half, front - 0.3, 0.75);
+        else p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 0.9, 0.06, 0, KERB, front - 0.3);
       }
       parking(p, 0, back + 3.2, LOT - 1, 5.8, 0.8, s.seed + 5);
       break;
@@ -927,11 +967,13 @@ const PARK_ROLES: Record<string, RoleLook> = { ...ROLES, roof: { color: 0x56606e
 
 function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = KERB) {
   const scale = new THREE.Vector3(s, s, s);
+  if (name === "bench" && hasReal("street")) return furniture(p, "bench", x, y, z, ry);
   for (const { role, geo } of piece(name).parts) p.add(kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 
 /** A park lamp: a post with a lantern, lit by `bulb` at night. */
 export function lampPost(p: Parts, pole: THREE.Material, bulb: THREE.Material, x: number, z: number, h = 3.6) {
+  if (hasReal("street")) return furniture(p, "lamp_heritage", x, KERB, z);
   p.cyl(pole, 0.07, 0.1, h, x, KERB, z, 6);
   p.box(bulb, 0.36, 0.5, 0.36, x, KERB + h, z);
   p.box(pole, 0.5, 0.08, 0.5, x, KERB + h + 0.5, z);
