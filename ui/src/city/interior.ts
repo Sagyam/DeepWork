@@ -8,7 +8,7 @@
 // size in metres comes from screen derivatives, so no extra attributes.
 import * as THREE from "three";
 
-export type RoomKind = "home" | "shop" | "lobby";
+export type RoomKind = "home" | "shop" | "lobby" | "diner";
 
 export const interiorUniforms = {
   uDay: { value: 1 },
@@ -54,6 +54,91 @@ vec3 fabric(float h) {
   return c[int(h * 5.999)];
 }
 
+void hitBox(vec3 ro, vec3 rd, vec3 lo, vec3 hi, vec3 c, inout float t, inout vec3 col, inout vec3 nn) {
+  vec3 n;
+  float tb = boxHit(ro, rd, lo, hi, n);
+  if (tb > 0.0 && tb < t) { t = tb; col = c; nn = n; }
+}
+
+// A diner seen through one of its windows: a booth at the window (red vinyl
+// seats either side of a table, sometimes with customers), the aisle, the
+// counter with its stools, and the back bar against the far wall; the room
+// runs on to either side, so neighbouring windows show one long room.
+vec3 diner(vec3 ro, vec3 rd, float id, float W) {
+  float fl = -0.96, ce = fl + 2.8, depth = 4.6;
+  float x0 = -9.0, x1 = W + 9.0;
+  float tx = rd.x > 0.0 ? (x1 - ro.x) / rd.x : (x0 - ro.x) / rd.x;
+  float ty = rd.y > 0.0 ? (ce - ro.y) / rd.y : (fl - ro.y) / rd.y;
+  float tz = depth / rd.z;
+  float t = min(tx, min(ty, tz));
+  vec3 p = ro + rd * t;
+  vec3 col, nn;
+  float glow = 0.0;
+  if (t == ty && rd.y < 0.0) {
+    float ch = mod(floor(p.x / 0.3) + floor(p.z / 0.3), 2.0);
+    col = mix(vec3(0.86, 0.84, 0.8), vec3(0.07), ch);
+    nn = vec3(0.0, 1.0, 0.0);
+  } else if (t == ty) {
+    col = vec3(0.93, 0.91, 0.84);
+    // Round lights over the booths and along the counter.
+    float a = length(vec2(p.x - W * 0.5, p.z - 0.9));
+    float b = length(vec2(fract(p.x / 1.4) * 1.4 - 0.7, p.z - 3.0));
+    glow = smoothstep(0.24, 0.1, min(a, b));
+    nn = vec3(0.0, -1.0, 0.0);
+  } else if (t == tz) {
+    float y = p.y - fl;
+    if (y < 1.0) col = vec3(0.62, 0.64, 0.66) * (0.85 + 0.15 * step(0.04, fract(p.x / 0.6)));
+    else if (y < 1.65) col = mix(vec3(0.32, 0.62, 0.6), vec3(0.94), step(0.1, min(fract(p.x / 0.15), fract(y / 0.15))) * 0.5);
+    else if (y < 2.25) {
+      // Menu boards and a pie case.
+      col = vec3(0.1, 0.09, 0.08);
+      if (fract(y / 0.09) < 0.35 && fract(p.x / 1.6) < 0.8 && fract(p.x / 1.6) > 0.08) col = vec3(0.8, 0.76, 0.62);
+    } else col = vec3(0.68, 0.7, 0.72);
+    nn = vec3(0.0, 0.0, -1.0);
+  } else {
+    col = vec3(0.9, 0.86, 0.76);
+    nn = vec3(1.0, 0.0, 0.0);
+  }
+  vec3 vinyl = vec3(0.6, 0.07, 0.08);
+  vec3 chrome = vec3(0.75, 0.77, 0.8);
+  // The booth: backs on the mullions, seats, the table and its pedestal.
+  hitBox(ro, rd, vec3(-0.07, fl, 0.02), vec3(0.07, fl + 1.15, 1.3), vinyl, t, col, nn);
+  hitBox(ro, rd, vec3(W - 0.07, fl, 0.02), vec3(W + 0.07, fl + 1.15, 1.3), vinyl, t, col, nn);
+  hitBox(ro, rd, vec3(0.07, fl, 0.02), vec3(0.5, fl + 0.45, 1.3), vinyl * 1.15, t, col, nn);
+  hitBox(ro, rd, vec3(W - 0.5, fl, 0.02), vec3(W - 0.07, fl + 0.45, 1.3), vinyl * 1.15, t, col, nn);
+  hitBox(ro, rd, vec3(0.55, fl + 0.7, 0.02), vec3(W - 0.55, fl + 0.75, 0.75), vec3(0.88, 0.86, 0.8), t, col, nn);
+  hitBox(ro, rd, vec3(W * 0.5 - 0.05, fl, 0.35), vec3(W * 0.5 + 0.05, fl + 0.7, 0.45), chrome, t, col, nn);
+  // Customers, some booths.
+  vec3 skin = mix(vec3(0.85, 0.66, 0.52), vec3(0.42, 0.28, 0.2), hash(id + 51.0));
+  if (hash(id + 47.0) < 0.6) {
+    hitBox(ro, rd, vec3(0.14, fl + 0.45, 0.35), vec3(0.42, fl + 1.02, 0.78), fabric(hash(id + 53.0)), t, col, nn);
+    hitBox(ro, rd, vec3(0.2, fl + 1.05, 0.46), vec3(0.38, fl + 1.3, 0.66), skin, t, col, nn);
+  }
+  if (hash(id + 59.0) < 0.45) {
+    vec3 skin2 = mix(vec3(0.85, 0.66, 0.52), vec3(0.42, 0.28, 0.2), hash(id + 61.0));
+    hitBox(ro, rd, vec3(W - 0.42, fl + 0.45, 0.35), vec3(W - 0.14, fl + 1.02, 0.78), fabric(hash(id + 67.0)), t, col, nn);
+    hitBox(ro, rd, vec3(W - 0.38, fl + 1.05, 0.46), vec3(W - 0.2, fl + 1.3, 0.66), skin2, t, col, nn);
+  }
+  // The counter, its formica top, and stools in front.
+  hitBox(ro, rd, vec3(x0, fl, 2.8), vec3(x1, fl + 0.98, 3.35), chrome * 0.9, t, col, nn);
+  hitBox(ro, rd, vec3(x0, fl + 0.98, 2.72), vec3(x1, fl + 1.03, 3.38), vec3(0.85, 0.2, 0.2), t, col, nn);
+  float ts = (2.45 - ro.z) / rd.z;
+  float sx = (floor((ro.x + rd.x * ts) / 0.7) + 0.5) * 0.7;
+  for (int i = -1; i <= 1; i++) {
+    float cx = sx + float(i) * 0.7;
+    hitBox(ro, rd, vec3(cx - 0.18, fl + 0.68, 2.28), vec3(cx + 0.18, fl + 0.76, 2.62), vinyl, t, col, nn);
+    hitBox(ro, rd, vec3(cx - 0.03, fl, 2.42), vec3(cx + 0.03, fl + 0.68, 2.48), chrome, t, col, nn);
+  }
+  p = ro + rd * t;
+  float shade = abs(nn.y) > 0.5 ? (nn.y > 0.0 ? 1.0 : 0.8) : abs(nn.x) > 0.5 ? 0.72 : 0.88;
+  // Bright by day and lit all night, unless it burnt.
+  float fall = mix(1.0, 0.55, clamp(p.z / depth, 0.0, 1.0));
+  bool lit = hash(id + 7.0) >= uBurn;
+  vec3 light = vec3(0.62, 0.61, 0.58) * uDay * fall + (lit ? vec3(1.0, 0.9, 0.76) * 0.75 * uNight : vec3(0.0));
+  vec3 room = col * shade * light + (lit ? vec3(1.6, 1.45, 1.2) * glow * (0.4 + 0.6 * uNight) : vec3(0.0));
+  return room * mix(1.0, 0.1, uBurn);
+}
+
 vec3 interior() {
   float id = floor(vPane.x + 1e-4);
   float lu = vPane.x - id;
@@ -69,6 +154,7 @@ vec3 interior() {
   vec3 ro = vec3(lu * W, lv * H, 0.0);
   vec3 rd = vec3(dot(V, T), V.y, -dot(V, N));
   rd.z = max(rd.z, 0.05);
+  if (uKind == 3) return diner(ro, rd, id, W);
 
   bool shop = uKind == 1;
   float r1 = hash(id), r2 = hash(id + 17.0), r3 = hash(id + 41.0), r4 = hash(id + 73.0);
@@ -179,7 +265,7 @@ export function glass(kind: RoomKind, burn = 0): THREE.MeshPhysicalMaterial {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDay = interiorUniforms.uDay;
     sh.uniforms.uNight = interiorUniforms.uNight;
-    sh.uniforms.uKind = { value: kind === "home" ? 0 : kind === "shop" ? 1 : 2 };
+    sh.uniforms.uKind = { value: ["home", "shop", "lobby", "diner"].indexOf(kind) };
     sh.uniforms.uBurn = { value: burn };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying vec2 vPane;")

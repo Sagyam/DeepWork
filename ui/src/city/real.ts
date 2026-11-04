@@ -62,6 +62,7 @@ const C4_TOP = 3.35;
 const C4_RIDGE = 7.8;
 const S1_G = 4.45;
 const S1_FL = 3.3;
+const S3_TOP = 3.36;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -158,6 +159,22 @@ export const DEFS: Record<string, RealDef> = {
     height: (floors) => S1_G + (floors - 1) * S1_FL + 2.2,
     smoke: (floors) => new THREE.Vector3(-4.1, S1_G + (floors - 1) * S1_FL + 2.9, -1.6),
     debris: 0x8a4e3c,
+  },
+  s3: {
+    id: "s3",
+    kind: "shop",
+    style: "diner",
+    // The body and the kitchen behind, eaves to eaves; the pylon stands in front, on the forecourt.
+    w: 14.2,
+    d: 10.4,
+    front: 3.4,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: S3_TOP }] : [])],
+    top: () => S3_TOP,
+    height: () => 5.45,
+    // The kitchen's exhaust fan.
+    smoke: () => new THREE.Vector3(-1.2, 4.05, -3.4),
+    debris: 0xb4b8bc,
   },
 };
 
@@ -435,6 +452,44 @@ function ghosts(row: number): THREE.Texture {
   return t;
 }
 
+const DINERS = ["STARLITE DINER", "MOONBEAM DINER", "SILVER SPOON", "PARKWAY DINER", "NIGHT OWL DINER", "LUCKY 7 DINER", "COMET DINER", "SUNRISE DINER"];
+
+let dinerCanvas: HTMLCanvasElement | null = null;
+
+/** Diners' names for the frieze, eight rows of 2048 x 128: polished letters on clear, a diner shows one row. */
+function dinerNames(row: number): THREE.Texture {
+  if (!dinerCanvas) {
+    const c = (dinerCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "italic 900 100px 'Arial Black', Impact, 'Helvetica Neue', sans-serif";
+    DINERS.forEach((name, i) => {
+      const y = i * 128 + 66;
+      const text = name.split("").join(String.fromCharCode(8202));
+      // A dark edge under the letters, then the polished face, lit from above.
+      g.fillStyle = "rgba(20,20,22,1)";
+      g.fillText(text, 1028, y + 5, 1900);
+      const grad = g.createLinearGradient(0, y - 46, 0, y + 46);
+      grad.addColorStop(0, "#ffffff");
+      grad.addColorStop(0.48, "#d8dce0");
+      grad.addColorStop(0.52, "#9aa0a8");
+      grad.addColorStop(1, "#e8ecf0");
+      g.fillStyle = grad;
+      g.fillText(text, 1024, y, 1900);
+    });
+  }
+  const t = new THREE.CanvasTexture(dinerCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 /** Per-building choices: paint colours and the like. Indexes wrap. */
 export interface Paint {
   /** Main walls: brick tint or siding paint. */
@@ -467,6 +522,10 @@ const SHAKES = [0xd8b090, 0xc4c0b8, 0x8a7060, 0xc89078, 0x84807a];
 const TRIMS = [0x3a2a20, 0xeeeae2, 0x1e1e1e, 0xe4d8bc, 0x7a2a22, 0x2e4234];
 /** Front doors and deck chairs: red, mustard, teal, navy, orange, oiled wood. */
 const BRIGHTS = [0xa02a22, 0xd09a2a, 0x2a6a6a, 0x24344e, 0xc8642a, 0x8a5a36];
+/** S3's porcelain enamel: red, turquoise, royal blue, maroon, green, black. */
+const ENAMELS = [0xa3202a, 0x1d8a88, 0x234f9c, 0x6a1c2a, 0x2a6e48, 0x1e1e20];
+/** Neon: red, pink, blue, green, amber, white. */
+const NEONS = [0xff2a1e, 0xff3c9a, 0x2a8cff, 0x30ff7a, 0xffa21e, 0xfff0e0];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -474,7 +533,7 @@ export const CAR_PAINTS = [0xeceae6, 0x16181b, 0xa9adb1, 0x5c6066, 0xeceae6, 0x1
 
 const cache = new Map<string, THREE.Material>();
 /** Glass and lamps, which follow the time of day (see City.light). */
-const glassMats = new Set<THREE.MeshPhysicalMaterial>();
+const glassMats = new Set<THREE.MeshStandardMaterial>();
 let skyEnv: THREE.Texture | null = null;
 
 /** The sky the realistic glass reflects; set by the scene when the light changes. */
@@ -555,7 +614,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "carpaint", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -605,6 +664,44 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "timber": m = w(plain(pick(TRIMS, paint.accent), 0.6)); break;
     case "chair": m = w(plain(pick(BRIGHTS, paint.accent + paint.wall + 2), 0.55)); break;
     case "logend": m = w(plain(0xc8a478, 0.9)); break;
+    case "stainless":
+    case "fluted": {
+      // Polished metal shows what it reflects: the sky, like the glass.
+      const steel = role === "fluted" ? pbr("fluted", [1, 0.4], { rough: true, metalness: 1 }) : plain(0xd8dce0, 0.22, 1);
+      if (skyEnv) steel.envMap = skyEnv;
+      glassMats.add(steel);
+      m = w(steel, 0.3);
+      break;
+    }
+    case "enamel": m = w(plain(pick(ENAMELS, paint.accent), 0.25), 0.3); break;
+    case "cream": m = w(plain(0xf0e9d8, 0.3), 0.3); break;
+    case "glassblock": {
+      const gb = pbr("glassblock", [0.8, 0.8], { roughness: 0.1 });
+      gb.emissive.setHex(0xffe2b8);
+      gb.emissiveMap = tex("glassblock_col", [0.8, 0.8]);
+      gb.emissiveIntensity = 0;
+      if (damage < 2) gb.userData.night = 0.7;
+      m = w(gb);
+      break;
+    }
+    case "neon":
+    case "neon2": {
+      // Glass tubes in their colour by day; lit at night (bloom does the glow).
+      const c = pick(NEONS, paint.signs + (role === "neon2" ? 2 : 0));
+      m = plain(new THREE.Color(c).multiplyScalar(0.55).getHex(), 0.2, 0, { emissive: c, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3.5;
+      break;
+    }
+    case "bulb":
+      m = plain(0xfff2d8, 0.2, 0, { emissive: 0xffd890, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
+    case "dinername": {
+      const t = dinerNames(paint.signs);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.25, metalness: 0.6, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.45;
+      break;
+    }
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
     case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
     case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1 }); break;
@@ -706,6 +803,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room("lobby"); break;
+    case "dinerglass": m = room("diner"); break;
     default: m = plain(0xff00ff);
   }
   if (damage && !role.endsWith("glass")) (m as THREE.MeshStandardMaterial).color.multiplyScalar(shade);
