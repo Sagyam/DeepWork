@@ -14,11 +14,12 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
+import { interiorUniforms, loadReal, setRealEnv } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
-import { building, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
+import { building, fitReal, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
@@ -159,7 +160,7 @@ export class City {
   }
 
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {
-    await loadKit();
+    await Promise.all([loadKit(), loadReal()]);
     return new City(el, story);
   }
 
@@ -221,6 +222,7 @@ export class City {
   }
 
   private make(s: Spec | SiteSpec): Entry {
+    s = fitReal(s);
     let e: Entry;
     if ("progress" in s) {
       const m = site(s);
@@ -589,6 +591,39 @@ export class City {
     this.bloom.threshold = 0.9 - d.night * 0.1;
     for (const e of this.entries.values()) this.applyNight(e.info);
     for (const m of this.lampMats) m.emissiveIntensity = d.night * (m.userData.night ?? 1);
+    interiorUniforms.uDay.value = d.day;
+    interiorUniforms.uNight.value = d.night;
+    this.skyEnv(d.sun, d.night);
+  }
+
+  private envAt: THREE.Vector3 | null = null;
+  private envTarget: THREE.WebGLRenderTarget | null = null;
+
+  /** What the realistic glass reflects: this sky without its sun disc, redrawn when the sun has moved. */
+  private skyEnv(sun: THREE.Vector3, night: number) {
+    if (this.envAt && this.envAt.angleTo(sun) < 0.05) return;
+    this.envAt = sun.clone();
+    const scene = new THREE.Scene();
+    const sky = new Sky();
+    sky.scale.setScalar(1000);
+    const u = sky.material.uniforms;
+    for (const k of ["turbidity", "rayleigh", "mieCoefficient"] as const) u[k].value = this.sky.material.uniforms[k].value;
+    u.mieDirectionalG.value = 0.6;
+    u.sunPosition.value.copy(sun);
+    u.showSunDisc.value = 0;
+    scene.add(sky);
+    // A dull ground below the horizon, so glass does not show the sky's underside.
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(900, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3a3c3e).lerp(new THREE.Color(0x050608), night) }));
+    ground.position.y = -2;
+    scene.add(ground);
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    const target = pmrem.fromScene(scene, 0.02);
+    pmrem.dispose();
+    sky.material.dispose();
+    sky.geometry.dispose();
+    setRealEnv(target.texture);
+    this.envTarget?.dispose();
+    this.envTarget = target;
   }
 
   private applyNight(info: ModelInfo) {

@@ -8,7 +8,7 @@
     "test": "bun test",
     "tauri": "tauri",
     "kit": "blender -b --factory-startup -P blender/city_kit.py -- public/city-kit.glb",
-    "proto": "blender -b --factory-startup -P blender/proto_apartment.py -- proto"
+    "models": "blender -b --factory-startup -P blender/real/build.py -- public/models"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

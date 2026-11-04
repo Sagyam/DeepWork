@@ -44,6 +44,22 @@ Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
 `surrender`, `ruins`; `&hour=16` fixes the time of day. In the console,
 `city.demo("collapse" | "build" | "damage")` plays one transition.
 
+The realistic models (`docs/models.md`) are built with Blender into the
+git-ignored `ui/public/models/` (~25 MB); without them the app draws the
+low-poly kit instead:
+
+```sh
+cd ui
+bun run models               # every model, ~20 s; or: bun run models -- public/models c1 --no-tex
+# then http://localhost:5173/proto.html?model=c1&view=hero&hour=15
+```
+
+The viewer shows one model on its lot with the app's own code: `model=a1|c1`,
+`floors`, `seed` (paint), `damage=0|1|2`, `view=hero|city|detail|roof|back|street`,
+`hour`; `&count=N` is the instanced stress test. Until models are downloaded on
+first run, a local `tauri build` embeds whatever `bun run models` produced and
+CI builds ship without them.
+
 ## Install
 
 From a release, on any supported distribution:

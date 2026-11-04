@@ -1,12 +1,15 @@
 # Realistic city: models plan
 
 The city is moving from the low-poly kit (`ui/blender/city_kit.py`) to
-realistic models, one building at a time. The first one is done as a
-prototype: a six-storey pre-war brick apartment block over two shops
-(`ui/blender/proto_apartment.py`, viewer `ui/proto.html`, `bun run proto`
-then `/proto.html?view=hero` in the dev server). This file lists every
-model the city needs, what each costs to draw, and the order to build
-them in. Go through it section by section; tick or strike as decisions land.
+realistic models, one building at a time. Models live in `ui/blender/real/`
+(one module per model on a shared `lib.py`; `bun run models` writes the
+git-ignored `ui/public/models/`), load in the app through
+`ui/src/city/real.ts`, and replace the kit style they stand for; any model
+that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
+dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
+brick block, and C1, the clapboard farmhouse. This file lists every model
+the city needs, what each costs to draw, and the order to build them in. Go
+through it section by section; tick or strike as decisions land.
 
 ## How many buildings a city has
 
@@ -116,11 +119,20 @@ harness was a Playwright script driving `/usr/bin/chromium --headless=new
 
 ## What is reusable from the prototype
 
-Already written, used by every model after this one:
+Already written (`ui/blender/real/lib.py`, `ui/src/city/real.ts`), used by
+every model after this one:
 
 - Texture generators (numpy, seamless, with normal maps): brick, limestone,
   rusticated ashlar, granite, bitumen roof, wood staves, iron railing,
-  grating, awning canvas, paving, asphalt, grime.
+  grating, awning canvas, paving, asphalt, grime; with C1, painted
+  clapboard, three-tab asphalt shingles and louvred shutters (near-white or
+  grey, tinted per building in the app).
+- The piece pipeline: a model is drawn as a reference stack (ground storey,
+  storeys, roof, extras such as a fence panel) so the AO bake sees each
+  piece's neighbours, then split into one glTF node per piece with its base
+  at the origin; one lightmap atlas per model. Window ids restart per piece
+  and the app shifts them per storey and building, so stacked storeys get
+  different rooms and lights.
 - Geometry helpers: walls with openings and reveals, double-hung sash and
   French windows, sills, lintels with keystones, pediment hoods, sweeps for
   cornices, string courses and copings, dentils and modillions, quoins,
@@ -128,9 +140,12 @@ Already written, used by every model after this one:
   shopfronts with stallriser, transom and sign fascia, awnings, recessed
   entrances with canopy, water tank, condensers, chimneys.
 - AO baked in Cycles on lightmap UVs.
-- Viewer materials: PBR with weathering (rain streaks, splash, corner dirt),
-  window glass that reflects the sky and shows a room behind it (walls,
-  floor, furniture, curtains or blinds; lit at night), shop interiors.
+- App materials (`real.ts`): PBR with weathering (rain streaks, splash,
+  corner dirt), window glass that reflects the sky and shows a room behind
+  it (walls, floor, furniture, curtains or blinds; lit at night; darkened and
+  put out by damage), shop interiors, shop signs from an atlas of eight.
+- Per-building variation by parameters: brick tint, shopfront colour and
+  sign pair (A1); siding, shutter and door, and roof colours (C1).
 
 ## Decisions (2026-11-03)
 
@@ -153,6 +168,25 @@ Already written, used by every model after this one:
   "Downloading the models").
 - **Optimisation comes last:** LODs, instancing, pausing on inactivity, a
   frame cap, camera limits, presets and compression are one phase at the end.
+
+## Decisions (2026-11-04)
+
+- **One model per session**, Hamlet first: the kinds a hamlet builds
+  (cottages and shops) before anything else. Order below under "Suggested
+  order".
+- **A model takes over its whole kit style** (A1 every classic apartment,
+  C1 every classic cottage) until its siblings exist to take their own
+  variants; one realistic look beats a mix of realistic and low-poly ones
+  of the same kind.
+- **Real-world sizes on today's 16 m lots:** each model has its own
+  footprint and stand-back from the street (`DEFS` in `real.ts`); the
+  plan's sizes still pick the floor count. A1 is 14 x 12 m and stands 1 m
+  back on a paved lot; C1 is 10 x 11.8 m with its porch, 2 m back, behind a
+  picket fence, with a drive. Lots get resized with the master plan.
+- **The app's lighting stays as it is** for now. It is tuned for the flat
+  kit (strong hemisphere light), which makes the realistic models a little
+  flatter than in the viewer; lowering their environment light changed
+  nothing visible. Retune when the surroundings go realistic.
 
 ## Rules for every model
 
@@ -202,7 +236,7 @@ P2 is variety, so one kind can fill a city.
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
-| C1 | Clapboard farmhouse | Gable roof, painted weatherboard, porch with posts, brick chimney, picket fence | cottage classic (gable) | new: timber siding, shingles | 20% | P1 |
+| C1 | Clapboard farmhouse | Gable roof, painted weatherboard, porch with posts, brick chimney, picket fence | cottage classic (gable) | **done** (2026-11-04): I-house, 3 bays, shutters, full porch, lean-to; 7.3 k triangles | 20% | P1 |
 | C2 | Brick cottage | Hip roof in slate, bay window, stone sills, hedged garden | cottage classic (hip) | brick, stone | 10% | P1 |
 | C3 | Modern house | Flat roofs, timber and render, big glazing, garage | cottage modern | new: render, glazing | 15% | P1 |
 | C4 | A-frame cabin | Steep shingle roof to the ground, glazed gable, deck | cottage A-frame | timber | 10% | P1 |
@@ -226,7 +260,7 @@ P2 is variety, so one kind can fill a city.
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
-| A1 | Pre-war brick block | Six storeys over shops, fire escape, water tank: **the prototype** | apartment classic (walk-up) | done | done | P1 |
+| A1 | Pre-war brick block | Six storeys over shops, fire escape, water tank: **the prototype** | apartment classic (walk-up) | **done, in the app** (2026-11-04): pieces ground / first / floor a, b / last / roof, 3-7 storeys | done | P1 |
 | A2 | Brownstone row | Three townhouses, stoops with iron railings, bay fronts | apartment townhouse | new: brownstone; brick | 12% | P1 |
 | A3 | Balcony block | Rendered mid-century block, rows of balconies with glass rails | apartment classic (balconies) | render, glass | 12% | P1 |
 | A4 | Art deco apartments | Buff brick, corner windows, deco spandrels and entrance | | brick, stone | 12% | P2 |
@@ -358,21 +392,26 @@ above; none of it changes how models look.
 
 ## Suggested order
 
-1. Integration on the prototype: split it into pieces, add per-building
+1. ~~Integration on the prototype: split it into pieces, add per-building
    variation, and load it in the real app next to the low-poly kit (drawn
-   the simple way for now).
-2. Progression v2 and the master plan (`docs/progression.md`): coins and
+   the simple way for now).~~ Done 2026-11-04, with C1.
+2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
+   farmhouse~~, then S1 main-street shop (takes over shop classic; reuses
+   A1's shopfronts), C3 modern house, C4 A-frame cabin, S3 diner, S4 brick
+   factory, then C2 brick cottage and S2 corner café for variety. After
+   that the hamlet has no low-poly buildings left.
+3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
    needed where, so it comes before most of them.
-3. Download on first run, as soon as models leave the binary: pack,
+4. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
-4. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
-5. The first civic landmarks (L5-L7) on their reserved ground.
-6. The rest of P1, then building states.
-7. Surroundings: streets, trees and terrain first, as they fill the most
+5. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
+6. The first civic landmarks (L5-L7) on their reserved ground.
+7. The rest of P1, then building states.
+8. Surroundings: streets, trees and terrain first, as they fill the most
    screen.
-8. P2 variety.
-9. Last: performance.
+9. P2 variety.
+10. Last: performance.
 
 ## Open questions
 

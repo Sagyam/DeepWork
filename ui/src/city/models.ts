@@ -1,11 +1,13 @@
 // City theme, step 2: 3D models for the plan's specs. Buildings and trees
 // are stacked from the Blender kit (kit.ts) with materials picked per
-// building and damage; lots, wreckage, rubble and the construction site are
-// built here from boxes. Geometry is merged per material to keep draw calls low.
+// building and damage, or from a realistic model (real.ts) for the styles
+// one replaces; lots, wreckage, rubble and the construction site are built
+// here from boxes. Geometry is merged per material to keep draw calls low.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
-import { BLOCK_X, BLOCK_Z, LOT, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
+import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
+import { DEFS, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -67,12 +69,17 @@ export class Parts {
    */
   constructor(private tint?: THREE.Material) {}
 
-  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, cells?: [number, number]) {
+  /**
+   * `cells` moves window panes to another cell of the kit's atlas; `shift`
+   * adds to UV x, which for realistic glass gives its windows new ids (other
+   * rooms, curtains and lights).
+   */
+  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, cells?: [number, number], shift = 0) {
     this.q.setFromEuler(this.e.set(rx, ry, rz));
     this.m.compose(new THREE.Vector3(x, y, z), this.q, scale ?? new THREE.Vector3(1, 1, 1));
     const geo = g.index ? g.toNonIndexed() : g.clone();
     geo.applyMatrix4(this.m);
-    for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv", "color"].includes(k)) geo.deleteAttribute(k);
+    for (const k of Object.keys(geo.attributes)) if (!["position", "normal", "uv", "uv1", "color"].includes(k)) geo.deleteAttribute(k);
     if (this.tint) {
       const c = (material as THREE.MeshStandardMaterial).color ?? new THREE.Color(1, 1, 1);
       const n = geo.getAttribute("position").count;
@@ -89,6 +96,10 @@ export class Parts {
     if (cells) {
       const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
       for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + cells[0] / ATLAS, uv.getY(i) + cells[1] / ATLAS);
+    }
+    if (shift) {
+      const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, uv.getX(i) + shift);
     }
     const list = this.byMat.get(material) ?? [];
     list.push(geo);
@@ -387,18 +398,109 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
   return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
 }
 
-/** Broken-off top: jagged chunks and bent rebar on a cut body. */
-function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: () => number) {
+// ---- realistic models -----------------------------------------------------------
+
+/**
+ * The realistic model that draws a spec, if it is loaded. A model takes over
+ * the kit style it replaces (docs/models.md) as a whole, until its siblings
+ * exist to take their own variants of it.
+ */
+export function realDef(s: Spec): RealDef | null {
+  const id = s.style !== "classic" ? null : s.kind === "apartment" ? "a1" : s.kind === "cottage" ? "c1" : null;
+  return id && hasReal(id) ? DEFS[id] : null;
+}
+
+/** A spec sized and placed for its realistic model (real-world sizes, not the kit's); others unchanged. */
+export function fitReal<T extends Spec>(s: T): T {
+  const def = realDef(s);
+  if (!def) return s;
+  const l = lot(s.index);
+  const yard = LOT / 2 - def.d / 2 - def.front;
+  const floors = def.floors(s.floors);
+  return { ...s, w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), yard, x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard };
+}
+
+const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 4 });
+
+/** Adds a piece of a realistic model; glass gets window ids of its own from `shift`. */
+function putReal(p: Parts, def: RealDef, piece: string, paint: Paint, damage: number, info: ModelInfo | null, x: number, y: number, z: number, ry = 0, scale?: THREE.Vector3, shift = 0) {
+  for (const { role, geo } of realPiece(def.id, piece)) {
+    const m = realMat(def.id, role, paint, damage);
+    if (info && m.userData.night && !info.night.includes(m as THREE.MeshStandardMaterial)) info.night.push(m as THREE.MeshStandardMaterial);
+    p.add(m, geo, x, y, z, 0, ry, 0, scale, undefined, role.endsWith("glass") ? shift : 0);
+  }
+}
+
+/** Stacks a realistic model's pieces on the lot (at kerb height), like stack() for the kit. */
+function stackReal(p: Parts, s: Spec, def: RealDef, floors: number, roof: boolean, info: ModelInfo) {
+  const r = rng(s.seed * 13 + 11);
+  const paint = paintOf(s);
+  // Window ids restart in every piece: offset them per storey and building.
+  const base = (s.seed % 8) * 8 * 256;
+  def.stack(floors, roof, r).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
+  const anchors: Record<string, THREE.Vector3> = {};
+  if (roof && def.smoke) anchors.smoke = def.smoke(floors).add(new THREE.Vector3(0, KERB, 0));
+  return { top: def.top(floors) + KERB, w: s.w, d: s.d, anchors };
+}
+
+/** A picket fence along x from x0 to x1 at z, from the model's fence pieces, panels stretched to fit. */
+function picket(p: Parts, def: RealDef, s: Spec, x0: number, x1: number, z: number) {
+  const L = x1 - x0;
+  const n = Math.max(1, Math.round(L / 2.4));
+  const paint = paintOf(s);
+  for (let i = 0; i < n; i++) putReal(p, def, "fence", paint, 0, null, x0 + ((i + 0.5) * L) / n, KERB, z, 0, new THREE.Vector3(L / n / 2.4, 1, 1));
+  putReal(p, def, "fence_post", paint, 0, null, x1, KERB, z);
+}
+
+/** The lot round a realistic model; like yard() for the kit. */
+function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
+  const cz = -s.yard;
+  const front = LOT / 2 - s.yard;
+  const back = -LOT / 2 - s.yard;
+  const half = LOT / 2 - 0.2;
+  const paving = mat(0xbab4a8, { roughness: 0.9 });
+  switch (def.id) {
+    case "a1": {
+      // Paved to the pavement, as in town; bins and a wall out back.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6 - i * 0.85, KERB, back + 0.7);
+      p.box(mat(0x7a4636, { roughness: 0.95 }), LOT - 0.4, 1.6, 0.25, 0, KERB, back + 0.12);
+      break;
+    }
+    case "c1": {
+      // Lawn, a picket fence along the street, a path to the porch steps,
+      // a drive down the side with the car, trees, a hedge at the back.
+      p.box(mat(0x6f9a4f, { roughness: 1 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.45;
+      const steps = s.d / 2;
+      p.box(paving, 1.2, KERB + 0.03, fz - steps + 0.2, 0, 0, (fz + steps) / 2);
+      const dx = half - 1.4;
+      p.box(mat(0xa29e96, { roughness: 0.95 }), 2.6, KERB + 0.03, front - cz + 1, dx, 0, (front + cz - 1) / 2);
+      parked(p, dx, 0.6, 0, s.seed + 3);
+      picket(rp, def, s, -half + 0.2, -0.75, fz);
+      picket(rp, def, s, 0.75, dx - 1.5, fz);
+      tree(p, -half + 1.4, front - 3.2, 0.75, s.seed + 1, KERB);
+      tree(p, -half + 1.6, back + 1.6, 0.85, s.seed + 2, KERB);
+      if (r() < 0.6) tree(p, (r() - 0.5) * 3, back + 1.2, 0.6, s.seed + 4, KERB);
+      p.box(mat(0x3f6a34, { flatShading: true }), LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55);
+      break;
+    }
+  }
+}
+
+/** Broken-off top: jagged chunks and bent rebar on a cut body; `k` scales them down for small buildings. */
+function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: () => number, k = 1) {
   const conc = mat(0x5a5652, { roughness: 1 });
   const wall = mat(new THREE.Color(color).multiplyScalar(0.45).getHex());
   for (let i = 0; i < 9; i++) {
-    const cw = w * (0.15 + r() * 0.3);
-    const ch = 0.6 + r() * 2.4;
-    p.box(r() < 0.5 ? conc : wall, cw, ch, d * (0.15 + r() * 0.35), (r() - 0.5) * (w - cw), y - 0.3, (r() - 0.5) * d * 0.7, r(), (r() - 0.5) * 0.5, (r() - 0.5) * 0.5);
+    const cw = w * (0.15 + r() * 0.3) * k;
+    const ch = (0.6 + r() * 2.4) * k;
+    p.box(r() < 0.5 ? conc : wall, cw, ch, d * (0.15 + r() * 0.35) * k, (r() - 0.5) * (w - cw), y - 0.3, (r() - 0.5) * d * 0.7, r(), (r() - 0.5) * 0.5, (r() - 0.5) * 0.5);
   }
   const steel = mat(0x2a2422, { roughness: 0.6, metalness: 0.5 });
   for (let i = 0; i < 6; i++) {
-    p.box(steel, 0.12, 1.5 + r() * 2.5, 0.12, (r() - 0.5) * w * 0.9, y, (r() - 0.5) * d * 0.9, 0, (r() - 0.5) * 0.9, (r() - 0.5) * 0.9);
+    p.box(steel, 0.12, (1.5 + r() * 2.5) * k, 0.12, (r() - 0.5) * w * 0.9, y, (r() - 0.5) * d * 0.9, 0, (r() - 0.5) * 0.9, (r() - 0.5) * 0.9);
   }
 }
 
@@ -545,20 +647,22 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const g = new THREE.Group();
   const p = new Parts();
   const r = rng(s.seed * 31 + 5);
-  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: WALLS[s.wall] };
+  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: realDef(s)?.debris ?? WALLS[s.wall] };
   const look = looks(s, info);
   const broken = s.damage >= 2;
 
+  const def = realDef(s);
   const yp = new Parts(YARD);
-  yard(yp, s, r);
+  if (def) realYard(yp, p, s, def, r);
+  else yard(yp, s, r);
   yp.into(g);
 
   // Heavy damage takes the top quarter off, roof and all.
   const floors = broken ? Math.max(1, Math.round(s.floors * (0.72 + r() * 0.1))) : s.floors;
-  const top = stack(p, s, look, floors, !broken);
+  const top = def ? stackReal(p, s, def, floors, !broken, info) : stack(p, s, look, floors, !broken);
   if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" ? 1.4 : 0.25 });
   if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
-  if (broken) wreckTop(p, top.w, top.d, top.top, s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall], r);
+  if (broken) wreckTop(p, top.w, top.d, top.top, def?.debris ?? (s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall]), r, def ? THREE.MathUtils.clamp(top.top / 20, 0.4, 1) : 1);
 
   if (s.damage >= 1) {
     const h = top.top;
@@ -626,7 +730,11 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   }
   // Lower floors already finished: the real building, rising floor by floor.
   const clad = Math.max(0, built - 2);
-  if (clad > 0) stack(p, s, looks(s, info), clad, false);
+  const def = realDef(s);
+  if (clad > 0) {
+    if (def) stackReal(p, s, def, clad, false, info);
+    else stack(p, s, looks(s, info), clad, false);
+  }
 
   // Scaffolding one floor above the work.
   const scaff = mat(s.surrendering ? 0xc0392b : 0xd08a2a, { metalness: 0.4, roughness: 0.5 });

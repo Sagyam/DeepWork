@@ -19,6 +19,7 @@ const PARS = /* glsl */ `
 uniform float uDay;
 uniform float uNight;
 uniform int uKind;
+uniform float uBurn;
 varying vec3 vWP;
 varying vec3 vWN;
 varying vec2 vPane;
@@ -140,7 +141,7 @@ vec3 interior() {
   // Light: daylight falls off into the room; at night some rooms are lit.
   float fall = mix(1.0, 0.35, clamp(p.z / depth, 0.0, 1.0));
   vec3 day = vec3(0.32, 0.33, 0.35) * uDay * fall;
-  bool lit = shop || hash(id + 5.0) < 0.55;
+  bool lit = (shop || hash(id + 5.0) < 0.55) && hash(id + 7.0) >= uBurn;
   vec3 warm = mix(vec3(1.0, 0.72, 0.45), vec3(1.0, 0.86, 0.7), hash(id + 9.0));
   vec3 night = lit ? warm * (shop ? 1.4 : 0.9) * mix(1.0, 0.55, clamp(p.z / depth, 0.0, 1.0)) : vec3(0.0);
   if (!lit && hash(id + 3.0) < 0.15) night = vec3(0.12, 0.18, 0.35) * (0.8 + 0.2 * sin(id * 3.0));
@@ -165,23 +166,27 @@ vec3 interior() {
     vec3 cur = cc * fold * (vec3(0.5) * uDay + (lit ? warm * 0.75 : vec3(0.0)) * uNight);
     room = mix(room, cur, a);
   }
-  return room;
+  // Damage: soot, and burnt-out rooms that no longer light up.
+  return room * mix(1.0, 0.1, uBurn);
 }
 `;
 
-export function glass(kind: RoomKind): THREE.MeshPhysicalMaterial {
+/** `burn` 0 to 1 darkens the rooms and puts their lights out, for damage. */
+export function glass(kind: RoomKind, burn = 0): THREE.MeshPhysicalMaterial {
   const m = new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.03, metalness: 0, ior: 1.65, envMapIntensity: 1 });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDay = interiorUniforms.uDay;
     sh.uniforms.uNight = interiorUniforms.uNight;
     sh.uniforms.uKind = { value: kind === "home" ? 0 : kind === "shop" ? 1 : 2 };
+    sh.uniforms.uBurn = { value: burn };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying vec2 vPane;")
-      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(modelMatrix) * objectNormal);\nvPane = uv;");
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nmat4 wm = modelMatrix;\n#ifdef USE_INSTANCING\nwm = modelMatrix * instanceMatrix;\n#endif\nvWP = (wm * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(wm) * objectNormal);\nvPane = uv;");
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <common>", `#include <common>\n${PARS}`)
       .replace("#include <emissivemap_fragment>", "#include <emissivemap_fragment>\ntotalEmissiveRadiance += interior();");
   };
   m.customProgramCacheKey = () => `interior-${kind}`;
+  m.userData.interior = true;
   return m;
 }
