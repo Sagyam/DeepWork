@@ -378,19 +378,26 @@ lays any of them out: `/proto.html?props=cars` (see `docs/DEVELOPMENT.md`).
 
 | Model | Module | Pieces | Triangles | How the app varies them |
 |---|---|---|---|---|
-| `cars` | `vehicles.py` | hatch, sedan, estate, suv, coupe, taxi, pickup, van, bus, truck | 3.1-3.5 k each | clear-coat paint from `CAR_PAINTS` per car (instance colours in traffic); parked cars pick a body by how common it is |
+| `cars` | `vehicles.py` | hatch, sedan, estate, suv, coupe, taxi, pickup, van, bus, truck | 9-10 k a car, 5-6 k bus and truck | clear-coat paint from `CAR_PAINTS` per car (instance colours in traffic); parked cars pick a body by how common it is |
 | `trees` | `trees.py` | oak, maple, linden, birch, cherry, spruce, pine, poplar, young; bush, bush_wide, shrub, flowers, hedge; forest_a-e | 0.5-2 k a tree, ~170 a shrub, ~120 a wood tree | species by frequency, foliage tint (`FOLIAGE`), size from the kit's scale, turn; hedges stretched to length |
 | `street` | `street.py` | lamp_led, lamp_heritage, lamp_park, signal_mast, signal_post, fence_panel, fence_rail, fence_iron, wall_brick, hydrant, bin, bench, bollard, busstop | 30-310 each | fence and wall runs stretched to fit (`fenceRun`); signals on two phases |
 | `bridge` | `bridge.py` | bridge | 5.6 k | |
 
-- **Vehicles** are lofted: a cross-section (rocker, door, shoulder, glass,
-  roof) interpolated between keyframes along the car, from a few design
-  lines per car (`keys()`: windscreen, roof and back-glass positions,
-  heights of the nose, hood, belt, roof and deck). Wheel arches are cut by
-  raising the section's floor over the wheels, with dark liners behind;
-  lamps are bands of the skin at the nose and tail; the nose is the grille.
-  Traffic (`traffic.ts`) draws them instanced, lamps lit at night; parked
-  cars share their materials but stay dark.
+- **Vehicles** (rebuilt 2026-11-04: the first, lofted ones looked melted
+  up close) are modelled the way car models are: a coarse cage of
+  cross-sections at real cars' dimensions (underbody, rocker, side,
+  shoulder, belt, roof rail, roof), Catmull-Clark subdivided with creases
+  on the feature lines (shoulder, belt, cowl, back-glass base, nose and
+  tail corners). Booleans cut the wheel arches, leaving the wells, and a
+  pickup's bed. What sits on the skin is projected onto it by raycasts and
+  laid a few millimetres above it: framed glass and black pillars, layered
+  headlights with running-light strips, framed grilles with slats,
+  intakes, tail lights, plates, panel seams and a fuel flap. Handles,
+  mirrors, roof rails, arch cladding and multi-spoke wheels with brake
+  discs and calipers are modelled on; edges over 40° shade hard
+  (`Model.sharp`). Traffic (`traffic.ts`) draws them instanced, lamps lit
+  at night; parked cars share their materials but stay dark. They are the
+  heaviest props: LODs for traffic belong to "Last: performance".
 - **Trees** grow branch tubes recursively from a seed and cluster leaf
   cards (alpha-tested, two-sided) round the twigs and along the outer
   branches, inside the crown's envelope. Leaf, needle, blossom and bloom

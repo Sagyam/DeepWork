@@ -2,459 +2,792 @@
 # bays and drive round the blocks (ui/src/city/traffic.ts), replacing the
 # low-poly kit's four cars and bus.
 #
-# Passenger cars are lofted: a cross-section (rocker, door, shoulder, glass,
-# roof) is interpolated along the car between keyframes of its profile, so
-# hood, windscreen, roof and boot come out of one smooth skin. Wheel arches
-# are cut by raising the section's floor over each wheel, with a dark liner
-# behind. The glass, pillars and roof are picked per face from where the
-# face sits along the car. Bus, van and truck use the same skin, squarer.
+# Built the way car models are: a coarse cage of cross-sections along the
+# car (underbody, rocker, side, shoulder, belt, roof rail, roof), smoothed
+# by Catmull-Clark subdivision with creases on the feature lines (shoulder,
+# belt, cowl, the base of the back glass), so panels are smooth and the
+# lines crisp. Wheel arches are cut by booleans, which leave the wheel
+# wells; a pickup's bed is cut the same way. Everything that sits on the
+# skin (window frames and glass, pillars, lamps, grille, intakes, number
+# plates, panel seams) is projected onto the subdivided body by raycasts
+# and laid a few millimetres above it, so it follows its curves. Door
+# handles, mirrors, roof rails and wheels (tyres, multi-spoke rims, brake
+# discs and calipers) are modelled on.
 #
 # Pieces (one per vehicle, at the origin, nose toward -y, i.e. glTF +z):
-#   hatch, sedan, estate, suv, pickup, coupe, taxi, van, bus, truck
-# Roles: carpaint (tinted per vehicle by the app), carglass, dark (grilles,
-# liners, underbody), rubber (black plastic trim), chrome, rim, tyre,
-# headlight, taillight, plate, taxisign, led, cargo.
+#   hatch, sedan, estate, suv, coupe, taxi, pickup, van, bus, truck
+# Roles: carpaint (tinted per vehicle by the app), carglass, dark (wells,
+# grilles, intakes), rubber (black trim and pillars), seam (panel gaps),
+# chrome, rim, tyre, brake, caliper, headlight, taillight, indicator,
+# plate, taxisign, led, cargo.
 import math
 
-from lib import Model, Vector
+import bmesh
+import bpy
+from mathutils import Matrix, Vector
+from mathutils.bvhtree import BVHTree
+
+from lib import Model
 
 ID = "cars"
+X, Y, Z = Vector((1, 0, 0)), Vector((0, 1, 0)), Vector((0, 0, 1))
 
 
 def lerp(a, b, t):
     return a + (b - a) * t
 
 
-class Profile:
-    """Keyframes along the car, by distance from the nose: (d, floor, shoulder, roof, width, roof width)."""
+# ---- the body: a subdivided cage ---------------------------------------------------------
+# A station: (d from the nose, floor z, shoulder z, belt z, roof z, half-width
+# factor at the shoulder, roof-rail half-width factor[, crease across]). At
+# the hood and boot "belt" is the fender top and "roof" the panel's crown.
 
-    def __init__(self, keys):
-        self.keys = sorted(keys)
+RING_CREASE = (0.25, 0.5, 0.0, 1.0, 0.7, 0.35)  # along the car, at points p0-p5
+
+
+class Body:
+    def __init__(self, S):
+        self.S = S
+        self.L, self.W = S["L"], S["W"]
+        self.st = sorted(S["stations"])
 
     def at(self, d):
-        k = self.keys
-        if d <= k[0][0]:
-            return k[0][1:]
-        for a, b in zip(k, k[1:]):
+        """The station values interpolated at d."""
+        st = self.st
+        if d <= st[0][0]:
+            return st[0][1:7]
+        for a, b in zip(st, st[1:]):
             if d <= b[0]:
                 t = (d - a[0]) / max(1e-6, b[0] - a[0])
-                return tuple(lerp(x, y, t) for x, y in zip(a[1:], b[1:]))
-        return k[-1][1:]
+                return tuple(lerp(p, q, t) for p, q in zip(a[1:7], b[1:7]))
+        return st[-1][1:7]
 
-
-def body(m, S):
-    """The lofted skin of a vehicle from its spec S (see CARS)."""
-    L, W = S["L"], S["W"]
-    prof = Profile(S["keys"])
-    wheels = S["wheels"]  # distances from the nose
-    R = S["r"]
-    arch = R + 0.07
-    glass = S["glass"]  # (from, to, kind) along the car: "screen", "side", "back"
-    pillars = S.get("pillars", [])
-    crown = S.get("crown", 0.03)
-    # Stations: even steps, keyframes, and dense round the arches.
-    ds = {round(i * L / 28, 4) for i in range(29)}
-    ds |= {k[0] for k in S["keys"]}
-    for wd in wheels:
-        for i in range(-5, 6):
-            ds.add(round(wd + i * arch / 5, 4))
-    for g0, g1, _ in glass:
-        ds |= {g0, g1}
-    for p0, p1 in pillars:
-        ds |= {p0, p1}
-    ds = sorted(d for d in ds if 0 <= d <= L)
-
-    def floor(d, zb):
-        for wd in wheels:
-            dd = abs(d - wd)
-            if dd < arch:
-                zb = max(zb, R + math.sqrt(arch * arch - dd * dd))
-        return zb
-
-    def ring(d):
-        zb0, zs, zr, wf, wrf = prof.at(d)
-        zb = floor(d, zb0)
+    def ring(self, s):
+        d, floor, sh, belt, roof, wf, rw = s[:7]
+        W = self.W
         w = W / 2 * wf
-        wr = w * wrf
-        z1 = min(zb + 0.1, zs - 0.16)
-        z2 = max(z1 + 0.02, lerp(z1, zs, 0.55))
-        # Heights only rise toward the roof, so the section never folds
-        # over itself where the roof comes down to the hood or the boot.
-        z4 = zs + 0.012
-        z5 = max(z4 + 0.008, zr - 0.08)
-        z6 = max(z5 + 0.006, zr - 0.012)
-        half = [
-            (w * 0.93, zb),
-            (w * 0.985, z1),
-            (w, z2),
-            (w * 0.975, zs - 0.02),
-            (w * 0.95, z4),
-            (min(wr, w * 0.93), z5),
-            (min(wr * 0.9, w * 0.86), z6),
-            (wr * 0.45, max(z6 + 0.004, zr + crown * 0.8)),
-        ]
-        y = -L / 2 + d
-        left = [(-x, y, z) for x, z in half]
-        right = [(x, y, z) for x, z in reversed(half)]
-        top = (0, y, max(z6 + 0.006, zr + crown))
-        return left + [top] + right, zb0
+        belt = max(belt, sh + 0.02)
+        rail = max(belt + 0.015, roof - 0.07)
+        top = max(rail + 0.012, roof)
+        wr = min(rw * W / 2, w * 0.94)
+        half = [(w * 0.8, floor), (w * 0.965, floor + 0.07), (w * 0.997, lerp(floor + 0.07, sh, 0.5)), (w, sh), (w * self.S.get("step", 0.935), belt), (wr, rail)]
+        y = -self.L / 2 + d
+        left = [Vector((-x, y, z)) for x, z in half]
+        right = [Vector((x, y, z)) for x, z in reversed(half)]
+        return [Vector((0, y, floor))] + left + [Vector((0, y, top))] + right
 
-    def kind(d0, d1):
-        mid = (d0 + d1) / 2
-        for g0, g1, k in glass:
-            if g0 <= mid <= g1:
-                return k
-        return None
+    def cage(self):
+        """The cage as a bmesh, creases set, faces facing out."""
+        bm = bmesh.new()
+        cl = bm.edges.layers.float.new("crease_edge")
+        rings = [[bm.verts.new(p) for p in self.ring(s)] for s in self.st]
+        n = len(rings[0])
+        point = [None] + list(range(6)) + [None] + list(range(5, -1, -1))  # ring index -> p0-p5
+        crease = self.S.get("ring_crease", RING_CREASE)
+        for i in range(len(rings) - 1):
+            a, b = rings[i], rings[i + 1]
+            for k in range(n):
+                j = (k + 1) % n
+                bm.faces.new((a[k], a[j], b[j], b[k]))
+        for k in range(n):
+            if point[k] is not None:
+                for i in range(len(rings) - 1):
+                    e = bm.edges.get((rings[i][k], rings[i + 1][k]))
+                    e[cl] = crease[point[k]]
+        for i, s in enumerate(self.st):
+            if len(s) > 7 and s[7]:
+                for k in range(n):
+                    e = bm.edges.get((rings[i][k], rings[i][(k + 1) % n]))
+                    e[cl] = s[7]
+        bm.faces.new(list(reversed(rings[0])))
+        bm.faces.new(rings[-1])
+        bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+        return bm
 
-    def pillar(d0, d1):
-        mid = (d0 + d1) / 2
-        return any(p0 <= mid <= p1 for p0, p1 in pillars)
 
-    head_d, tail_d = S.get("head_d", 0.3), S.get("tail_d", 0.2)
-    ds = sorted(set(ds) | {head_d, L - tail_d, 0.1, L - 0.06})
-    rings = [ring(d) for d in ds]
-    n = len(rings[0][0])  # 17 points: 8 left, top, 8 right
-    for i in range(len(ds) - 1):
-        (ra, _), (rb, _) = rings[i], rings[i + 1]
-        k = kind(ds[i], ds[i + 1])
-        for j in range(n - 1):
-            # Segment index from the bottom on either side: 0 rocker .. 7 roof centre.
-            s = min(j, n - 2 - j)
-            role = "carpaint"
-            if s == 0:
-                role = "rubber"
-            elif s == 4 and k == "side" and not pillar(ds[i], ds[i + 1]):
-                role = "carglass"
-            elif s == 4 and k in ("screen", "back"):
-                role = "rubber"
-            elif s >= 5 and k in ("screen", "back"):
-                role = "carglass"
-            elif s >= 4 and k == "cover":
-                role = "rubber"
-            elif s == 4 and k == "side":
-                role = S.get("pillar_role", "rubber")
-            # Lamps wrap the corners: the upper side and shoulder bands at
-            # the nose and tail; the bumpers' lower bands are black.
-            mid = (ds[i] + ds[i + 1]) / 2
-            if s in (2, 3) and mid < head_d:
-                role = "headlight"
-            elif s in (2, 3) and mid > L - tail_d:
-                role = "taillight"
-            elif s == 1 and (mid < 0.1 or mid > L - 0.06):
-                role = "rubber"
-            m.poly(role, [ra[j], rb[j], rb[j + 1], ra[j + 1]], out=_out(ra, rb, j), smooth=True)
-        # Underbody, flat between the bottom points.
-        m.poly("dark", [ra[0], rb[0], rb[-1], ra[-1]], out=(0, 0, -1))
-    # Nose and tail caps: fans from the middle, the section being convex.
-    # The nose is the grille.
-    for (r, _), out, role in ((rings[0], (0, -1, 0), "dark"), (rings[-1], (0, 1, 0), "carpaint")):
-        c = Vector((0, r[0][1], sum(p[2] for p in r) / len(r)))
-        for a, b in zip(r, r[1:] + r[:1]):
-            m.poly(role, [tuple(c), a, b], out=out)
-    # Wheel-arch liners, so the arches do not show through the car.
-    for wd in wheels:
-        zb0 = prof.at(wd)[0]
-        y = -L / 2 + wd
-        x = W / 2 - S.get("tw", 0.22) - 0.06
-        pts = [(arch * math.cos(a), arch * math.sin(a)) for a in [math.pi * i / 12 for i in range(13)]]
+def mesh_object(name, bm, role):
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(bpy.data.materials.get(role) or bpy.data.materials.new(role))
+    ob = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(ob)
+    return ob
+
+
+def cylinder_x(x0, x1, y, z, r, seg=40):
+    bm = bmesh.new()
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=seg, radius1=r, radius2=r, depth=abs(x1 - x0))
+    bmesh.ops.rotate(bm, verts=bm.verts, cent=(0, 0, 0), matrix=Matrix.Rotation(math.pi / 2, 3, "Y"))
+    bmesh.ops.translate(bm, verts=bm.verts, vec=((x0 + x1) / 2, y, z))
+    return bm
+
+
+def block(lo, hi):
+    bm = bmesh.new()
+    bmesh.ops.create_cube(bm, size=1)
+    c = (Vector(lo) + Vector(hi)) / 2
+    s = Vector(hi) - Vector(lo)
+    bmesh.ops.scale(bm, verts=bm.verts, vec=s)
+    bmesh.ops.translate(bm, verts=bm.verts, vec=c)
+    return bm
+
+
+def evaluate(body, cutters, levels=2):
+    """Subdivides the body's cage, cuts the cutters (bmesh, role) out of it, returns the result as a bmesh."""
+    ob = mesh_object("body", body.cage(), "carpaint")
+    sub = ob.modifiers.new("subdiv", "SUBSURF")
+    sub.levels = sub.render_levels = levels
+    temps = [ob]
+    for k, (bm, role) in enumerate(cutters):
+        oc = mesh_object(f"cut{k}", bm, role)
+        temps.append(oc)
+        b = ob.modifiers.new(f"bool{k}", "BOOLEAN")
+        b.operation, b.object, b.solver, b.material_mode = "DIFFERENCE", oc, "EXACT", "TRANSFER"
+    dg = bpy.context.evaluated_depsgraph_get()
+    ev = ob.evaluated_get(dg)
+    me = ev.to_mesh()
+    out = bmesh.new()
+    out.from_mesh(me)
+    roles = [m.name.split(".")[0] for m in me.materials]
+    ev.to_mesh_clear()
+    for o in temps:
+        m = o.data
+        bpy.data.objects.remove(o)
+        bpy.data.meshes.remove(m)
+    return out, roles
+
+
+# ---- drawing on the body ------------------------------------------------------------------
+
+
+class Car:
+    """Draws one vehicle into the model's mesh, offset to its place in the bake."""
+
+    def __init__(self, m, off, S):
+        self.m, self.off, self.S = m, Vector(off), S
+        self.L, self.W = S["L"], S["W"]
+        self.body = Body(S) if "stations" in S else None
+        self.bvh = None
+
+    def poly(self, role, pts, out, smooth=True):
+        self.m.poly(role, [tuple(Vector(p) + self.off) for p in pts], out=tuple(out), smooth=smooth)
+
+    def emit(self, bm, roles):
+        for f in bm.faces:
+            self.poly(roles[f.material_index] if f.material_index < len(roles) else "carpaint", [v.co for v in f.verts], f.normal)
+
+    def skin(self, cutters=(), levels=2):
+        bm, roles = evaluate(self.body, cutters, levels)
+        self.emit(bm, roles)
+        self.bvh = BVHTree.FromBMesh(bm)
+        bm.free()
+
+    def zt(self, d, x=0.0):
+        """The skin's height seen from above at (x, d): subdivision pulls it inside the cage."""
+        h = self.hit((x, -self.L / 2 + d, 5), -Z)
+        return h[0].z if h else self.body.at(d)[3]
+
+    # Projection onto the skin.
+    def hit(self, p, d):
+        loc, nrm, _, _ = self.bvh.ray_cast(Vector(p) - d * 30, d, 60)
+        if loc is None:
+            return None
+        return loc, (nrm if nrm.dot(d) < 0 else -nrm)
+
+    def decal(self, role, corners, origin, U, V, d, off=0.004, n=(4, 2)):
+        """A patch with these four (u, v) corners in the plane (origin, U, V), projected along d onto the skin."""
+        nu, nv = n
+        (a, b, c, e) = [Vector(q) for q in corners]
+        grid = []
+        for j in range(nv + 1):
+            row = []
+            for i in range(nu + 1):
+                s, t = i / nu, j / nv
+                uv = lerp(lerp(a, b, s), lerp(e, c, s), t)
+                row.append(self.hit(origin + U * uv.x + V * uv.y, d))
+            grid.append(row)
+        for j in range(nv):
+            for i in range(nu):
+                cell = [grid[j][i], grid[j][i + 1], grid[j + 1][i + 1], grid[j + 1][i]]
+                if any(h is None for h in cell):
+                    continue
+                nrm = sum((h[1] for h in cell), Vector()).normalized()
+                self.poly(role, [h[0] + h[1] * off for h in cell], nrm)
+
+    def side(self, role, corners, off=0.004, n=(4, 2), sides=(-1, 1)):
+        """corners in (d from the nose, z), on both sides."""
+        for sx in sides:
+            self.decal(role, corners, Vector((0, -self.L / 2, 0)), Y, Z, X * -sx, off, n)
+
+    def front(self, role, corners, off=0.004, n=(3, 2), mirror=True):
+        """corners in (x, z) seen from the front; mirrored to the other side unless on the centre line."""
+        self.decal(role, corners, Vector((0, 0, 0)), X, Z, Y, off, n)
+        if mirror:
+            self.decal(role, [(-u, v) for u, v in corners], Vector((0, 0, 0)), X, Z, Y, off, n)
+
+    def rear(self, role, corners, off=0.004, n=(3, 2), mirror=True):
+        self.decal(role, corners, Vector((0, 0, 0)), X, Z, -Y, off, n)
+        if mirror:
+            self.decal(role, [(-u, v) for u, v in corners], Vector((0, 0, 0)), X, Z, -Y, off, n)
+
+    def top(self, role, corners, off=0.004, n=(3, 3)):
+        """corners in (x, d from the nose), seen from above."""
+        self.decal(role, corners, Vector((0, -self.L / 2, 0)), X, Y, -Z, off, n)
+
+    def slope(self, role, a, b, corners, off=0.004, n=(6, 3)):
+        """corners in (x, s) on the plane through a and b ((d, z) points), s from a toward b: windscreens, back glass."""
+        pa = Vector((0, -self.L / 2 + a[0], a[1]))
+        pb = Vector((0, -self.L / 2 + b[0], b[1]))
+        V = (pb - pa).normalized()
+        out = Vector((0, -V.z, V.y)) if V.y > 0 else Vector((0, V.z, -V.y))
+        self.decal(role, corners, pa, X, V, -out, off, n)
+
+    def box(self, role, centre, nrm, along, size):
+        """A small box sitting on the skin: size (along, across, out)."""
+        n = Vector(nrm).normalized()
+        a = (Vector(along) - n * Vector(along).dot(n)).normalized()
+        b = n.cross(a)
+        c = Vector(centre)
+        hx, hy, hz = size[0] / 2, size[1] / 2, size[2]
+        pts = {}
+        for i, sa in enumerate((-1, 1)):
+            for j, sb in enumerate((-1, 1)):
+                for k, sz in enumerate((0, 1)):
+                    pts[i, j, k] = c + a * sa * hx + b * sb * hy + n * sz * hz
+        P = lambda *ks: [pts[k] for k in ks]  # noqa: E731
+        self.poly(role, P((0, 0, 1), (1, 0, 1), (1, 1, 1), (0, 1, 1)), n, False)
+        self.poly(role, P((0, 0, 0), (1, 0, 0), (1, 0, 1), (0, 0, 1)), -b, False)
+        self.poly(role, P((0, 1, 0), (1, 1, 0), (1, 1, 1), (0, 1, 1)), b, False)
+        self.poly(role, P((0, 0, 0), (0, 1, 0), (0, 1, 1), (0, 0, 1)), -a, False)
+        self.poly(role, P((1, 0, 0), (1, 1, 0), (1, 1, 1), (1, 0, 1)), a, False)
+
+    def ellipsoid(self, role, c, r, seg=12, rings=7, flat_back=None):
+        c, r = Vector(c), Vector(r)
+        rows = []
+        for i in range(rings + 1):
+            th = math.pi * i / rings
+            row = []
+            for j in range(seg):
+                ph = math.tau * j / seg
+                p = Vector((math.sin(th) * math.cos(ph), math.sin(th) * math.sin(ph), math.cos(th)))
+                if flat_back is not None and p.dot(flat_back) > 0.35:
+                    p -= flat_back * (p.dot(flat_back) - 0.35)
+                row.append(c + Vector((p.x * r.x, p.y * r.y, p.z * r.z)))
+            rows.append(row)
+        for i in range(rings):
+            for j in range(seg):
+                jj = (j + 1) % seg
+                q = [rows[i][j], rows[i + 1][j], rows[i + 1][jj], rows[i][jj]]
+                mid = sum(q, Vector()) / 4 - c
+                if i == 0:
+                    self.poly(role, [rows[0][0], rows[1][j], rows[1][jj]], mid)
+                elif i == rings - 1:
+                    self.poly(role, [rows[i][j], rows[rings][0], rows[i][jj]], mid)
+                else:
+                    self.poly(role, q, mid)
+
+    # Running gear.
+    def wheel(self, x, y, R, tw, sx, seg=28, caliper="caliper", rim="rim"):
+        """A tyre with a ten-spoke rim, a brake disc and caliper behind; axle along x, outer face toward sx."""
+        def P(a, th, rho):
+            return Vector((x + sx * a, y + rho * math.cos(th), R + rho * math.sin(th)))
+
+        prof = [(-tw / 2, 0.66 * R), (-tw / 2 + 0.008, 0.86 * R), (-tw / 2 + 0.03, 0.975 * R), (-tw * 0.3, R), (tw * 0.3, R), (tw / 2 - 0.03, 0.975 * R), (tw / 2 - 0.008, 0.86 * R), (tw / 2, 0.66 * R)]
+        for i in range(seg):
+            t0, t1 = i / seg * math.tau, (i + 1) / seg * math.tau
+            tm = (t0 + t1) / 2
+            for (a0, p0), (a1, p1) in zip(prof, prof[1:]):
+                am = (a0 + a1) / 2
+                radial = Vector((0, math.cos(tm), math.sin(tm)))
+                axial = Vector((sx * (1 if am > 0 else -1), 0, 0))
+                w = min(1.0, abs(p1 - p0) / max(1e-6, abs(a1 - a0) + abs(p1 - p0)) * 2)
+                self.poly("tyre", [P(a0, t0, p0), P(a0, t1, p0), P(a1, t1, p1), P(a1, t0, p1)], radial * (1 - w * 0.9) + axial * w)
+        face = tw / 2 - 0.01
+        lip, inner, hub = 0.655 * R, 0.6 * R, 0.17 * R
+        ring = lambda rho, a: [P(a, i / seg * math.tau, rho) for i in range(seg)]  # noqa: E731
+        o = Vector((sx, 0, 0))
+        # Lip, barrel (dark, deep), disc and caliper behind the spokes.
+        ra, rb = ring(lip, face), ring(inner, face - 0.012)
+        for i in range(seg):
+            j = (i + 1) % seg
+            self.poly(rim, [ra[i], ra[j], rb[j], rb[i]], o)
+        self.poly("dark", ring(inner, face - 0.11), o)
+        dr, dq = ring(0.5 * R, face - 0.07), ring(0.5 * R, face - 0.09)
+        self.poly("brake", dr, o)
+        for i in range(seg):
+            j = (i + 1) % seg
+            self.poly("brake", [dr[i], dr[j], dq[j], dq[i]], (dr[i] + dr[j]) / 2 - Vector((x, y, R)))
+        self.poly(caliper, [P(face - 0.045, 0.3, 0.38 * R), P(face - 0.045, 0.95, 0.38 * R), P(face - 0.045, 0.95, 0.56 * R), P(face - 0.045, 0.3, 0.56 * R)], o, False)
+        # Ten spokes in five pairs, dished: the hub stands proud of the lip.
+        for k in range(5):
+            for pair in (-0.13, 0.13):
+                th = k / 5 * math.tau + pair + 0.2
+                w0, w1 = 0.055, 0.035
+                pts = [P(face + 0.012, th - w0, hub), P(face + 0.012, th + w0, hub), P(face - 0.01, th + w1 * 0.6, inner), P(face - 0.01, th - w1 * 0.6, inner)]
+                self.poly(rim, pts, o)
+                # The spoke's sides, so it has depth.
+                for e0, e1 in ((0, 3), (1, 2)):
+                    a0, a1 = pts[e0], pts[e1]
+                    mid = (a0 + a1) / 2
+                    centre_line = P(face, th, (hub + inner) / 2)
+                    self.poly(rim, [a0, a1, a1 - o * 0.03, a0 - o * 0.03], mid - centre_line)
+        self.poly(rim, ring(hub, face + 0.013), o)
+        self.poly("chrome", ring(hub * 0.45, face + 0.016), o)
+
+    def wheels(self, dual=False):
+        S = self.S
+        R, tw = S["r"], S.get("tw", 0.225)
+        for k, d in enumerate(S["wheels"]):
+            y = -self.L / 2 + d
+            for sx in (-1, 1):
+                x = sx * (self.W / 2 - tw / 2 - S.get("inset", 0.035))
+                self.wheel(x, y, R, tw, sx)
+                if dual and k > 0:
+                    self.wheel(x - sx * (tw + 0.02), y, R, tw, -sx, caliper="dark", rim="dark")
+
+    def arches(self, extra=0.07):
+        S = self.S
+        R = S["r"]
+        out = []
+        for d in S["wheels"]:
+            y = -self.L / 2 + d
+            for sx in (-1, 1):
+                x0, x1 = sorted((sx * (self.W / 2 - 0.42), sx * (self.W / 2 + 0.3)))
+                out.append((cylinder_x(x0, x1, y, R + 0.025, R + extra), "dark"))
+        return out
+
+
+# ---- a passenger car's dressing -----------------------------------------------------------
+
+
+def dress(c):
+    """Glass, lamps, grille, seams, handles, mirrors and plates for a car from its spec."""
+    S, B, L, W = c.S, c.body, c.L, c.W
+    belt = lambda d: B.at(d)[2]  # noqa: E731
+    roof = lambda d: B.at(d)[3]  # noqa: E731
+    half = lambda d: W / 2 * B.at(d)[4]  # noqa: E731
+    rail = lambda d: W / 2 * B.at(d)[5]  # noqa: E731
+    # Windscreen and back glass: a black frame and the glass inside it,
+    # between heights measured on the skin itself.
+    a, b = S["screen"]
+    pa, pb = (a, c.zt(a, half(a) * 0.5) + 0.01), (b, c.zt(b) - 0.03)
+    ln = (Vector(pb) - Vector(pa)).length
+    wa, wb = half(a) * 0.84, rail(b) * 0.86
+    c.slope("rubber", pa, pb, [(-wa, 0.0), (wa, 0.0), (wb, ln), (-wb, ln)], 0.006, n=(10, 5))
+    c.slope("carglass", pa, pb, [(-wa + 0.05, 0.05), (wa - 0.05, 0.05), (wb - 0.06, ln - 0.05), (-wb + 0.06, ln - 0.05)], 0.011, n=(10, 5))
+    if S.get("back"):
+        a, b = S["back"]
+        pa, pb = (a, c.zt(a) - 0.03), (b, c.zt(b, rail(b) * 0.5) + 0.01)
+        ln = (Vector(pb) - Vector(pa)).length
+        wa, wb = rail(a) * 0.86, min(half(b), rail(b) * 1.1) * 0.82
+        c.slope("rubber", pa, pb, [(-wa, 0.0), (wa, 0.0), (wb, ln), (-wb, ln)], 0.006, n=(10, 4))
+        c.slope("carglass", pa, pb, [(-wa + 0.06, 0.05), (wa - 0.06, 0.05), (wb - 0.06, ln - 0.05), (-wb + 0.06, ln - 0.05)], 0.011, n=(10, 4))
+    # Side glass: a black band from the A to the C pillar, the panes in it,
+    # up to a little below where the roof turns over.
+    d0, d1 = S["band"]
+    ar, cr = S.get("a_rake", 0.55), S.get("c_rake", 0.4)
+    top = lambda d: c.zt(d, rail(d) * 0.98) - 0.05  # noqa: E731
+    zb0, zb1 = belt(d0) + 0.02, belt(d1) + 0.02
+    c.side("rubber", [(d0, zb0), (d1, zb1), (d1 - cr, top(d1 - cr)), (d0 + ar, top(d0 + ar))], 0.006, n=(12, 3))
+    for p0, p1, r0, r1 in S["panes"]:
+        z0, z1 = belt(p0) + 0.05, belt(p1) + 0.05
+        c.side("carglass", [(p0, z0), (p1, z1), (p1 - r1, top(p1 - r1) - 0.035), (p0 + r0, top(p0 + r0) - 0.035)], 0.011, n=(8, 3))
+    # Panel seams: doors, the sill, the hood and the boot.
+    fl = B.at(L / 2)[0]
+    ds = S.get("doors", ())
+    for d in ds:
+        c.side("seam", [(d - 0.004, fl + 0.12), (d + 0.004, fl + 0.12), (d + 0.004, belt(d) - 0.015), (d - 0.004, belt(d) - 0.015)], 0.002, n=(1, 3))
+    if ds:
+        c.side("seam", [(ds[0], fl + 0.115), (ds[-1], fl + 0.115), (ds[-1], fl + 0.123), (ds[0], fl + 0.123)], 0.002, n=(6, 1))
+        # Handles, behind each door's leading seam.
+        for d in ds[:-1]:
+            z = belt(d + 0.3) - 0.08
+            for sx in (-1, 1):
+                h = c.hit((sx * 3, -L / 2 + d + 0.28, z), X * -sx)
+                if h:
+                    c.box(S.get("handle", "carpaint"), h[0], h[1], Y, (0.17, 0.028, 0.022))
+    hood = S["hood"]
+    hx = half(hood[1]) * 0.86
+    for sx in (-1, 1):
+        c.top("seam", [(sx * hx - 0.004, hood[0]), (sx * hx + 0.004, hood[0]), (sx * hx + 0.004, hood[1]), (sx * hx - 0.004, hood[1])], 0.002, n=(1, 6))
+    c.top("seam", [(-hx, hood[1] - 0.004), (hx, hood[1] - 0.004), (hx, hood[1] + 0.004), (-hx, hood[1] + 0.004)], 0.002, n=(6, 1))
+    if S.get("boot"):
+        b0, b1 = S["boot"]
+        bx = half(b0) * 0.84
+        c.top("seam", [(-bx, b0 - 0.004), (bx, b0 - 0.004), (bx, b0 + 0.004), (-bx, b0 + 0.004)], 0.002, n=(6, 1))
         for sx in (-1, 1):
-            poly = [(sx * x, y - arch, zb0)] + [(sx * x, y - dy, R + dz) for dy, dz in pts] + [(sx * x, y + arch, zb0)]
-            m.poly("dark", poly, out=(sx, 0, 0))
-    return rings, ds
+            c.top("seam", [(sx * bx - 0.004, b0), (sx * bx + 0.004, b0), (sx * bx + 0.004, b1), (sx * bx - 0.004, b1)], 0.002, n=(1, 4))
+    # Fuel flap on the right rear quarter.
+    fd = S["wheels"][1] - 0.62
+    fz = belt(fd) - 0.17
+    c.decal("seam", [(fd - 0.09, fz - 0.08), (fd + 0.09, fz - 0.08), (fd + 0.09, fz + 0.08), (fd - 0.09, fz + 0.08)], Vector((0, -L / 2, 0)), Y, Z, -X, 0.002, (2, 2))
+    c.decal("carpaint", [(fd - 0.082, fz - 0.072), (fd + 0.082, fz - 0.072), (fd + 0.082, fz + 0.072), (fd - 0.082, fz + 0.072)], Vector((0, -L / 2, 0)), Y, Z, -X, 0.003, (2, 2))
+    # Door mirrors at the foot of the A pillar.
+    md = S["screen"][0] + 0.32
+    mz = belt(md) + 0.1
+    for sx in (-1, 1):
+        h = c.hit((sx * 3, -L / 2 + md, mz), X * -sx)
+        if not h:
+            continue
+        base = h[0]
+        ctr = base + Vector((sx * 0.14, 0.03, 0.03))
+        c.box("rubber", base + Vector((-sx * 0.01, 0.0, -0.03)), Vector((sx, 0, 0)), Y, (0.14, 0.05, 0.08))
+        c.ellipsoid("carpaint", ctr, (0.12, 0.05, 0.065), seg=14, rings=6, flat_back=Y)
+        g = ctr + Vector((0, 0.034, 0))
+        c.poly("chrome", [g + Vector((-0.095, 0, -0.045)), g + Vector((0.095, 0, -0.045)), g + Vector((0.095, 0, 0.045)), g + Vector((-0.095, 0, 0.045))], Y, False)
+    front_end(c)
+    rear_end(c)
 
 
-def _out(ra, rb, j):
-    """Outward normal from the winding: rings run left-bottom, over the roof, to right-bottom; stations run nose to tail."""
-    a0, a1, b0, b1 = (Vector(p) for p in (ra[j], ra[j + 1], rb[j], rb[j + 1]))
-    n = (a1 - a0).cross(b0 - a0) + (b1 - b0).cross(b0 - a0) + (a1 - a0).cross(b1 - a1)
-    return n if n.length > 1e-9 else Vector((0, 0, 1))
+def front_end(c):
+    """Headlights (housing, reflector, lens, a running-light strip), indicators, grille with slats, intake, plate."""
+    S, B, W = c.S, c.body, c.W
+    w = W / 2
+    xi, xo, zbi, zti, zbo, zto = S["head"]  # x inner and outer as fractions of the half-width; z of the bottom and top, inner and outer
+    shape = [(xi * w, zbi), (xo * w, zbo), (xo * w, zto), (xi * w, zti)]
+    c.front("rubber", shape, 0.005, n=(4, 2))
+
+    def inset(q, k):
+        cx, cz = sum(p[0] for p in q) / 4, sum(p[1] for p in q) / 4
+        return [(lerp(cx, p[0], k), lerp(cz, p[1], k)) for p in q]
+
+    c.front("chrome", inset(shape, 0.86), 0.006)
+    c.front("headlight", inset(shape, 0.5), 0.008, n=(2, 1))
+    c.front("headlight", [(xi * w + 0.01, zti - 0.025), (xo * w - 0.01, zto - 0.025), (xo * w - 0.01, zto - 0.01), (xi * w + 0.01, zti - 0.01)], 0.009, n=(3, 1))
+    c.front("indicator", [(xo * w - 0.07, zbo + 0.008), (xo * w - 0.01, zbo + 0.008), (xo * w - 0.01, zbo + 0.03), (xo * w - 0.07, zbo + 0.03)], 0.009, n=(1, 1))
+    gx, gz0, gz1 = S["grille"]
+    g = [(-gx * w, gz0), (gx * w, gz0), (gx * w * 0.96, gz1), (-gx * w * 0.96, gz1)]
+    c.front("chrome", [(u * 1.04, v + (0.012 if v > gz0 else -0.012)) for u, v in g], 0.003, n=(4, 1), mirror=False)
+    c.front("dark", g, 0.005, n=(4, 1), mirror=False)
+    for k in range(1, 4):
+        z = lerp(gz0, gz1, k / 4)
+        c.front("chrome", [(-gx * w * 0.95, z - 0.006), (gx * w * 0.95, z - 0.006), (gx * w * 0.95, z + 0.006), (-gx * w * 0.95, z + 0.006)], 0.007, n=(4, 1), mirror=False)
+    fl = B.at(0.25)[0]
+    ix, iz0, iz1 = S.get("intake", (0.62, fl + 0.06, fl + 0.2))
+    c.front("dark", [(-ix * w, iz0), (ix * w, iz0), (ix * w * 0.94, iz1), (-ix * w * 0.94, iz1)], 0.004, n=(4, 1), mirror=False)
+    pz = S.get("plate_front", (gz0 + iz1) / 2 - 0.055)
+    c.front("plate", [(-0.26, pz), (0.26, pz), (0.26, pz + 0.11), (-0.26, pz + 0.11)], 0.009, n=(2, 1), mirror=False)
 
 
-def wheel(m, x, y, r, w, sx, seg=16, rim="rim"):
-    """A tyre with a five-spoke rim; axle along x, outer face toward sx."""
-    def P(a, th, rho):
-        return (x + sx * a, y + rho * math.cos(th), r + rho * math.sin(th))
-
-    prof = [(-w / 2, r * 0.66), (-w / 2, r * 0.9), (-w * 0.42, r), (w * 0.42, r), (w / 2, r * 0.9), (w / 2, r * 0.66)]
-    for i in range(seg):
-        t0, t1 = i / seg * math.tau, (i + 1) / seg * math.tau
-        tm = (t0 + t1) / 2
-        for (a0, p0), (a1, p1) in zip(prof, prof[1:]):
-            am = (a0 + a1) / 2
-            side = abs(a0 - a1) < 1e-6
-            ax = sx * (1 if am > 0 else -1) * (1.0 if side else 0.5 if abs(am) > 0.3 * w else 0.0)
-            rad = 0.0 if side else 1.0
-            out = (ax, math.cos(tm) * rad, math.sin(tm) * rad)
-            m.poly("tyre", [P(a0, t0, p0), P(a0, t1, p0), P(a1, t1, p1), P(a1, t0, p1)], out=out, smooth=not side)
-    # Rim: dished face with five spokes over a dark barrel.
-    face = w / 2 - 0.02
-    rim_r, hub = r * 0.64, r * 0.16
-    ring_pts = lambda rho, a: [P(a, i / seg * math.tau, rho) for i in range(seg)]  # noqa: E731
-    m.poly("dark", ring_pts(rim_r, face - 0.06), out=(sx, 0, 0))
-    outer, inner = ring_pts(rim_r, face), ring_pts(rim_r * 0.86, face - 0.01)
-    for i in range(seg):
-        j = (i + 1) % seg
-        m.poly(rim, [outer[i], outer[j], inner[j], inner[i]], out=(sx, 0, 0))
-    m.poly(rim, ring_pts(hub, face - 0.005), out=(sx, 0, 0))
-    for k in range(5):
-        th = k / 5 * math.tau + 0.3
-        a0, a1 = th - 0.14, th + 0.14
-        b0, b1 = th - 0.07, th + 0.07
-        m.poly(rim, [P(face - 0.004, b0, hub), P(face - 0.004, b1, hub), P(face - 0.012, a1, rim_r * 0.87), P(face - 0.012, a0, rim_r * 0.87)], out=(sx, 0, 0))
+def rear_end(c):
+    """Tail lights with a reversing lamp, a black diffuser, rear indicators, the plate in its recess."""
+    S, B, W = c.S, c.body, c.W
+    w = W / 2
+    xi, xo, zbi, zti, zbo, zto = S["tail"]
+    shape = [(xi * w, zbi), (xo * w, zbo), (xo * w, zto), (xi * w, zti)]
+    c.rear("rubber", shape, 0.004)
+    c.rear("taillight", [(lerp(xi, xo, 0.04) * w, zbi + 0.012), (xo * w - 0.012, zbo + 0.012), (xo * w - 0.012, zto - 0.012), (lerp(xi, xo, 0.04) * w, zti - 0.012)], 0.007)
+    mid = (zbi + zti) / 2
+    c.rear("chrome", [(xi * w + 0.03, mid - 0.012), (lerp(xi, xo, 0.45) * w, mid - 0.012), (lerp(xi, xo, 0.45) * w, mid + 0.012), (xi * w + 0.03, mid + 0.012)], 0.009, n=(2, 1))
+    fl = B.at(c.L)[0]
+    pz = S.get("plate_rear", fl + 0.33)
+    c.rear("rubber", [(-0.3, pz - 0.03), (0.3, pz - 0.03), (0.3, pz + 0.14), (-0.3, pz + 0.14)], 0.003, n=(2, 1), mirror=False)
+    c.rear("plate", [(-0.26, pz), (0.26, pz), (0.26, pz + 0.11), (-0.26, pz + 0.11)], 0.007, n=(2, 1), mirror=False)
+    c.rear("rubber", [(-0.8 * w, fl + 0.03), (0.8 * w, fl + 0.03), (0.78 * w, fl + 0.14), (-0.78 * w, fl + 0.14)], 0.004, n=(4, 1), mirror=False)
+    for sx in (-1, 1):
+        c.rear("indicator", [(sx * 0.62 * w, fl + 0.16), (sx * 0.74 * w, fl + 0.16), (sx * 0.74 * w, fl + 0.19), (sx * 0.62 * w, fl + 0.19)], 0.006, n=(1, 1), mirror=False)
 
 
-def box(m, role, lo, hi, skip=()):
-    m.box(role, lo, hi, skip)
+def roof_rails(c, d0, d1):
+    B, W = c.body, c.W
+    for sx in (-1, 1):
+        prev = None
+        for k in range(9):
+            d = lerp(d0, d1, k / 8)
+            h = c.hit((sx * W / 2 * B.at(d)[5] * 0.72, -c.L / 2 + d, 4), -Z)
+            if not h:
+                continue
+            p = h[0] + h[1] * 0.045
+            if prev is not None:
+                c.box("rubber", (prev + p) / 2 - Z * 0.012, Z, p - prev, ((p - prev).length + 0.01, 0.035, 0.025))
+            prev = p
+        for d in (d0, d1):
+            h = c.hit((sx * W / 2 * B.at(d)[5] * 0.72, -c.L / 2 + d, 4), -Z)
+            if h:
+                c.box("rubber", h[0], h[1], Y, (0.08, 0.04, 0.05))
 
 
-def lights(m, S, rings, ds):
-    """Number plates on the nose and tail, and door mirrors (the lamps are bands of the skin)."""
-    L, W = S["L"], S["W"]
-    prof = Profile(S["keys"])
-    zb = prof.at(0)[0]
-    m.box("plate", (-0.26, -L / 2 - 0.03, zb + 0.06), (0.26, -L / 2 - 0.01, zb + 0.17))
-    zb, zs = prof.at(L)[:2]
-    pz = S.get("plate_z", zb + 0.12)
-    m.box("plate", (-0.26, L / 2 + 0.01, pz), (0.26, L / 2 + 0.03, pz + 0.11))
-    # Door mirrors at the foot of the windscreen.
-    screen = next((g for g in S["glass"] if g[2] == "screen"), None)
-    if screen and S.get("mirrors", True):
-        d = screen[1] - 0.05 if S.get("cab_forward") else screen[0] + 0.3
-        zb, zs, zr, wf, _ = prof.at(d)
-        w = W / 2 * wf
-        yy = -L / 2 + d
-        for sx in (-1, 1):
-            # A stalk from the door to a housing with the glass facing back.
-            m.box("rubber", (min(sx * (w - 0.02), sx * (w + 0.06)), yy + 0.02, zs + 0.03), (max(sx * (w - 0.02), sx * (w + 0.06)), yy + 0.08, zs + 0.07))
-            x0, x1 = sorted((sx * (w + 0.04), sx * (w + 0.2)))
-            m.box("carpaint", (x0, yy, zs + 0.04), (x1, yy + 0.08, zs + 0.15))
-            m.poly("chrome", [(x0 + 0.01, yy + 0.082, zs + 0.05), (x1 - 0.01, yy + 0.082, zs + 0.05), (x1 - 0.01, yy + 0.082, zs + 0.14), (x0 + 0.01, yy + 0.082, zs + 0.14)], out=(0, 1, 0))
+# ---- the vehicles: dimensions of real cars of each class ------------------------------
 
 
-def all_wheels(m, S, dual_rear=False):
-    L, W, r = S["L"], S["W"], S["r"]
-    tw = S.get("tw", 0.22)
-    for k, d in enumerate(S["wheels"]):
-        y = -L / 2 + d
-        for sx in (-1, 1):
-            x = sx * (W / 2 - tw / 2 - 0.04)
-            wheel(m, x, y, r, tw, sx)
-            if dual_rear and k > 0:
-                wheel(m, x - sx * (tw + 0.02), y, r, tw, -sx, rim="dark")
-
-
-# ---- the vehicles ---------------------------------------------------------------------
-# keys: (d from nose, floor z, shoulder z, roof z, width factor, roof width factor)
-
-def keys(L, a, b, c, e, ground=0.18, nose=0.6, hood=0.92, belt=0.96, roof=1.44, deck=1.0, tail=0.9, rwf=0.78, tailgate=False):
-    """A passenger car's keyframes from its design lines: the windscreen runs
-    from a to b, the roof to c, the back glass to e; the nose and tail are
-    rounded in plan and section; with `tailgate` the back drops near-vertical."""
-    g = ground
-    k = [
-        (0.0, g + 0.18, nose, nose + 0.03, 0.8, 0.8),
-        (0.05, g + 0.09, nose + 0.08, nose + 0.12, 0.9, 0.8),
-        (0.16, g + 0.03, nose + 0.15, nose + 0.2, 0.96, 0.82),
-        (0.38, g + 0.01, nose + 0.21, nose + 0.27, 0.99, 0.83),
-        (0.75, g, hood - 0.04, hood + 0.03, 1.0, 0.84),
-        (a, g, hood, hood + 0.07, 1.0, 0.84),
-        (b - 0.16, g, belt - 0.01, roof - 0.04, 1.0, rwf + 0.01),
-        (b, g, belt, roof, 1.0, rwf),
-        (c, g, belt + 0.03, roof - 0.02, 1.0, rwf),
-        (e, g, deck, deck + 0.06, 1.0, 0.84),
+def sedan_stations(L, h=0.0):
+    """A three-box saloon's sections; h lifts the whole car."""
+    return [
+        (0.00, 0.30 + h, 0.66 + h, 0.70 + h, 0.72 + h, 0.88, 0.72),
+        (0.06, 0.21 + h, 0.72 + h, 0.77 + h, 0.80 + h, 0.95, 0.76, 0.5),
+        (0.28, 0.19 + h, 0.76 + h, 0.82 + h, 0.86 + h, 0.99, 0.79),
+        (0.85, 0.18 + h, 0.79 + h, 0.86 + h, 0.91 + h, 1.0, 0.80),
+        (1.62, 0.18 + h, 0.80 + h, 0.89 + h, 0.93 + h, 1.0, 0.80, 0.7),
+        (2.08, 0.18 + h, 0.82 + h, 0.91 + h, 1.30 + h, 1.0, 0.76),
+        (2.42, 0.18 + h, 0.83 + h, 0.92 + h, 1.43 + h, 1.0, 0.72, 0.3),
+        (3.20, 0.18 + h, 0.84 + h, 0.94 + h, 1.45 + h, 1.0, 0.72),
+        (3.62, 0.18 + h, 0.85 + h, 0.95 + h, 1.39 + h, 1.0, 0.73),
+        (L - 0.68, 0.19 + h, 0.86 + h, 0.96 + h, 1.03 + h, 1.0, 0.80, 0.6),
+        (L - 0.2, 0.22 + h, 0.86 + h, 0.96 + h, 1.01 + h, 0.98, 0.80),
+        (L - 0.05, 0.26 + h, 0.83 + h, 0.92 + h, 0.96 + h, 0.94, 0.77, 0.5),
+        (L, 0.32 + h, 0.76 + h, 0.84 + h, 0.87 + h, 0.88, 0.72),
     ]
-    t0 = max(e + 0.05, L - 0.42)
-    if tailgate:
-        k += [(L - 0.1, g + 0.05, deck - 0.03, deck + 0.01, 0.97, 0.84), (L, g + 0.17, tail, tail + 0.03, 0.88, 0.82)]
-    else:
-        k += [
-            (t0, g + 0.02, deck - 0.01, deck + 0.04, 0.99, 0.84),
-            (max(t0 + 0.05, L - 0.15), g + 0.06, deck - 0.04, deck, 0.96, 0.84),
-            (max(t0 + 0.08, L - 0.04), g + 0.13, deck - 0.09, deck - 0.05, 0.9, 0.82),
-            (L, g + 0.2, tail, tail + 0.03, 0.84, 0.8),
-        ]
-    return k
 
 
 CARS = {
-    "hatch": dict(
-        L=4.25, W=1.79, r=0.315, wheels=(0.86, 3.5),
-        keys=keys(4.25, 1.3, 2.1, 3.6, 4.08, nose=0.58, hood=0.9, belt=0.98, roof=1.46, deck=1.1, tail=0.86, tailgate=True),
-        glass=[(1.32, 2.08, "screen"), (2.1, 3.62, "side"), (3.62, 4.06, "back")],
-        pillars=[(2.85, 2.95), (3.42, 3.62)],
-    ),
     "sedan": dict(
-        L=4.75, W=1.83, r=0.325, wheels=(0.98, 3.8),
-        keys=keys(4.75, 1.5, 2.32, 3.45, 4.12, hood=0.92, belt=0.96, roof=1.43, deck=1.02, tail=0.9),
-        glass=[(1.52, 2.3, "screen"), (2.32, 3.6, "side"), (3.6, 4.1, "back")],
-        pillars=[(3.0, 3.1)],
+        L=4.85, W=1.84, r=0.335, wheels=(0.98, 3.83), stations=sedan_stations(4.85),
+        screen=(1.64, 2.4), back=(3.6, 4.15), band=(1.75, 3.95), a_rake=0.6, c_rake=0.42,
+        panes=[(1.86, 2.98, 0.48, 0.02), (3.05, 3.85, 0.0, 0.32)], doors=(1.72, 3.0, 3.86),
+        hood=(0.22, 1.6), boot=(4.18, 4.74),
+        head=(0.5, 0.93, 0.67, 0.76, 0.70, 0.78), grille=(0.38, 0.46, 0.66), tail=(0.5, 0.95, 0.84, 0.92, 0.80, 0.9),
     ),
-    "estate": dict(
-        L=4.8, W=1.84, r=0.325, wheels=(0.98, 3.8),
-        keys=keys(4.8, 1.5, 2.32, 4.4, 4.72, belt=0.97, roof=1.46, deck=1.3, tail=0.9, tailgate=True),
-        glass=[(1.52, 2.3, "screen"), (2.32, 4.45, "side"), (4.45, 4.72, "back")],
-        pillars=[(3.0, 3.1), (3.86, 3.98)],
-    ),
-    "suv": dict(
-        L=4.65, W=1.89, r=0.37, tw=0.25, wheels=(0.98, 3.73),
-        keys=keys(4.65, 1.35, 2.12, 4.22, 4.55, ground=0.26, nose=0.78, hood=1.1, belt=1.14, roof=1.68, deck=1.45, tail=1.05, rwf=0.8, tailgate=True),
-        glass=[(1.37, 2.1, "screen"), (2.12, 4.28, "side"), (4.28, 4.55, "back")],
-        pillars=[(2.95, 3.06), (3.75, 3.88)],
+    "hatch": dict(
+        L=4.28, W=1.79, r=0.32, wheels=(0.88, 3.5),
+        stations=[
+            (0.00, 0.29, 0.64, 0.68, 0.70, 0.88, 0.72), (0.06, 0.21, 0.70, 0.75, 0.78, 0.95, 0.76, 0.5),
+            (0.26, 0.19, 0.74, 0.80, 0.84, 0.99, 0.79), (0.78, 0.18, 0.77, 0.84, 0.89, 1.0, 0.80),
+            (1.30, 0.18, 0.79, 0.88, 0.93, 1.0, 0.80, 0.7), (1.78, 0.18, 0.81, 0.91, 1.32, 1.0, 0.76),
+            (2.08, 0.18, 0.82, 0.92, 1.46, 1.0, 0.73, 0.3), (3.30, 0.18, 0.84, 0.95, 1.48, 1.0, 0.73),
+            (3.78, 0.19, 0.86, 0.97, 1.44, 1.0, 0.74, 0.4), (4.13, 0.21, 0.86, 0.97, 1.08, 0.99, 0.78, 0.5),
+            (4.24, 0.24, 0.84, 0.93, 0.99, 0.96, 0.76, 0.5), (4.28, 0.30, 0.78, 0.86, 0.9, 0.9, 0.72),
+        ],
+        screen=(1.32, 2.06), back=(3.8, 4.1), band=(1.42, 3.82), a_rake=0.58, c_rake=0.5,
+        panes=[(1.54, 2.62, 0.46, 0.02), (2.69, 3.42, 0.0, 0.3)], doors=(1.4, 2.66, 3.45),
+        hood=(0.2, 1.28),
+        head=(0.48, 0.93, 0.65, 0.74, 0.68, 0.76), grille=(0.36, 0.44, 0.63), tail=(0.62, 0.97, 0.9, 1.04, 0.86, 1.06), plate_rear=0.55,
     ),
     "coupe": dict(
-        L=4.5, W=1.86, r=0.33, tw=0.25, wheels=(1.05, 3.65),
-        keys=keys(4.5, 1.6, 2.55, 3.15, 4.15, ground=0.15, nose=0.52, hood=0.84, belt=0.88, roof=1.3, deck=0.96, tail=0.86, rwf=0.75),
-        glass=[(1.62, 2.53, "screen"), (2.55, 3.2, "side"), (3.2, 4.12, "back")],
+        L=4.7, W=1.9, r=0.345, tw=0.255, wheels=(1.08, 3.78),
+        stations=[
+            (0.00, 0.26, 0.56, 0.60, 0.62, 0.87, 0.72), (0.07, 0.18, 0.62, 0.67, 0.70, 0.95, 0.76, 0.5),
+            (0.3, 0.16, 0.64, 0.70, 0.74, 0.985, 0.78), (1.0, 0.15, 0.70, 0.77, 0.82, 1.0, 0.80),
+            (1.85, 0.15, 0.74, 0.83, 0.87, 1.0, 0.80, 0.7), (2.35, 0.15, 0.76, 0.85, 1.18, 1.0, 0.74),
+            (2.72, 0.15, 0.77, 0.86, 1.31, 1.0, 0.70, 0.3), (3.2, 0.15, 0.78, 0.88, 1.29, 1.0, 0.70),
+            (4.05, 0.16, 0.80, 0.90, 0.98, 1.0, 0.80, 0.5), (4.55, 0.2, 0.80, 0.89, 0.95, 0.98, 0.80),
+            (4.66, 0.26, 0.75, 0.83, 0.88, 0.93, 0.76), (4.7, 0.32, 0.68, 0.75, 0.8, 0.86, 0.7),
+        ],
+        screen=(1.86, 2.68), back=(3.25, 4.05), band=(1.96, 3.5), a_rake=0.66, c_rake=0.42,
+        panes=[(2.07, 3.25, 0.55, 0.3)], doors=(1.93, 3.28),
+        hood=(0.25, 1.83), boot=(4.08, 4.6),
+        head=(0.52, 0.95, 0.56, 0.63, 0.59, 0.65), grille=(0.42, 0.32, 0.5), tail=(0.35, 0.95, 0.80, 0.86, 0.78, 0.86), intake=(0.7, 0.22, 0.33),
+    ),
+    "suv": dict(
+        L=4.62, W=1.87, r=0.37, tw=0.24, wheels=(0.96, 3.66), inset=0.04,
+        stations=[
+            (0.00, 0.40, 0.86, 0.90, 0.92, 0.88, 0.72), (0.07, 0.30, 0.93, 0.98, 1.01, 0.95, 0.76, 0.5),
+            (0.26, 0.28, 0.98, 1.04, 1.08, 0.99, 0.79), (0.8, 0.27, 0.98, 1.05, 1.10, 1.0, 0.80),
+            (1.36, 0.27, 1.02, 1.10, 1.15, 1.0, 0.80, 0.7), (1.85, 0.27, 1.04, 1.13, 1.52, 1.0, 0.77),
+            (2.12, 0.27, 1.05, 1.14, 1.66, 1.0, 0.75, 0.3), (3.6, 0.27, 1.07, 1.17, 1.69, 1.0, 0.75),
+            (4.22, 0.28, 1.08, 1.18, 1.66, 1.0, 0.75, 0.4), (4.5, 0.30, 1.07, 1.17, 1.3, 0.99, 0.78, 0.5),
+            (4.58, 0.34, 1.03, 1.12, 1.18, 0.96, 0.76), (4.62, 0.44, 0.94, 1.02, 1.06, 0.9, 0.72),
+        ],
+        screen=(1.38, 2.1), back=(4.24, 4.48), band=(1.48, 4.3), a_rake=0.52, c_rake=0.3,
+        panes=[(1.58, 2.78, 0.44, 0.02), (2.86, 3.66, 0.0, 0.0), (3.74, 4.18, 0.0, 0.25)], doors=(1.46, 2.82, 3.7),
+        hood=(0.22, 1.34), roof_rails=(2.3, 4.1), cladding=True, handle="rubber",
+        head=(0.5, 0.94, 0.88, 0.97, 0.91, 0.99), grille=(0.42, 0.56, 0.9), tail=(0.6, 0.96, 1.0, 1.1, 0.98, 1.12), plate_rear=0.78, intake=(0.66, 0.38, 0.52),
     ),
 }
+CARS["estate"] = dict(
+    CARS["sedan"], L=4.8,
+    stations=sedan_stations(4.8)[:8] + [
+        (3.9, 0.18, 0.85, 0.95, 1.45, 1.0, 0.72), (4.48, 0.19, 0.86, 0.96, 1.42, 1.0, 0.74, 0.4), (4.68, 0.22, 0.86, 0.96, 1.14, 0.99, 0.78, 0.5),
+        (4.76, 0.26, 0.84, 0.93, 1.0, 0.96, 0.76, 0.5), (4.8, 0.32, 0.78, 0.86, 0.9, 0.9, 0.72),
+    ],
+    back=(4.5, 4.66), band=(1.75, 4.5), c_rake=0.25, boot=None,
+    panes=[(1.86, 2.98, 0.48, 0.02), (3.05, 3.85, 0.0, 0.0), (3.92, 4.38, 0.0, 0.2)],
+    roof_rails=(2.5, 4.4), tail=(0.62, 0.96, 0.9, 1.04, 0.86, 1.06), plate_rear=0.55,
+)
 CARS["taxi"] = dict(CARS["sedan"])
-_pk = keys(5.35, 1.4, 2.2, 3.12, 3.18, ground=0.29, nose=0.86, hood=1.15, belt=1.19, roof=1.8, deck=1.2, tail=1.12, rwf=0.8, tailgate=True)
 CARS["pickup"] = dict(
-    L=5.35, W=1.9, r=0.38, tw=0.26, wheels=(1.0, 4.15),
-    keys=[k for k in _pk if k[0] < 3.12] + [(3.12, 0.29, 1.2, 1.79, 1.0, 0.8), (3.26, 0.29, 1.2, 1.22, 1.0, 0.98), (5.25, 0.31, 1.2, 1.22, 1.0, 0.98), (5.35, 0.42, 1.12, 1.16, 0.96, 0.96)],
-    glass=[(1.42, 2.18, "screen"), (2.2, 3.1, "side"), (3.1, 3.2, "back"), (3.3, 5.28, "cover")],
-    pillars=[(2.6, 2.7)],
+    L=5.4, W=1.95, r=0.4, tw=0.265, wheels=(1.02, 4.25), inset=0.04,
+    stations=[
+        (0.00, 0.5, 0.92, 0.96, 0.98, 0.88, 0.72), (0.08, 0.38, 1.00, 1.05, 1.08, 0.95, 0.76),
+        (0.3, 0.34, 1.06, 1.12, 1.15, 0.99, 0.80), (1.0, 0.33, 1.10, 1.17, 1.21, 1.0, 0.82),
+        (1.48, 0.33, 1.12, 1.2, 1.24, 1.0, 0.82, 0.7), (1.98, 0.33, 1.13, 1.22, 1.68, 1.0, 0.78),
+        (2.2, 0.33, 1.13, 1.22, 1.84, 1.0, 0.76, 0.3), (3.1, 0.33, 1.14, 1.23, 1.86, 1.0, 0.76, 0.5),
+        (3.22, 0.33, 1.14, 1.23, 1.3, 1.0, 0.9, 0.8), (5.3, 0.34, 1.14, 1.23, 1.28, 1.0, 0.9),
+        (5.4, 0.42, 1.08, 1.17, 1.2, 0.97, 0.88),
+    ],
+    ring_crease=(0.2, 0.45, 0.0, 0.9, 0.7, 0.6),
+    screen=(1.5, 2.17), band=(1.6, 3.12), a_rake=0.5, c_rake=0.06,
+    panes=[(1.72, 2.62, 0.4, 0.02), (2.7, 3.06, 0.0, 0.04)], doors=(1.58, 2.66, 3.1),
+    hood=(0.25, 1.46), handle="rubber", cladding=True,
+    head=(0.46, 0.94, 0.96, 1.07, 0.98, 1.08), grille=(0.42, 0.62, 1.04), tail=(0.86, 0.99, 0.9, 1.15, 0.9, 1.15), intake=(0.6, 0.42, 0.55), plate_rear=0.5,
 )
 CARS["van"] = dict(
-    L=5.0, W=2.0, r=0.34, tw=0.23, wheels=(0.95, 4.2), crown=0.04,
-    keys=[(0.0, 0.36, 0.72, 0.76, 0.88, 0.8), (0.1, 0.27, 0.82, 0.86, 0.96, 0.84), (0.35, 0.24, 0.92, 0.98, 0.99, 0.88),
-          (0.75, 0.23, 1.04, 1.12, 1.0, 0.9), (1.45, 0.23, 1.1, 2.18, 1.0, 0.93), (1.75, 0.23, 1.11, 2.36, 1.0, 0.95),
-          (4.85, 0.24, 1.12, 2.36, 1.0, 0.95), (5.0, 0.36, 1.08, 2.3, 0.97, 0.94)],
-    glass=[(0.77, 1.5, "screen"), (1.5, 2.3, "side")],
-    pillars=[], pillar_role="carpaint", head_d=0.32, tail_d=0.1, plate_z=0.45, cab_forward=True,
+    L=5.05, W=2.0, r=0.345, tw=0.23, wheels=(0.95, 4.25),
+    stations=[
+        (0.00, 0.36, 0.72, 0.76, 0.78, 0.88, 0.76), (0.08, 0.27, 0.80, 0.85, 0.88, 0.95, 0.80),
+        (0.32, 0.24, 0.90, 0.97, 1.02, 0.99, 0.86), (0.75, 0.23, 1.0, 1.08, 1.14, 1.0, 0.9, 0.6),
+        (1.38, 0.23, 1.06, 1.12, 1.92, 1.0, 0.94), (1.7, 0.23, 1.07, 1.13, 2.02, 1.0, 0.95, 0.3),
+        (4.95, 0.24, 1.08, 1.14, 2.02, 1.0, 0.95), (5.05, 0.34, 1.04, 1.1, 1.96, 0.97, 0.94),
+    ],
+    ring_crease=(0.2, 0.5, 0.0, 0.7, 0.4, 0.8),
+    screen=(0.78, 1.66), band=(0.9, 2.3), a_rake=0.65, c_rake=0.02,
+    panes=[(1.0, 2.24, 0.55, 0.02)], doors=(0.92, 2.3, 2.42, 3.9, 4.98),
+    hood=(0.2, 0.74), handle="rubber",
+    head=(0.5, 0.94, 0.78, 0.9, 0.8, 0.92), grille=(0.42, 0.5, 0.74), tail=(0.86, 0.99, 0.8, 1.4, 0.8, 1.4), plate_rear=0.5, intake=(0.66, 0.32, 0.46),
 )
+
+
+def car(M, name, at):
+    S = CARS[name]
+    M.piece(name, at)
+    c = Car(M.m, at, S)
+    cutters = c.arches(0.055)
+    if name == "pickup":
+        cutters.append((block((-c.W / 2 + 0.09, -c.L / 2 + 3.3, 0.72), (c.W / 2 - 0.09, c.L / 2 - 0.1, 3.0)), "dark"))
+    c.skin(cutters)
+    dress(c)
+    c.wheels()
+    if S.get("roof_rails"):
+        roof_rails(c, *S["roof_rails"])
+    if S.get("cladding"):
+        # Black plastic flares round the arches and along the sills.
+        B, R = c.body, S["r"]
+        for d in S["wheels"]:
+            fl = B.at(d)[0]
+            n = 14
+            for k in range(n):
+                t0, t1 = math.pi * k / n, math.pi * (k + 1) / n
+                p = lambda t, r: (d - math.cos(t) * r, R + 0.025 + math.sin(t) * r)  # noqa: E731
+                q = [p(t0, R + 0.05), p(t1, R + 0.05), p(t1, R + 0.13), p(t0, R + 0.13)]
+                q = [(u, max(v, fl + 0.02)) for u, v in q]
+                c.side("rubber", q, 0.004, n=(1, 1))
+        a, b = S["wheels"][0] + R + 0.09, S["wheels"][1] - R - 0.09
+        fl = B.at((a + b) / 2)[0]
+        c.side("rubber", [(a, fl + 0.04), (b, fl + 0.04), (b, fl + 0.15), (a, fl + 0.15)], 0.004, n=(6, 1))
+    if name == "taxi":
+        h = c.hit((0, -c.L / 2 + 3.0, 4), -Z)
+        if h:
+            c.box("rubber", h[0], Z, Y, (0.2, 0.62, 0.03))
+            c.box("taxisign", h[0] + Z * 0.03, Z, X, (0.78, 0.22, 0.2))
+    if name == "pickup":
+        # The tailgate's seam and handle, the bed's floor ribs.
+        L = c.L
+        c.rear("seam", [(-0.92, 1.18), (0.92, 1.18), (0.92, 1.19), (-0.92, 1.19)], 0.002, n=(4, 1), mirror=False)
+        c.rear("chrome", [(-0.12, 1.06), (0.12, 1.06), (0.12, 1.1), (-0.12, 1.1)], 0.004, n=(1, 1), mirror=False)
+        for k in range(6):
+            x = -0.75 + k * 0.3
+            c.poly("rubber", [(x - 0.03, -L / 2 + 3.32, 0.725), (x + 0.03, -L / 2 + 3.32, 0.725), (x + 0.03, L / 2 - 0.12, 0.725), (x - 0.03, L / 2 - 0.12, 0.725)], Z, False)
+    if name == "van":
+        # Rear doors' windows, the centre seam, the sliding door's rail.
+        c.rear("rubber", [(0.06, 1.42), (0.86, 1.42), (0.86, 1.86), (0.06, 1.86)], 0.003)
+        c.rear("carglass", [(0.1, 1.46), (0.82, 1.46), (0.82, 1.82), (0.1, 1.82)], 0.006)
+        c.rear("seam", [(-0.004, 0.42), (0.004, 0.42), (0.004, 1.96), (-0.004, 1.96)], 0.003, n=(1, 4), mirror=False)
+        c.side("rubber", [(2.42, 1.86), (3.9, 1.86), (3.9, 1.89), (2.42, 1.89)], 0.003, n=(6, 1), sides=(-1,))
+
+
+# ---- bus and truck ---------------------------------------------------------------------------
 
 BUS = dict(
-    L=12.0, W=2.55, r=0.5, tw=0.3, wheels=(2.7, 8.6), crown=0.04,
-    keys=[(0.0, 0.32, 1.02, 3.0, 0.97, 0.96), (0.12, 0.3, 1.02, 3.08, 1.0, 0.97), (11.88, 0.3, 1.02, 3.08, 1.0, 0.97), (12.0, 0.32, 1.02, 3.0, 0.97, 0.96)],
-    glass=[(0.25, 11.3, "side")],
-    pillars=[(0.25 + i * 1.47, 0.25 + i * 1.47 + 0.14) for i in range(8)], pillar_role="rubber",
-    head_d=0, tail_d=0,
+    L=12.0, W=2.55, r=0.5, tw=0.3, wheels=(2.7, 8.65), inset=0.06,
+    stations=[
+        (0.0, 0.34, 1.02, 1.06, 3.02, 0.97, 0.95), (0.08, 0.3, 1.02, 1.06, 3.08, 0.995, 0.97, 0.5),
+        (11.92, 0.3, 1.02, 1.06, 3.08, 0.995, 0.97, 0.5), (12.0, 0.34, 1.02, 1.06, 3.02, 0.97, 0.95),
+    ],
+    ring_crease=(0.6, 0.7, 0.0, 0.9, 0.9, 0.85),
 )
-TRUCK_CAB = dict(
-    L=2.3, W=2.3, r=0.48, tw=0.28, wheels=(1.05,), crown=0.05,
-    keys=[(0.0, 0.48, 1.25, 1.35, 0.94, 0.9), (0.1, 0.42, 1.3, 1.45, 0.99, 0.92), (0.4, 0.4, 1.36, 1.7, 1.0, 0.94),
-          (0.85, 0.4, 1.4, 2.62, 1.0, 0.94), (1.05, 0.4, 1.42, 2.72, 1.0, 0.95), (2.3, 0.4, 1.42, 2.72, 1.0, 0.95)],
-    glass=[(0.42, 0.85, "screen"), (0.9, 1.7, "side")],
-    pillars=[], pillar_role="carpaint", head_d=0.25, tail_d=0,
-)
-
-
-def car(M, name, S, at):
-    M.piece(name, at)
-    m = M.m
-    ax, ay, _ = at
-    S = dict(S)
-    # Draw at the reference position: offset every point by `at`.
-    off = Vector(at)
-    sub = Shifted(m, off)
-    rings, ds = body(sub, S)
-    lights(sub, S, rings, ds)
-    all_wheels(sub, S)
-    if name == "taxi":
-        prof = Profile(S["keys"])
-        d = 3.0
-        zr = prof.at(d)[2] + S.get("crown", 0.03)
-        y = -S["L"] / 2 + d
-        sub.box("taxisign", (-0.38, y - 0.12, zr + 0.02), (0.38, y + 0.12, zr + 0.24))
-        sub.box("rubber", (-0.3, y - 0.08, zr - 0.02), (0.3, y + 0.08, zr + 0.03))
-    if name == "van":
-        # Sliding-door rail and rear-door seam on the panel sides, roof ribs.
-        L, W = S["L"], S["W"]
-        for k in range(5):
-            y = -L / 2 + 2.0 + k * 0.6
-            sub.box("carpaint", (-W / 2 * 0.9, y, 2.39), (W / 2 * 0.9, y + 0.08, 2.43))
-        for sx in (-1, 1):
-            sub.box("rubber", (sx * W / 2 - 0.01, -L / 2 + 2.6, 1.85), (sx * W / 2 + 0.02, -L / 2 + 4.0, 1.88))
-        sub.poly("carglass", [(-0.85, L / 2 + 0.014, 1.5), (0.85, L / 2 + 0.014, 1.5), (0.85, L / 2 + 0.014, 2.1), (-0.85, L / 2 + 0.014, 2.1)], out=(0, 1, 0))
-        sub.box("rubber", (-0.02, L / 2 - 0.01, 0.55), (0.02, L / 2 + 0.02, 2.2))
 
 
 def bus(M, at):
     M.piece("bus", at)
-    S = dict(BUS)
-    sub = Shifted(M.m, Vector(at))
-    body(sub, S)
-    L, W = S["L"], S["W"]
-    y = -L / 2
-    # Windscreen and destination sign on the flat front; doors on the kerb side (-x).
-    sub.poly("carglass", [(-1.18, y - 0.012, 1.1), (1.18, y - 0.012, 1.1), (1.18, y - 0.012, 2.62), (-1.18, y - 0.012, 2.62)], out=(0, -1, 0))
-    sub.poly("led", [(-1.0, y - 0.013, 2.68), (1.0, y - 0.013, 2.68), (1.0, y - 0.013, 2.92), (-1.0, y - 0.013, 2.92)], out=(0, -1, 0))
-    for sx in (-1, 1):
-        x0, x1 = sorted((sx * 1.18, sx * 0.8))
-        sub.poly("headlight", [(x0, y - 0.014, 0.62), (x1, y - 0.014, 0.62), (x1, y - 0.014, 0.76), (x0, y - 0.014, 0.76)], out=(0, -1, 0))
-        x0, x1 = sorted((sx * 1.2, sx * 0.95))
-        sub.poly("taillight", [(x0, L / 2 + 0.012, 0.7), (x1, L / 2 + 0.012, 0.7), (x1, L / 2 + 0.012, 1.1), (x0, L / 2 + 0.012, 1.1)], out=(0, 1, 0))
-    sub.box("rubber", (-1.25, y - 0.04, 0.3), (1.25, y + 0.05, 0.55))
-    sub.box("rubber", (-1.25, L / 2 - 0.05, 0.3), (1.25, L / 2 + 0.04, 0.55))
-    sub.poly("carglass", [(-0.9, L / 2 + 0.012, 1.9), (0.9, L / 2 + 0.012, 1.9), (0.9, L / 2 + 0.012, 2.65), (-0.9, L / 2 + 0.012, 2.65)], out=(0, 1, 0))
-    for d0 in (0.35, 5.2):
-        yy = y + d0
-        sub.poly("carglass", [(-W / 2 - 0.012, yy, 0.38), (-W / 2 - 0.012, yy + 1.2, 0.38), (-W / 2 - 0.012, yy + 1.2, 1.05), (-W / 2 - 0.012, yy, 1.05)], out=(-1, 0, 0))
-        sub.box("rubber", (-W / 2 - 0.02, yy + 0.58, 0.32), (-W / 2 + 0.01, yy + 0.62, 2.62))
-    # Roof pods: air conditioning and the battery or gas tanks.
-    sub.box("carpaint", (-0.9, y + 3.0, 3.08), (0.9, y + 5.6, 3.38))
-    sub.box("carpaint", (-0.8, y + 7.5, 3.08), (0.8, y + 9.8, 3.3))
-    for d in S["wheels"]:
+    c = Car(M.m, at, BUS)
+    c.skin(c.arches(0.08), levels=2)
+    L, W = c.L, c.W
+    w = W / 2
+    # Windscreen down to the bumper, destination display above it.
+    c.front("rubber", [(-w * 0.94, 1.0), (w * 0.94, 1.0), (w * 0.94, 2.98), (-w * 0.94, 2.98)], 0.003, n=(6, 4), mirror=False)
+    c.front("carglass", [(-w * 0.9, 1.06), (w * 0.9, 1.06), (w * 0.9, 2.6), (-w * 0.9, 2.6)], 0.006, n=(6, 4), mirror=False)
+    c.front("led", [(-w * 0.75, 2.66), (w * 0.75, 2.66), (w * 0.75, 2.92), (-w * 0.75, 2.92)], 0.006, n=(4, 1), mirror=False)
+    c.front("headlight", [(w * 0.62, 0.62), (w * 0.92, 0.62), (w * 0.92, 0.74), (w * 0.62, 0.74)], 0.006, n=(2, 1))
+    c.front("rubber", [(-w * 0.96, 0.3), (w * 0.96, 0.3), (w * 0.96, 0.52), (-w * 0.96, 0.52)], 0.004, n=(6, 1), mirror=False)
+    c.front("plate", [(-0.26, 0.38), (0.26, 0.38), (0.26, 0.49), (-0.26, 0.49)], 0.007, n=(1, 1), mirror=False)
+    c.rear("rubber", [(-w * 0.7, 1.95), (w * 0.7, 1.95), (w * 0.7, 2.75), (-w * 0.7, 2.75)], 0.003, n=(4, 2), mirror=False)
+    c.rear("carglass", [(-w * 0.66, 1.99), (w * 0.66, 1.99), (w * 0.66, 2.71), (-w * 0.66, 2.71)], 0.006, n=(4, 2), mirror=False)
+    c.rear("taillight", [(w * 0.75, 0.7), (w * 0.95, 0.7), (w * 0.95, 1.2), (w * 0.75, 1.2)], 0.006, n=(1, 2))
+    c.rear("rubber", [(-w * 0.96, 0.3), (w * 0.96, 0.3), (w * 0.96, 0.55), (-w * 0.96, 0.55)], 0.004, n=(6, 1), mirror=False)
+    c.rear("plate", [(-0.26, 0.6), (0.26, 0.6), (0.26, 0.71), (-0.26, 0.71)], 0.007, n=(1, 1), mirror=False)
+    # A band of black glazing with framed panes; doors on the kerb side (-x).
+    c.side("rubber", [(0.5, 1.1), (11.6, 1.1), (11.6, 2.72), (0.5, 2.72)], 0.003, n=(16, 2))
+    doors = [(0.55, 1.75), (5.25, 6.45)]
+    x = 1.82
+    while x < 11.4:
+        x1 = min(11.5, x + 1.32)
         for sx in (-1, 1):
-            wheel(sub, sx * (W / 2 - S["tw"] / 2 - 0.06), y + d, S["r"], S["tw"], sx)
+            if sx < 0 and any(a - 0.05 < x < b + 0.05 or a < x1 < b for a, b in doors):
+                continue
+            c.side("carglass", [(x + 0.06, 1.18), (x1 - 0.06, 1.18), (x1 - 0.06, 2.64), (x + 0.06, 2.64)], 0.006, n=(2, 2), sides=(sx,))
+        x = x1
+    for a, b in doors:
+        c.side("rubber", [(a, 0.36), (b, 0.36), (b, 2.72), (a, 2.72)], 0.004, n=(2, 3), sides=(-1,))
+        for p, q in ((a + 0.04, (a + b) / 2 - 0.02), ((a + b) / 2 + 0.02, b - 0.04)):
+            c.side("carglass", [(p, 0.42), (q, 0.42), (q, 2.62), (p, 2.62)], 0.007, n=(1, 3), sides=(-1,))
+    # Roof pods: air conditioning and the battery packs.
+    for d0, d1, h in ((3.0, 5.6, 0.3), (7.4, 10.4, 0.24)):
+        c.box("carpaint", Vector((0, -L / 2 + (d0 + d1) / 2, 3.07)), Z, Y, (d1 - d0, 1.8, h))
+    c.wheels()
+
+
+TRUCK = dict(
+    L=2.35, W=2.36, r=0.48, tw=0.28, wheels=(1.08,), inset=0.05,
+    stations=[
+        (0.0, 0.5, 1.2, 1.25, 1.32, 0.94, 0.88), (0.1, 0.44, 1.3, 1.36, 1.44, 0.99, 0.9),
+        (0.42, 0.42, 1.36, 1.42, 1.7, 1.0, 0.92, 0.6), (0.85, 0.42, 1.4, 1.46, 2.62, 1.0, 0.93),
+        (1.1, 0.42, 1.42, 1.48, 2.74, 1.0, 0.94, 0.3), (2.35, 0.42, 1.42, 1.48, 2.74, 1.0, 0.94),
+    ],
+    ring_crease=(0.4, 0.6, 0.0, 0.8, 0.6, 0.7),
+)
 
 
 def truck(M, at):
-    """A box truck: a cab-over chassis cab and a 5.2 m box behind, dual rear wheels."""
+    """A box truck: a chassis cab and a 5.2 m box behind, dual rear wheels."""
     M.piece("truck", at)
-    sub = Shifted(M.m, Vector(at))
-    S = dict(TRUCK_CAB)
     L = 7.6
-    y0 = -L / 2
-    S2 = dict(S, L=S["L"])
-    # The cab is lofted at the front of the truck.
-    cab = Shifted(M.m, Vector(at) + Vector((0, y0 + S["L"] / 2, 0)))
-    rings, ds = body(cab, S2)
-    lights(cab, S2, rings, ds)
-    W = 2.4
-    # Chassis rails, fuel tank, the box.
-    sub.box("dark", (-0.5, y0 + 2.2, 0.55), (0.5, L / 2 - 0.2, 0.85))
-    sub.box("chrome", (0.55, y0 + 2.4, 0.55), (1.05, y0 + 3.4, 0.95))
-    bx0 = y0 + 2.42
-    sub.box("cargo", (-W / 2, bx0, 0.95), (W / 2, L / 2, 3.55))
-    sub.box("rubber", (-W / 2 - 0.02, bx0, 0.92), (W / 2 + 0.02, L / 2 + 0.02, 1.02))
+    cab_off = Vector(at) + Vector((0, -L / 2 + TRUCK["L"] / 2, 0))
+    c = Car(M.m, cab_off, TRUCK)
+    c.skin(c.arches(0.07))
+    w = c.W / 2
+    a, b = 0.44, 0.84
+    c.slope("rubber", (a, 1.48), (b, 2.6), [(-w * 0.9, -0.02), (w * 0.9, -0.02), (w * 0.86, 1.2), (-w * 0.86, 1.2)], 0.003)
+    c.slope("carglass", (a, 1.48), (b, 2.6), [(-w * 0.84, 0.04), (w * 0.84, 0.04), (w * 0.8, 1.13), (-w * 0.8, 1.13)], 0.006)
+    c.side("rubber", [(0.92, 1.5), (1.85, 1.5), (1.85, 2.5), (0.98, 2.5)], 0.003, n=(3, 2))
+    c.side("carglass", [(0.96, 1.54), (1.8, 1.54), (1.8, 2.45), (1.02, 2.45)], 0.006, n=(3, 2))
+    c.side("seam", [(1.9, 0.5), (1.906, 0.5), (1.906, 2.5), (1.9, 2.5)], 0.002, n=(1, 3))
+    c.front("rubber", [(w * 0.5, 0.78), (w * 0.92, 0.8), (w * 0.92, 0.95), (w * 0.5, 0.93)], 0.004)
+    c.front("headlight", [(w * 0.56, 0.81), (w * 0.88, 0.83), (w * 0.88, 0.92), (w * 0.56, 0.9)], 0.007, n=(2, 1))
+    c.front("chrome", [(-w * 0.44, 0.62), (w * 0.44, 0.62), (w * 0.44, 1.2), (-w * 0.44, 1.2)], 0.003, n=(4, 2), mirror=False)
+    c.front("dark", [(-w * 0.4, 0.66), (w * 0.4, 0.66), (w * 0.4, 1.16), (-w * 0.4, 1.16)], 0.005, n=(4, 2), mirror=False)
+    for k in range(1, 5):
+        z = 0.66 + k * 0.1
+        c.front("chrome", [(-w * 0.39, z - 0.008), (w * 0.39, z - 0.008), (w * 0.39, z + 0.008), (-w * 0.39, z + 0.008)], 0.007, n=(3, 1), mirror=False)
+    c.front("rubber", [(-w * 0.97, 0.44), (w * 0.97, 0.44), (w * 0.97, 0.6), (-w * 0.97, 0.6)], 0.004, n=(6, 1), mirror=False)
+    c.front("plate", [(-0.26, 0.46), (0.26, 0.46), (0.26, 0.57), (-0.26, 0.57)], 0.007, n=(1, 1), mirror=False)
+    for sx in (-1, 1):
+        h = c.hit((sx * 3, -c.L / 2 + 0.75, 2.0), X * -sx)
+        if h:
+            c.box("rubber", h[0] + Vector((sx * 0.12, 0, 0)), Vector((sx, 0, 0)), Z, (0.5, 0.06, 0.06))
+            c.box("rubber", h[0] + Vector((sx * 0.26, 0.04, -0.15)), Y, Z, (0.42, 0.2, 0.06))
+    c.wheels()
+    # The box and chassis, in the truck's own frame.
+    t = Car(M.m, at, dict(L=L, W=2.44, r=0.48, tw=0.28, wheels=(L - 1.75,), inset=0.05))
+    y0 = -L / 2 + 2.42
+    t.box("dark", Vector((0, (y0 + L / 2) / 2 - 0.05, 0.55)), Z, Y, (L / 2 - y0, 1.0, 0.3))
+    t.box("chrome", Vector((0.82, y0 + 0.5, 0.55)), Z, Y, (1.0, 0.36, 0.4))
+    bw, bz0, bz1 = 1.22, 0.98, 3.58
+    t.box("cargo", Vector((0, (y0 + L / 2) / 2, bz0)), Z, Y, (L / 2 - y0, 2 * bw, bz1 - bz0))
+    t.box("rubber", Vector((0, (y0 + L / 2) / 2, bz0 - 0.06)), Z, Y, (L / 2 - y0 + 0.02, 2 * bw + 0.04, 0.08))
     for sx in (-1, 1):
         for k in range(1, 9):
-            yy = bx0 + k * (L / 2 - bx0) / 9
-            sub.box("rubber", (sx * W / 2 - 0.015, yy, 1.02), (sx * W / 2 + 0.015, yy + 0.05, 3.5))
-    sub.box("rubber", (-0.02, L / 2, 1.0), (0.02, L / 2 + 0.025, 3.5))
+            yy = y0 + k * (L / 2 - y0) / 9
+            t.box("cargo", Vector((sx * bw, yy, (bz0 + bz1) / 2)), Vector((sx, 0, 0)), Z, (bz1 - bz0 - 0.04, 0.05, 0.02))
+    t.poly("seam", [(-0.004, L / 2 + 0.002, 1.02), (0.004, L / 2 + 0.002, 1.02), (0.004, L / 2 + 0.002, 3.5), (-0.004, L / 2 + 0.002, 3.5)], Y, False)
     for sx in (-1, 1):
-        x0, x1 = sorted((sx * 1.15, sx * 0.9))
-        sub.poly("taillight", [(x0, L / 2 + 0.03, 0.75), (x1, L / 2 + 0.03, 0.75), (x1, L / 2 + 0.03, 0.9), (x0, L / 2 + 0.03, 0.9)], out=(0, 1, 0))
-    sub.box("rubber", (-1.2, L / 2 - 0.1, 0.55), (1.2, L / 2 + 0.03, 0.7))
-    tw, r = S["tw"], S["r"]
+        x0, x1 = sorted((sx * 1.15, sx * 0.88))
+        t.poly("taillight", [(x0, L / 2 + 0.003, 0.72), (x1, L / 2 + 0.003, 0.72), (x1, L / 2 + 0.003, 0.88), (x0, L / 2 + 0.003, 0.88)], Y, False)
+    t.box("rubber", Vector((0, L / 2 - 0.05, 0.55)), Z, Y, (0.1, 2.4, 0.16))
+    t.poly("plate", [(-0.26, L / 2 + 0.003, 0.65), (0.26, L / 2 + 0.003, 0.65), (0.26, L / 2 + 0.003, 0.76), (-0.26, L / 2 + 0.003, 0.76)], Y, False)
+    # Mudguards over the dual rear wheels; the wheels.
     for sx in (-1, 1):
-        x = sx * (2.3 / 2 - tw / 2 - 0.04)
-        wheel(sub, x, y0 + 1.05, r, tw, sx)
-        wheel(sub, x, L / 2 - 1.7, r, tw, sx)
-        wheel(sub, x - sx * (tw + 0.02), L / 2 - 1.7, r, tw, -sx, rim="dark")
-    # Rear wheel arches in the box's skirt.
-    sub.box("dark", (-W / 2 + 0.05, L / 2 - 2.35, 0.55), (W / 2 - 0.05, L / 2 - 1.05, 0.95))
-
-
-class Shifted:
-    """Draws into a Mesh with every point moved by `off` (the piece's reference position)."""
-
-    def __init__(self, m, off):
-        self.m, self.off = m, off
-
-    def _p(self, p):
-        return tuple(Vector(p) + self.off)
-
-    def poly(self, role, pts, out=None, uvs=None, smooth=False):
-        return self.m.poly(role, [self._p(p) for p in pts], out=out, uvs=uvs, smooth=smooth)
-
-    def box(self, role, lo, hi, skip=()):
-        self.m.box(role, self._p(lo), self._p(hi), skip)
-
-    def __getattr__(self, k):
-        return getattr(self.m, k)
+        t.box("rubber", Vector((sx * 0.95, L / 2 - 1.75, 1.0)), Z, Y, (1.3, 0.62, 0.03))
+    t.wheels(dual=True)
 
 
 ORDER = ["hatch", "sedan", "estate", "suv", "coupe", "taxi", "pickup", "van"]
@@ -462,10 +795,11 @@ ORDER = ["hatch", "sedan", "estate", "suv", "coupe", "taxi", "pickup", "van"]
 
 def build(out, bake=True):
     M = Model(ID)
+    M.sharp = math.radians(40)
     x = -20.0
     for name in ORDER:
-        car(M, name, CARS[name], (x, 0, 0))
+        car(M, name, (x, 0, 0))
         x += 4.0
     bus(M, (x + 1.0, 0, 0))
     truck(M, (x + 6.0, 0, 0))
-    M.export(out, bake, size=2048, samples=128, smooth=2.0)
+    M.export(out, bake, size=2048, samples=96, smooth=2.0)

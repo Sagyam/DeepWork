@@ -571,8 +571,13 @@ class Mesh:
                     continue
                 self.poly(role, [r0[i], r0[j], r1[j], r1[i]], out=out)
 
-    def finish(self):
+    def finish(self, sharp=None):
+        """`sharp` (radians): edges whose faces meet at a steeper angle shade hard, the rest smooth."""
         bmesh.ops.remove_doubles(self.bm, verts=self.bm.verts, dist=0.0004)
+        if sharp is not None:
+            for e in self.bm.edges:
+                if len(e.link_faces) == 2 and e.calc_face_angle(0.0) > sharp:
+                    e.smooth = False
         for f in self.bm.faces:
             if f[self.fixed]:
                 continue
@@ -887,6 +892,8 @@ class Model:
         self.decal = Mesh(f"{id_}_decal")
         self.names, self.at = [], []
         self.R = random.Random(seed)
+        # Angle above which edges are hard on export (None: as drawn).
+        self.sharp = None
 
     def piece(self, name, at=(0, 0, 0)):
         self.m.part = self.cut.part = self.decal.part = len(self.names)
@@ -895,7 +902,7 @@ class Model:
         WID[0] = 0
 
     def export(self, out, bake=True, size=2048, samples=96, smooth=0.0):
-        ob, co = self.m.finish(), self.cut.finish()
+        ob, co = self.m.finish(self.sharp), self.cut.finish()
         tris = sum(len(p.vertices) - 2 for p in ob.data.polygons) + sum(len(p.vertices) - 2 for p in co.data.polygons)
         print(self.id, "triangles", tris, "pieces", len(self.names))
         bake_ao(ob, os.path.join(out, f"{self.id}_ao.png"), bake, size, samples, smooth)

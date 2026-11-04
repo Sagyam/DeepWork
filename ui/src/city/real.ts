@@ -613,9 +613,15 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "carglass": m = sheen({ color: 0x0b0e12, roughness: 0.04, metalness: 0.1 }); break;
     case "rubber": m = w(plain(0x1a1b1d, 0.65)); break;
     case "chrome": m = w(plain(0xd8dce0, 0.12, 1)); break;
-    case "rim": m = w(plain(0xc8ccd0, 0.32, 0.6)); break;
+    case "rim": m = w(plain(0xd4d8dc, 0.3, 0.5)); break;
     case "tyre": m = w(plain(0x262628, 0.9)); break;
     case "plate": m = w(plain(0xe8e6dc, 0.4)); break;
+    case "seam": m = plain(0x0a0a0b, 0.9); break;
+    case "brake": m = w(plain(0x6a6c6e, 0.45, 0.8)); break;
+    case "caliper": m = w(plain(0x2c2e30, 0.5, 0.3)); break;
+    case "indicator":
+      m = plain(0xd08a20, 0.25, 0, { emissive: 0xffa020, emissiveIntensity: 0 });
+      break;
     case "cargo": m = w(plain(0xe6e6e2, 0.5, 0.2)); break;
     case "headlight":
       m = plain(0xf4f2ea, 0.1, 0.3, { emissive: 0xfff2d0, emissiveIntensity: 0 });
