@@ -420,6 +420,7 @@ export class City {
     const asphalt = real ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
     const walk = real ? groundMat("pave", 3.6, { roughness: 0.88 }) : mat(0xa8a49c, { roughness: 0.9 });
     const kerbStone = mat(0xb6b2aa, { roughness: 0.8 });
+    const pool = real ? lightPool() : null;
     const iron = mat(0x2a2b2d, { roughness: 0.55, metalness: 0.5 });
     const line = mat(0xe8e0c0, { roughness: 0.6 });
     const pole = mat(0x3c4046, { metalness: 0.6, roughness: 0.4 });
@@ -465,8 +466,11 @@ export class City {
           const x = b.x + t * (BLOCK_X / 2 - 1);
           const z = b.z + lz * ez;
           if (real) {
-            // The arm reaches out over the road.
+            // The arm reaches out over the road; at night its light pools
+            // on the road and pavement below (lit faces point down, so from
+            // the usual overhead view the pool is what shows).
             furniture(parts, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
+            parts.add(pool!, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
             continue;
           }
           parts.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
@@ -560,7 +564,7 @@ export class City {
     parts.into(this.base);
     this.base.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        o.castShadow = o.material !== asphalt && o.material !== walk;
+        o.castShadow = o.material !== asphalt && o.material !== walk && o.material !== pool;
         // Realistic lamps (street lights, park lanterns) light up at night too.
         const m = o.material as THREE.MeshStandardMaterial;
         if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
@@ -819,4 +823,35 @@ function describeLive(ev: WorldEvent, w: World): string {
       return `${why} damaged ${plots(ev.plots)}.`;
     }
   }
+}
+
+let poolMat: THREE.MeshStandardMaterial | null = null;
+
+/**
+ * The glow a street light throws on the ground: a warm radial gradient,
+ * added on top of what is below, its strength following the night (it is
+ * one of the scene's lamp materials).
+ */
+function lightPool(): THREE.MeshStandardMaterial {
+  if (poolMat) return poolMat;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const g = c.getContext("2d")!;
+  // Grey on black: alphaMap and emissiveMap both read the colour channels.
+  g.fillStyle = "#000";
+  g.fillRect(0, 0, 128, 128);
+  const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, "#fff");
+  grad.addColorStop(0.3, "#9a9a9a");
+  grad.addColorStop(0.7, "#262626");
+  grad.addColorStop(1, "#000");
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 128, 128);
+  const t = new THREE.CanvasTexture(c);
+  poolMat = new THREE.MeshStandardMaterial({
+    color: 0x000000, roughness: 1, emissive: 0xffc27a, emissiveMap: t, emissiveIntensity: 0, alphaMap: t,
+    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4,
+  });
+  poolMat.userData.night = 0.65;
+  return poolMat;
 }
