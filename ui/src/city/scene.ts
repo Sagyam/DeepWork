@@ -14,7 +14,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
-import { groundMat, hasReal, interiorUniforms, loadReal, setRealEnv, setSignals } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
@@ -548,10 +548,14 @@ export class City {
     };
     ribbon(bx + 15, RADIUS - 1);
     ribbon(-RADIUS + 1, bx - 15);
-    for (const { role, geo } of piece("bridge").parts) {
-      const m = kitLook(role);
-      if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
-      parts.add(m, geo, bx, 0, bz);
+    if (hasReal("bridge")) {
+      for (const { role, geo } of realPiece("bridge", "bridge")) parts.add(realMat("bridge", role, { wall: 0, accent: 0, roof: 0, signs: 0 }, 0), geo, bx, 0, bz);
+    } else {
+      for (const { role, geo } of piece("bridge").parts) {
+        const m = kitLook(role);
+        if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
+        parts.add(m, geo, bx, 0, bz);
+      }
     }
     parts.into(this.base);
     this.base.traverse((o) => {

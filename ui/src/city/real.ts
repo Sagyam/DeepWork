@@ -149,7 +149,7 @@ export const DEFS: Record<string, RealDef> = {
  * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
  * the kit's props.
  */
-export const PROPS = ["cars", "trees", "street"];
+export const PROPS = ["cars", "trees", "street", "bridge"];
 
 /** Loads every model there is; missing ones are left to the kit. Never throws. */
 export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<void> {
@@ -633,6 +633,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x2a1400, 0.4, 0, { emissive: 0xffa020, emissiveIntensity: 0 });
       if (variant === "traffic") Object.assign(m.userData, { night: 1.8, day: 0.5 });
       break;
+    // The bridge.
+    case "girder": m = w(plain(0x4a625c, 0.55, 0.45), 1.4); break;
+    case "road": m = w(pbr("asphalt", [6, 6], { roughness: 0.93, color: 0xb4b4b4 }), 0.4); break;
+    case "pave": m = w(pbr("pave", [3.6, 3.6], { roughness: 0.88 }), 0.6); break;
+    case "marking": m = w(plain(0xe8e4d8, 0.7)); break;
     // Street furniture.
     case "galv": m = w(plain(0x9a9ea2, 0.42, 0.7), 0.4); break;
     case "hydrant": m = w(plain(0xb02a1e, 0.45, 0.15), 0.4); break;
