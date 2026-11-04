@@ -426,6 +426,76 @@ def solar_tex(t):
     t.save("solar_col", col)
 
 
+def shake_tex(t, n=1024):
+    """Hand-split cedar shakes, 0.25 m exposure, random widths 0.08-0.3 m: tile 1.5 m.
+
+    Pale weathered wood for the app to tint (natural cedar, silvered,
+    dark-stained): split grain along the slope, a dark keyway between
+    shakes, a shadow under each course's butt and a little lichen; row 0
+    (the image's top) is up the slope.
+    """
+    rows, T = 6, 1.5
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / rows)
+    row = np.floor(cy).astype(int)
+    fy = cy - row  # 0 just under the butt of the course above, 1 at this course's butt
+    u = x / n * T
+    rng = np.random.default_rng(181)
+    sid = np.zeros((n, n), int)
+    key = np.zeros((n, n), bool)
+    for r_ in range(rows):
+        w = []
+        while sum(w) < T:
+            w.append(0.08 + 0.22 * rng.random() ** 1.4)
+        w = np.array(w) * T / sum(w)
+        e = np.concatenate([[0.0], np.cumsum(w)])
+        sel = row == r_
+        uu = (u[sel] - rng.random() * T) % T
+        k = np.clip(np.searchsorted(e, uu, side="right") - 1, 0, len(w) - 1)
+        sid[sel] = r_ * 64 + k
+        key[sel] = (uu - e[k]) < 0.006 + 0.004 * rng.random(len(w))[k]
+    tone = rng.random(rows * 64)[sid]
+    off = (rng.random(rows * 64)[sid] * n).astype(int)
+    grain = fbm(n, 8, 6, 182, stretch=(10, 1))
+    grain = grain[(y.astype(int) + off) % n, x.astype(int)]  # each shake split from elsewhere in the log
+    lichen = fbm(n, 6, 5, 183)
+    col = np.ones((n, n, 3), np.float32) * srgb(214, 198, 176)
+    col *= (0.74 + 0.34 * tone + 0.5 * (grain - 0.5))[..., None]
+    moss = (np.clip((lichen - 0.62) / 0.12, 0, 1) * np.clip(fy * 1.4 - 0.2, 0, 1) * 0.45)[..., None]
+    col = col * (1 - moss) + srgb(150, 158, 118) * moss
+    col *= (0.5 + 0.5 * np.clip(fy / 0.16, 0, 1) ** 0.7)[..., None]  # shadow under the course above
+    col[fy > 0.965] *= 0.6  # the butt's end grain
+    col[key] = srgb(34, 30, 26)
+    h = 0.25 + 0.75 * fy + 0.35 * (grain - 0.5)
+    h[key] = 0.0
+    t.save("shake_col", col)
+    t.save("shake_nrm", normals(h, 6.0))
+
+
+def boards_tex(t, n=1024):
+    """Vertical tongue-and-groove boards 0.14 m wide with V-grooves: tile 1.4 m.
+
+    Pale pine with knots, for the app to stain per building (cedar, honey,
+    walnut, barn red, weathered grey, ...).
+    """
+    k = 10
+    y, x = np.mgrid[0:n, 0:n]
+    fx = (x / (n / k)) % 1
+    b = x * k // n
+    rng = np.random.default_rng(191)
+    tone, off = rng.random(k)[b], rng.random(k)[b]
+    grain = fbm(n, 6, 5, 192, stretch=(8, 1))
+    grain = grain[(y + (off * n).astype(int)) % n, x]
+    knots = fbm(n, 20, 3, 193) > 0.8
+    col = np.ones((n, n, 3), np.float32) * srgb(226, 210, 186)
+    col *= (0.84 + 0.2 * tone + 0.32 * (grain - 0.5))[..., None]
+    col[knots] *= 0.72
+    v = np.clip(np.minimum(fx, 1 - fx) * (n / k) / 3.5, 0, 1)  # the V-groove at each joint
+    col *= (0.45 + 0.55 * v)[..., None]
+    t.save("boards_col", col)
+    t.save("boards_nrm", normals(v ** 0.5 + 0.05 * grain, 4.0))
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -455,7 +525,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, ground_tex, grime_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, ground_tex, grime_tex,
 )
 
 

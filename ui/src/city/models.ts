@@ -507,6 +507,29 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       if (r() < 0.7) tree(p, 3.5 + r() * 3, back + 1.2, 0.8, s.seed + 2, KERB);
       break;
     }
+    case "c4": {
+      // A cabin in the pines: a lawn, stepping stones to the deck steps, a
+      // gravel drive down the side with the car, a post-and-rail fence along
+      // the street and conifers round about.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.45;
+      for (let z = s.d / 2 + 0.45; z < fz - 0.3; z += 0.8) p.box(paving, 0.7, KERB + 0.04, 0.5, (r() - 0.5) * 0.25, 0, z, (r() - 0.5) * 0.4);
+      const dx = half - 1.7;
+      p.box(mat(0x9e978c, { roughness: 1 }), 2.8, KERB + 0.03, front - cz - 0.6, dx, 0, (front + cz + 0.6) / 2);
+      parked(p, dx, 0.2, 0, s.seed + 3);
+      if (hasReal("street")) {
+        fenceRun(p, "fence_rail", -half + 0.2, fz, -0.6, fz);
+        fenceRun(p, "fence_rail", 0.6, fz, dx - 1.6, fz);
+      }
+      const pines = ["spruce", "pine", "spruce", "birch", "pine"];
+      tree(p, -half + 1.3, front - 2.4, 0.95, s.seed + 1, KERB, pines);
+      tree(p, -half + 1.6, back + 2.0, 1.1, s.seed + 2, KERB, pines);
+      tree(p, 2.8 + r() * 1.5, back + 1.3, 0.9, s.seed + 4, KERB, pines);
+      if (r() < 0.6) tree(p, -half + 1.2, 1.0, 0.7, s.seed + 5, KERB, pines);
+      // Low shrubs at the deck's corners, under the eaves.
+      for (const x of [-3.9, 3.9]) if (r() < 0.8) shrub(p, x, 4.5, s.seed * 5 + x * 3, KERB, 0.7);
+      break;
+    }
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.
@@ -617,11 +640,11 @@ export function shrub(p: Parts, x: number, z: number, seed: number, y = KERB, s 
   for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 
-/** A tree; `s` was the kit's scale (0.35-1.2), which picks the realistic tree's size too. */
-export function tree(p: Parts, x: number, z: number, s: number, seed: number, y = 0) {
+/** A tree; `s` was the kit's scale (0.35-1.2), which picks the realistic tree's size too; `species` the realistic ones to pick from. */
+export function tree(p: Parts, x: number, z: number, s: number, seed: number, y = 0, species = SPECIES) {
   const r = rng(seed);
   if (hasReal("trees")) {
-    const name = SPECIES[Math.floor(r() * SPECIES.length)];
+    const name = species[Math.floor(r() * species.length)];
     const k = 0.5 + 0.55 * s;
     const scale = new THREE.Vector3(k, k * (0.88 + r() * 0.24), k);
     const ry = r() * Math.PI * 2;
