@@ -68,6 +68,15 @@ the traffic signals' cycle. Until models are downloaded on
 first run, a local `tauri build` embeds whatever `bun run models` produced and
 CI builds ship without them.
 
+The showcase town, `http://localhost:5173/town.html`, puts every model
+together in a hand-laid 3 x 3 block town (downtown towers, main street,
+apartments, cottages, works, a park and a plaza, the river and bridge,
+moving traffic) without earning anything. `view=overview|downtown|main|homes|works|bridge|plaza|skyline`,
+`hour`, `&still` parks the traffic. Its bottom-left panel shows FPS, frame,
+CPU and GPU times (GPU via `EXT_disjoint_timer_query_webgl2`; `&gputimer=0`
+turns it off), draw calls, triangles and memory, with a frame time graph.
+A new model appears in it once it is added to `BLOCKS` in `ui/src/proto/town.ts`.
+
 ## Install
 
 From a release, on any supported distribution:

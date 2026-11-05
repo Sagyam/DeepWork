@@ -750,6 +750,11 @@ the townhouse apartments.
 A3, the balcony block, followed: a rendered 1960s block with stacks of
 cantilevered balconies behind frosted glass rails, the classic
 apartment's sibling to A1, which finishes the kit's apartment styles.
+The showcase town (`ui/town.html`, 2026-11-05) puts every model together
+in a hand-laid town with a stats panel, for development without earning
+buildings. Its first measurement: about 12 fps on the 7700X's iGPU, GPU
+bound (about 80 ms GPU against 17 ms CPU per frame, 7.8M triangles in
+5,300 draw calls), which sizes the optimisation work.
 Next: progression v2 and the
 master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
