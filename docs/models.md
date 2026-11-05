@@ -9,7 +9,8 @@ that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
 the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
-factory, and C2, the brick cottage (sharing the classic cottages with C1);
+factory, C2, the brick cottage (sharing the classic cottages with C1), and
+A2, the brownstone row (the townhouse apartments);
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -138,7 +139,9 @@ every model after this one:
   block (lit from behind at night); with S4, weathered corrugated sheet
   (galvanised, rust bleeding from the fixings and laps; tinted or painted
   per building), also for S6's canopy and sheds; with C2, natural slate
-  (riven, chipped butts, a little lichen; blue-grey, tinted per building).
+  (riven, chipped butts, a little lichen; blue-grey, tinted per building);
+  with A2, brownstone (smooth ashlar slabs with fine joints, faint bedding,
+  spalled patches; chocolate brown, tinted per building).
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
@@ -169,7 +172,9 @@ every model after this one:
   openings, bulkhead lamps, and a round brick stack (bands, staples, a
   conductor, corbelled cap). With C2, `Side` builds oriented boxes for a
   facade at any angle in plan (a canted bay's faces), so every helper
-  (sashes, sills, walls) works on it.
+  (sashes, sills, walls) works on it; `lib.offset` offsets a bay's plan
+  outline (its roof's eaves, A2's railed bay tops). With A2, `lintel` and
+  `hood` take a role, so the trim can be the wall's own stone.
 - Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
   the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
@@ -241,7 +246,9 @@ every model after this one:
   post-and-rail fence among conifers, with a gravel drive; C2 is
   12.4 x 9.7 m with its bay, steps and coal shed, 3 m back behind a clipped
   hedge with brick gate piers and a tiled path, board fences round the back
-  garden; S3 is
+  garden; A2 is 15.6 x 13.6 m with its stoops, 0.8 m back behind
+iron railings with flagstone areaways, three narrow lawns between board
+fences behind; S3 is
   14.2 x 10.4 m with its vestibule steps and kitchen, 3.4 m back behind an
   asphalt forecourt with a car drawn up and its pylon sign at the corner,
   a fenced service yard behind; S4 is 13.5 x 10.4 m with its dock, boiler
@@ -326,7 +333,7 @@ P2 is variety, so one kind can fill a city.
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
 | A1 | Pre-war brick block | Six storeys over shops, fire escape, water tank: **the prototype** | apartment classic (walk-up) | **done, in the app** (2026-11-04): pieces ground / first / floor a, b / last / roof, 3-7 storeys | done | P1 |
-| A2 | Brownstone row | Three townhouses, stoops with iron railings, bay fronts | apartment townhouse | new: brownstone; brick | 12% | P1 |
+| A2 | Brownstone row | Three townhouses, stoops with iron railings, bay fronts | apartment townhouse | **done** (2026-11-05): three Italianate row houses of the 1870s, 5.2 m each, plans mirrored so two stoops pair up; rusticated garden storey, tall parlour storey; full-height canted bays of one-over-one sashes over sunk aprons, stopping under the top storey, whose French doors open onto their railed lead tops; round-arched double doors with a fanlight in a deep reveal, archivolt and keystone, a hood on consoles; ten-step stoops between cheek walls with iron railings and lamp-topped newels; a bracketed sheet-metal cornice with frieze panels, modillions and dentils; brick sides and back (gauged arches, a garden door each); flat roof behind parapets, fire walls, six stacks, hatches, hipped skylights, an aerial, a condenser; pieces ground / floor / top / roof for 3-4 storeys over the garden storey; 21.1 k triangles (4 storeys) | 12% | P1 |
 | A3 | Balcony block | Rendered mid-century block, rows of balconies with glass rails | apartment classic (balconies) | render, glass | 12% | P1 |
 | A4 | Art deco apartments | Buff brick, corner windows, deco spandrels and entrance | | brick, stone | 12% | P2 |
 | A5 | Parisian block | European: cream stone, wrought-iron balconies, zinc mansard with dormers | | new: zinc roof | 15% | P2 |
@@ -517,13 +524,14 @@ above; none of it changes how models look.
    farmhouse~~, ~~S1 main-street shop~~, ~~C3 modern house~~, ~~C4 A-frame
    cabin~~, ~~S3 diner~~ (done 2026-11-04), ~~S4 brick factory~~ (done
    2026-11-05), ~~C2 brick cottage~~ (done 2026-11-05), then S2 corner café for variety. After
-   that the hamlet has no low-poly buildings left.
+   that the hamlet has no low-poly buildings left. A2, the brownstone row,
+   went in alongside S2 (2026-11-05), as the first of step 5.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
    needed where, so it comes before most of them.
 4. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
-5. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
+5. One model per kind (C1, S1, ~~A2~~, O1, L1) so a real mixed city can be seen.
 6. The first civic landmarks (L5-L7) on their reserved ground.
 7. The rest of P1, then building states.
 8. Surroundings: streets, trees and terrain first, as they fill the most

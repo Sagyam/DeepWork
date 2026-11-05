@@ -523,6 +523,51 @@ def slate_tex(t, n=1024):
     t.save("slate_rgh", rough)
 
 
+def brownstone_tex(t, n=1024):
+    """Brownstone: Triassic sandstone dressed smooth, laid as large ashlar slabs
+    with fine joints: 2 x 4 slabs, tile 2.4 x 1.8 m.
+
+    Chocolate to reddish brown for the app to tint, each slab its own tone,
+    the bedding showing as faint horizontal laminations; the stone spalls
+    along them, so patches of the face have flaked off, lighter and rougher,
+    with a sharp lip. Row 0 is the top.
+    """
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / 4)
+    course = np.floor(cy).astype(int)
+    fy = cy - course
+    bx = x / (n / 2) + 0.5 * (course % 2)
+    fx = bx - np.floor(bx)
+    block = (np.floor(bx).astype(int) % 2) + course * 2
+    edge = np.minimum(np.minimum(fx, 1 - fx) * 1.2, np.minimum(fy, 1 - fy) * 0.45)
+    joint = edge < 0.004
+    rng = np.random.default_rng(271)
+    tone = rng.random(8)[block]
+    hue = rng.random(8)[block]
+    off = (rng.random(8)[block] * n).astype(int)
+    beds = fbm(n, 6, 6, 272, stretch=(1, 10))
+    beds = beds[(y.astype(int) + off) % n, x.astype(int)]  # each slab cut from its own block
+    blot = fbm(n, 6, 5, 273)
+    col = np.ones((n, n, 3), np.float32) * srgb(100, 74, 63)
+    col *= (0.86 + 0.2 * tone + 0.1 * (beds - 0.5) + 0.12 * (blot - 0.5))[..., None]
+    col *= 1 + 0.08 * (hue - 0.5)[..., None] * np.array([0.6, -0.2, -0.6], np.float32)
+    # Spalls: the face lost along the bedding, fresher and paler beneath.
+    sp = fbm(n, 12, 5, 274, stretch=(1, 3))
+    spall = sp > 0.7
+    lip = (sp > 0.68) & ~spall
+    col[spall] = col[spall] * 1.07 + srgb(6, 5, 4)
+    col[lip] *= 0.72
+    col *= (0.88 + 0.24 * fbm(n, 96, 3, 275))[..., None]
+    col[joint] = srgb(96, 70, 60)
+    h = 0.6 + 0.08 * (beds - 0.5) + 0.12 * fbm(n, 64, 4, 276)
+    h[spall] -= 0.25 + 0.2 * (sp[spall] - 0.7)
+    h = np.where(joint, 0.35, h) * np.clip(edge / 0.008, 0.6, 1)
+    rough = np.where(spall, 0.95, 0.74 + 0.12 * beds)
+    t.save("brownstone_col", col)
+    t.save("brownstone_nrm", normals(h, 4.0))
+    t.save("brownstone_rgh", rough)
+
+
 def boards_tex(t, n=1024):
     """Vertical tongue-and-groove boards 0.14 m wide with V-grooves: tile 1.4 m.
 
@@ -665,7 +710,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, ground_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, brownstone_tex, ground_tex,
     grime_tex,
 )
 
@@ -901,6 +946,26 @@ def sides(m, W, D, cx=0.0, cy=0.0, z=0.0):
     }
 
 
+def offset(poly, d):
+    """Offsets an open polyline of (u, w) points outward (to its left, w up) by d; the ends slide along w = 0."""
+    P = [Vector((u, w)) for u, w in poly]
+    segs = []
+    for p, q in zip(P, P[1:]):
+        t = (q - p).normalized()
+        segs.append((p + Vector((-t.y, t.x)) * d, t))
+    out = []
+    first_p, first_t = segs[0]
+    out.append(first_p - first_t * (first_p.y / first_t.y))
+    for (p0, t0), (p1, t1) in zip(segs, segs[1:]):
+        # Intersection of the two offset lines.
+        den = t0.x * t1.y - t0.y * t1.x
+        s = ((p1 - p0).x * t1.y - (p1 - p0).y * t1.x) / den
+        out.append(p0 + t0 * s)
+    last_p, last_t = segs[-1]
+    out.append(last_p - last_t * (last_p.y / last_t.y))
+    return out
+
+
 # ---- lettering -------------------------------------------------------------------------
 
 
@@ -1088,20 +1153,20 @@ def sill(F, a, b, c, D=0.22, role="stone"):
     F.box(role, a - 0.09, b + 0.09, c - 0.07, c + 0.015, -D + 0.04, 0.06)
 
 
-def lintel(F, a, b, e, key_=True):
-    F.box("stone", a - 0.1, b + 0.1, e, e + 0.26, 0, 0.025)
+def lintel(F, a, b, e, key_=True, role="stone"):
+    F.box(role, a - 0.1, b + 0.1, e, e + 0.26, 0, 0.025)
     if key_:
         m = (a + b) / 2
-        F.box("stone", m - 0.11, m + 0.11, e - 0.04, e + 0.32, 0, 0.05)
+        F.box(role, m - 0.11, m + 0.11, e - 0.04, e + 0.32, 0, 0.05)
 
 
-def hood(F, a, b, e):
+def hood(F, a, b, e, role="stone"):
     """A pedimented window head: a frieze, a cornice and two consoles."""
-    F.box("stone", a - 0.16, b + 0.16, e, e + 0.3, 0, 0.04)
-    F.box("stone", a - 0.26, b + 0.26, e + 0.3, e + 0.38, 0, 0.16)
-    F.box("stone", a - 0.3, b + 0.3, e + 0.38, e + 0.44, 0, 0.2)
+    F.box(role, a - 0.16, b + 0.16, e, e + 0.3, 0, 0.04)
+    F.box(role, a - 0.26, b + 0.26, e + 0.3, e + 0.38, 0, 0.16)
+    F.box(role, a - 0.3, b + 0.3, e + 0.38, e + 0.44, 0, 0.2)
     for u in (a - 0.2, b + 0.08):
-        F.box("stone", u, u + 0.12, e - 0.3, e + 0.3, 0, 0.12)
+        F.box(role, u, u + 0.12, e - 0.3, e + 0.3, 0, 0.12)
 
 
 def ac_unit(F, u, c):
