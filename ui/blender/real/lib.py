@@ -56,7 +56,7 @@ def fbm(n, base, octaves, seed, gain=0.5, stretch=(1, 1)):
     for _ in range(octaves):
         if p * max(stretch) > n:
             break
-        s = s + amp * lattice(n, p * stretch[0], p * stretch[1], rng)
+        s = s + amp * lattice(n, max(1, round(p * stretch[0])), max(1, round(p * stretch[1])), rng)
         tot += amp
         amp *= gain
         p *= 2
@@ -728,6 +728,73 @@ def blades_tex(t, n=512):
     t.save("blades_nrm", normals(h, 5.0))
 
 
+def cladstone_tex(t, n=1024):
+    """Sawn limestone cladding, the art deco tower's skin: blocks 1.2 x 0.6 m in
+    running bond with fine 5 mm joints; tile 2.4 x 1.2 m (two blocks by two
+    courses). Pale buff for the app to tint (Indiana buff, grey, cream, pink
+    granite-like): each block its own tone and bedding, a few shell pits,
+    the joints a shade darker and a little sunk."""
+    w, hh = n, n // 2
+    y, x = np.mgrid[0:hh, 0:w].astype(np.float32)
+    u, v = x / w * 2.4, y / hh * 1.2
+    course = np.floor(v / 0.6).astype(int)
+    fv = v / 0.6 - course
+    bu = u / 1.2 + 0.5 * (course % 2)
+    blk = np.floor(bu).astype(int) % 2
+    fu = bu - np.floor(bu)
+    e = np.minimum(np.minimum(fu, 1 - fu) * 1.2, np.minimum(fv, 1 - fv) * 0.6)  # m to the joint
+    joint = e < 0.0025
+    rng = np.random.default_rng(241)
+    bid = course * 2 + blk
+    tone = rng.random(4)[bid]
+    off = (rng.random(4)[bid] * w).astype(int)
+    # Seamless noise on the 2:1 tile: half as many cells up as across, every other row.
+    half = lambda base, octv, seed, st=1: fbm(w, base, octv, seed, stretch=(st, 0.5))[::2]  # noqa: E731
+    # Bedding: faint horizontal veining, each block cut from elsewhere in the bed.
+    bed = half(4, 6, 242, 0.25)[(y.astype(int) + off // 7) % hh, (x.astype(int) + off) % w]
+    grain = half(192, 2, 243)
+    pits = half(128, 2, 244) > 0.8
+    col = np.ones((hh, w, 3), np.float32) * srgb(226, 216, 196)
+    col *= (0.9 + 0.08 * tone + 0.1 * (bed - 0.5) + 0.05 * grain)[..., None]
+    col[pits] *= 0.9
+    col *= (0.82 + 0.18 * np.clip(e / 0.006, 0, 1))[..., None]
+    col[joint] = srgb(176, 168, 154)
+    h = np.clip(e / 0.004, 0, 1) ** 0.5 + 0.08 * grain - 0.2 * pits
+    t.save("cladstone_col", col)
+    t.save("cladstone_nrm", normals(h, 3.0))
+
+
+def chevron_tex(t, n=512):
+    """A cast spandrel panel (aluminium, bronze or terracotta), the art deco
+    ornament between storeys: a raised border round stacked chevrons pointing
+    up, reeded strips either side; UVs 0..1 across one panel. Light grey for
+    the app to tint; the hollows darkened as the casting holds dirt."""
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    u, v = x / n, 1 - y / n  # v up
+    e = np.minimum(np.minimum(u, 1 - u), np.minimum(v, 1 - v))
+    border = np.clip((e - 0.01) / 0.025, 0, 1) * (e < 0.06)
+    inner = e >= 0.06
+    side = inner & ((u < 0.2) | (u > 0.8))
+    reed = 0.5 + 0.5 * np.cos(((u - 0.06) / 0.035) * math.tau)
+    mid = inner & ~side
+    # Chevrons: ridges along v - |u - 0.5| * k, five up the panel.
+    c = (v - np.abs(u - 0.5) * 0.9) * 5
+    fc = c - np.floor(c)
+    chev = np.clip(1 - np.abs(fc - 0.5) / 0.32, 0, 1) ** 0.7
+    # A narrow fillet down the middle where the chevrons meet.
+    spine = np.abs(u - 0.5) < 0.012
+    h = np.zeros((n, n), np.float32)
+    h += np.where(e < 0.06, 0.4 + 0.6 * border, 0)
+    h += np.where(side, 0.25 + 0.4 * reed, 0)
+    h += np.where(mid, 0.1 + 0.7 * chev, 0)
+    h[mid & spine] = 0.95
+    cast = fbm(n, 64, 3, 251)
+    col = np.ones((n, n, 3), np.float32) * srgb(200, 202, 204)
+    col *= (0.45 + 0.55 * np.clip(h, 0, 1))[..., None] * (0.9 + 0.12 * cast)[..., None]
+    t.save("chevron_col", col)
+    t.save("chevron_nrm", normals(h + 0.04 * cast, 7.0))
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -758,7 +825,7 @@ def ground_tex(t, n=1024):
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
     render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
-    grime_tex,
+    cladstone_tex, chevron_tex, grime_tex,
 )
 
 
