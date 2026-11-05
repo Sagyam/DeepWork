@@ -63,6 +63,11 @@ export class Particles {
     this.points.frustumCulled = false;
   }
 
+  /** Particles alive. */
+  get count() {
+    return this.list.length;
+  }
+
   emit(p: Partial<P> & { x: number; y: number; z: number }) {
     if (this.list.length >= this.max) this.list.shift();
     this.list.push({ vx: 0, vy: 0, vz: 0, life: 0, max: 2, size: 1, grow: 0, r: 1, g: 1, b: 1, a: 1, drag: 0, lift: 0, ...p });
@@ -98,6 +103,16 @@ export class Fx {
   readonly glow = new Particles(2000, true);
   private debris: { mesh: THREE.Mesh; v: THREE.Vector3; spin: THREE.Vector3; life: number }[] = [];
   private debrisGeo = new THREE.BoxGeometry(1, 1, 1);
+
+  /** Anything still flying (the scene keeps drawing frames while it is). */
+  get active() {
+    return this.smoke.count + this.glow.count + this.debris.length > 0;
+  }
+
+  /** Debris tumbling: the (otherwise static) shadow map is redrawn while it is. */
+  get falling() {
+    return this.debris.length > 0;
+  }
 
   constructor() {
     this.group.add(this.smoke.points, this.glow.points);

@@ -91,6 +91,9 @@ cd ui
 bun run dev &
 bun scripts/bench-town.ts "view=overview&opt=0" "view=overview" "view=downtown"
 HIDE=woods bun scripts/bench-town.ts "view=overview"   # what the woods cost
+# the app itself, against the mock daemon; cam=x,y,z,tx,ty,tz fixes the camera,
+# LUMA=1 prints the view's mean brightness, SHOTS=dir saves screenshots
+bun scripts/bench-app.ts "mock=metropolis" "mock=city&hour=22&cam=220,120,260,0,10,0"
 ```
 
 ## Install

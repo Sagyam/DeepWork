@@ -57,8 +57,10 @@ class Fleet {
     for (const { role, geo } of parts) {
       const mesh = new THREE.InstancedMesh(geo, mats(role), Math.max(1, count));
       mesh.count = count;
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      // The shadow map is drawn once, not every frame (scene.ts): moving
+      // vehicles cast a blob on the road instead (see blob()).
+      mesh.castShadow = false;
+      mesh.receiveShadow = role !== "blob";
       mesh.frustumCulled = false;
       const palette = paint[role];
       if (palette) {
@@ -166,8 +168,10 @@ export class Traffic {
       const n = count(model);
       if (!n) continue;
       const colours = model === "taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : real ? CAR_PAINTS : CAR_PAINT;
-      if (real) fleets.set(model, new Fleet(realPiece("cars", model), n, { carpaint: colours }, realMats, r));
-      else fleets.set(model, new Fleet(piece(KIT[model]).parts, n, { body: colours }, this.mat, r));
+      const parts = real ? realPiece("cars", model) : piece(KIT[model]).parts;
+      const withBlob = [...parts, { role: "blob", geo: blobGeo(parts) }];
+      if (real) fleets.set(model, new Fleet(withBlob, n, { carpaint: colours }, (role) => (role === "blob" ? this.blob : realMats(role)), r));
+      else fleets.set(model, new Fleet(withBlob, n, { body: colours }, (role) => (role === "blob" ? this.blob : this.mat(role)), r));
     }
     const slots = new Map<string, number>();
     // The lane next to the block: a quarter of the way across the carriageway.
@@ -213,10 +217,46 @@ export class Traffic {
     for (const f of this.fleets) f.flush();
   }
 
+  /** The soft dark ellipse under every vehicle, standing in for its shadow. */
+  private blob = blobMat();
+
+  /** Anything moving (the scene keeps drawing frames while there is). */
+  get active() {
+    return this.movers.length > 0;
+  }
+
   /** 0 by day, 1 at night. */
   setNight(night: number) {
+    this.blob.opacity = 0.8 - 0.45 * night;
     for (const m of [...this.mats.values(), ...this.lamps]) {
       if (m.userData.night) m.emissiveIntensity = m.userData.night * Math.max(night, m.userData.day ?? 0);
     }
   }
+}
+
+/** A ground plane a little larger than the vehicle's footprint, just above the road. */
+function blobGeo(parts: { geo: THREE.BufferGeometry }[]): THREE.BufferGeometry {
+  const box = new THREE.Box3();
+  for (const { geo } of parts) {
+    geo.computeBoundingBox();
+    box.union(geo.boundingBox!);
+  }
+  const s = box.getSize(new THREE.Vector3());
+  const c = box.getCenter(new THREE.Vector3());
+  return new THREE.PlaneGeometry(s.x * 1.15, s.z * 1.1).rotateX(-Math.PI / 2).translate(c.x, 0.02, c.z);
+}
+
+function blobMat(): THREE.MeshBasicMaterial {
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const x = c.getContext("2d")!;
+  const g = x.createRadialGradient(32, 32, 4, 32, 32, 32);
+  g.addColorStop(0, "rgba(0,0,0,0.75)");
+  g.addColorStop(0.6, "rgba(0,0,0,0.45)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  const m = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, opacity: 0.8, polygonOffset: true, polygonOffsetFactor: -2 });
+  m.userData.noShadow = true;
+  return m;
 }

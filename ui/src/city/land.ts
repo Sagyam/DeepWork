@@ -6,12 +6,15 @@
 import * as THREE from "three";
 import { piece } from "./kit";
 import { hasReal, realMat, realPiece } from "./real";
+import { IMPOSTOR_NEAR, Impostors, nearOnly } from "./impostor";
 import { PITCH_X, PITCH_Z, rng, type CityPlan } from "./plan";
 import { LAKE, RADIUS, ROAD_Z, WATER, fbm, noise, smoothstep, terrain, type Land as Shape } from "./terrain";
 
 const RINGS = 170;
 const SEGMENTS = 288;
 const SECTORS = 12;
+/** Side of the tiles the real woods are cut into, in metres. */
+const TILE = 96;
 
 const LUSH = [0x3f7a34, 0x4d8a3a, 0x356a2c, 0x5a9a40, 0x2f5e2a, 0x467f30, 0x63a044];
 const PINES = [0x2f5a32, 0x3a6a3a, 0x284e2c, 0x335f3a];
@@ -38,17 +41,21 @@ export class Land {
   private ground = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
   private waterMat: THREE.MeshStandardMaterial;
   private forestMats = new Map<string, THREE.MeshStandardMaterial>();
+  /** The real woods near the camera, in tiles (see cull()). */
+  private tiles: { group: THREE.Group; box: THREE.Box3 }[] = [];
+  private nearMats = new Map<THREE.Material, THREE.Material>();
 
   constructor() {
     this.waterMat = new THREE.MeshStandardMaterial({ color: 0x3d6e86, roughness: 0.06, metalness: 0.3, envMapIntensity: 1.2, normalMap: ripples(), normalScale: new THREE.Vector2(0.3, 0.3) });
   }
 
   /** Rebuild for a city of a new size. */
-  build(p: CityPlan) {
+  build(p: CityPlan, imps: Impostors | null = null) {
     this.group.clear();
+    this.tiles = [];
     const land = (this.shape = terrain(p.bounds));
     this.group.add(this.terrainMesh(land), this.waterMesh());
-    this.forest(land, p);
+    this.forest(land, p, imps);
   }
 
   update(dt: number) {
@@ -151,7 +158,7 @@ export class Land {
   }
 
   /** Woods and boulders, instanced per model part and per sector so the camera can cull them. */
-  private forest(land: Shape, p: CityPlan) {
+  private forest(land: Shape, p: CityPlan, imps: Impostors | null) {
     const r = rng(0xf0e57);
     /** s scales x / z, sy height: distant clumps are wide so the canopy closes. */
     type Inst = { x: number; y: number; z: number; s: number; sy: number; ry: number; color: number };
@@ -258,27 +265,71 @@ export class Land {
     // The realistic woods (trees model) draw the kit's forest pieces when loaded.
     const real = hasReal("trees");
     const white = new THREE.Color(0xffffff);
+    const place = (mesh: THREE.InstancedMesh, list: Inst[], color: (t: Inst) => THREE.Color) => {
+      list.forEach((t, i) => {
+        q.setFromAxisAngle(up, t.ry);
+        m.compose(v.set(t.x, t.y, t.z), q, sc.set(t.s, t.sy, t.s));
+        mesh.setMatrixAt(i, m);
+        mesh.setColorAt(i, color(t));
+      });
+      mesh.computeBoundingSphere();
+      mesh.receiveShadow = true;
+      return mesh;
+    };
+    // Realistic leaves are textured: the kit's greens only tint them, lightened.
+    const tint = (t: Inst) => col.setHex(t.color).lerp(white, 0.45);
     for (const [key, list] of buckets) {
       const model = key.split(":")[0];
       const realistic = real && model.startsWith("forest_");
+      if (realistic && imps) {
+        // trees: far trees are impostors (impostor.ts), one InstancedMesh a
+        // model a sector that hides the trees within IMPOSTOR_NEAR of the
+        // camera; those are drawn real, from tiles small enough that only
+        // the few round the camera are drawn at all (cull()).
+        const card = imps.card(`${model}:forest`, model, { wall: -1, accent: 0, roof: 0, signs: 0 }, "forest");
+        this.group.add(place(new THREE.InstancedMesh(card.geo, imps.farMaterial(), list.length), list, tint));
+        const tiles = new Map<string, Inst[]>();
+        for (const t of list) {
+          // Small tiles in the near woods, where trees stand thick; large ones in the far clumps.
+          const size = Math.hypot(t.x, t.z) < 500 ? TILE : TILE * 4;
+          const k = `${size}:${Math.floor(t.x / size)},${Math.floor(t.z / size)}`;
+          const l = tiles.get(k) ?? [];
+          l.push(t);
+          tiles.set(k, l);
+        }
+        for (const tl of tiles.values()) {
+          const group = new THREE.Group();
+          const box = new THREE.Box3();
+          for (const t of tl) box.expandByPoint(v.set(t.x, t.y, t.z));
+          for (const { role, geo } of realPiece("trees", model)) {
+            const leafy = role === "woods" || role === "firs";
+            const base = realMat("trees", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "forest");
+            let near = this.nearMats.get(base);
+            if (!near) this.nearMats.set(base, (near = nearOnly(base)));
+            group.add(place(new THREE.InstancedMesh(geo, near, tl.length), tl, leafy ? tint : () => white));
+          }
+          group.visible = false;
+          this.tiles.push({ group, box });
+          this.group.add(group);
+        }
+        continue;
+      }
       const parts = realistic ? realPiece("trees", model) : piece(model).parts;
       for (const { role, geo } of parts) {
         const leafy = role === "woods" || role === "firs";
         const material = realistic ? (realMat("trees", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "forest") as THREE.MeshStandardMaterial) : this.mat(role === "leaf" ? "leaf" : role);
-        const mesh = new THREE.InstancedMesh(geo, material, list.length);
-        list.forEach((t, i) => {
-          q.setFromAxisAngle(up, t.ry);
-          m.compose(v.set(t.x, t.y, t.z), q, sc.set(t.s, t.sy, t.s));
-          mesh.setMatrixAt(i, m);
-          // Realistic leaves are textured: the kit's greens only tint them, lightened.
-          if (realistic) mesh.setColorAt(i, leafy ? col.setHex(t.color).lerp(white, 0.45) : white);
-          else mesh.setColorAt(i, col.setHex(role === "leaf" ? t.color : role === "bark" ? 0x5a4030 : 0x8a8478));
-        });
-        mesh.computeBoundingSphere();
-        mesh.receiveShadow = true;
-        this.group.add(mesh);
+        this.group.add(
+          place(new THREE.InstancedMesh(geo, material, list.length), list, (t) =>
+            realistic ? (leafy ? tint(t) : white) : col.setHex(role === "leaf" ? t.color : role === "bark" ? 0x5a4030 : 0x8a8478),
+          ),
+        );
       }
     }
+  }
+
+  /** Shows the real woods' tiles that hold trees within IMPOSTOR_NEAR of the eye; the rest are impostors. */
+  cull(eye: THREE.Vector3) {
+    for (const t of this.tiles) t.group.visible = t.box.distanceToPoint(eye) < IMPOSTOR_NEAR;
   }
 }
 
