@@ -468,13 +468,16 @@ streak, and a history of the last 30 changes with their cause.
 
 ### Progression v2: coins, a shop and our city plan (ideas, not built)
 
-In `docs/progression.md` (2026-11-03): focusing earns coins, with bonuses
-for long sessions and day streaks; coins buy the next upgrade in a shop
-gated by settlement level, with locked upgrades teased; the game decides
-what gets built and where, on one designed master plan; old buildings move
-when bigger ones need their spot. Two open design questions and the known
-holes are listed there. Replaces the earlier "World model v2" (coins spent
-automatically), a misreading.
+In `docs/progression.md` (revised 2026-11-05 from the user's brief): the
+user is the mayor; residents present each level's needs at once (houses, a
+shop, water, power) and the mayor picks the order, while the game picks the
+lot, so every level ends exactly like the master plan. Focused time earns
+coins (per hour, with session length and day streak bonuses) that buy
+blueprints, each buildable many times, and build hours: every kind of
+building takes a fixed number of focused hours, so big projects stay under
+construction across sessions. Levels graduate when their needs are met;
+penalties become repair needs; every building keeps a memory of how it was
+built (hover tag, click card). Open questions for the user are listed there.
 
 ### The app (phase 3, built)
 
@@ -941,7 +944,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
-- [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
+- [ ] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
+      building memories (designed 2026-11-05, not built)
 
 ### Phase 4: Deeper enforcement
 
