@@ -64,6 +64,7 @@ const C4_RIDGE = 7.8;
 const S1_G = 4.45;
 const S1_FL = 3.3;
 const S3_TOP = 3.36;
+const S4_TOP = 5.3;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -191,6 +192,23 @@ export const DEFS: Record<string, RealDef> = {
     // The kitchen's exhaust fan.
     smoke: () => new THREE.Vector3(-1.2, 4.05, -3.4),
     debris: 0xb4b8bc,
+  },
+  s4: {
+    id: "s4",
+    kind: "shop",
+    style: "factory",
+    // The shed and its loading dock, the boiler house and the stack beside it.
+    w: 13.5,
+    d: 10.4,
+    // A concrete apron in front of the dock.
+    front: 3.0,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: S4_TOP }] : [])],
+    top: () => S4_TOP,
+    // The sawtooth's gables; the stack rises to 17.3 m.
+    height: () => 7.85,
+    smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
+    debris: 0x8a4e3c,
   },
 };
 
@@ -506,6 +524,56 @@ function dinerNames(row: number): THREE.Texture {
   return t;
 }
 
+const WORKS = [
+  "HOLLIS & WARD · ENGINEERS",
+  "BRANDT MACHINE WORKS",
+  "NORTHGATE FOUNDRY CO.",
+  "EAGLE SPRING & AXLE CO.",
+  "MERCER BROS. · BOILERMAKERS",
+  "UNION BOX & PAPER CO.",
+  "CALDER WORSTED MILLS",
+  "PARAGON CASTINGS LTD.",
+];
+
+let worksCanvas: HTMLCanvasElement | null = null;
+
+/** Firms' names painted on a factory's frieze, eight rows of 2048 x 128: cream letters, weathered, on clear. */
+function worksNames(row: number): THREE.Texture {
+  if (!worksCanvas) {
+    const c = (worksCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "800 96px Impact, 'Arial Black', 'Helvetica Neue', sans-serif";
+    WORKS.forEach((name, i) => {
+      g.fillStyle = "rgba(236,228,206,0.92)";
+      g.fillText(name.split("").join(String.fromCharCode(8202)), 1024, i * 128 + 66, 1960);
+    });
+    // Weathered: the paint has flaked and washed out of the brick.
+    g.globalCompositeOperation = "destination-out";
+    let seed = 11;
+    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < 14000; i++) {
+      g.globalAlpha = 0.25 + rand() * 0.75;
+      g.fillRect(rand() * 2048, rand() * 1024, 2 + rand() * 7, 2 + rand() * 4);
+    }
+    for (let i = 0; i < 120; i++) {
+      g.globalAlpha = 0.1 + rand() * 0.3;
+      g.fillRect(rand() * 2048, rand() * 1024, 4 + rand() * 12, 30 + rand() * 90);
+    }
+    g.globalCompositeOperation = "source-over";
+  }
+  const t = new THREE.CanvasTexture(worksCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 /** Per-building choices: paint colours and the like. Indexes wrap. */
 export interface Paint {
   /** Main walls: brick tint or siding paint. */
@@ -548,6 +616,12 @@ const BRIGHTS = [0xa02a22, 0xd09a2a, 0x2a6a6a, 0x24344e, 0xc8642a, 0x8a5a36];
 const ENAMELS = [0xa3202a, 0x1d8a88, 0x234f9c, 0x6a1c2a, 0x2a6e48, 0x1e1e20];
 /** Neon: red, pink, blue, green, amber, white. */
 const NEONS = [0xff2a1e, 0xff3c9a, 0x2a8cff, 0x30ff7a, 0xffa21e, 0xfff0e0];
+/** S4's steelwork (windows, beams, canopy): black, works green, grey, oxide red, cream, blue-grey. */
+const STEELS = [0x1e2022, 0x2c4436, 0x5a5e62, 0x6a2a20, 0xd8d2c0, 0x34465a];
+/** S4's timber doors: green, oxblood, brown, blue, grey. */
+const WORKS_DOORS = [0x3a5a40, 0x6a2620, 0x5a3e2a, 0x2e4a66, 0x7a7c78];
+/** Corrugated sheet: weathered galvanising (most), grey paint, oxide red, green, dark grey. */
+const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -636,7 +710,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -661,6 +735,22 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
   switch (role) {
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
+    // The factory.
+    case "bluebrick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: 0x50566e }), 1.2); break;
+    case "rubbed": m = w(plain(new THREE.Color(0xa04a32).multiply(new THREE.Color(pick(BRICK_TINTS, paint.wall))).getHex(), 0.85), 1.6); break;
+    case "steelframe": m = w(plain(pick(STEELS, paint.accent), 0.5, 0.3), 1); break;
+    case "doors": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.75, color: pick(WORKS_DOORS, paint.accent + 1) }), 1.2); break;
+    case "copper": m = w(plain(0x5a8a74, 0.6, 0.4)); break;
+    // Weathered sheet is dull: no sky in it, or it reads as glass from above.
+    case "corrugated": m = w(pbr("corrugated", [1.52, 2.4], { rough: true, metalness: 0.15, color: pick(SHEETS, paint.roof) }), 1.4); break;
+    case "northlight":
+      // Wired glass up in the roof: the sky by day, the shop floor's lamps by night.
+      m = sheen({ color: 0x2a3236, roughness: 0.18, emissive: 0xe8d8b4, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 0.22;
+      break;
+    case "works":
+      m = new THREE.MeshStandardMaterial({ map: worksNames(paint.signs), transparent: true, opacity: 0.85, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      break;
     case "ashlar": m = w(pbr("ashlar", [2.4, 1.8], { roughness: 0.85 }), 1.4); break;
     case "granite": m = w(new THREE.MeshStandardMaterial({ map: tex("granite_col"), roughness: 0.5 }), 0.5); break;
     case "roof": m = w(pbr("roof", [4, 4], { roughness: 0.92 }), 1); break;
@@ -829,6 +919,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room("lobby"); break;
     case "dinerglass": m = room("diner"); break;
+    case "worksglass": m = room("works"); break;
     default: m = plain(0xff00ff);
   }
   if (damage && !role.endsWith("glass")) (m as THREE.MeshStandardMaterial).color.multiplyScalar(shade);
