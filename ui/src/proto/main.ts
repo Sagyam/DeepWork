@@ -1,7 +1,7 @@
 // Viewer for the realistic models (blender/real, `bun run models`): one
 // building on its lot, built by the app's own code (models.ts), on a street
 // corner. Open /proto.html in the dev server with
-//   ?model=a1|c1|c3|c4|s1|s3 &floors=7 &seed=3 &damage=0|1|2
+//   ?model=a1|c1|c2|c3|c4|s1|s3 &floors=7 &seed=3 &damage=0|1|2
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
@@ -261,7 +261,7 @@ Promise.all([loadKit(), loadReal([id, ...PROPS])]).then(() => {
   const { kind, style } = DEFS[id];
   const floors = Number(q.get("floors") ?? 7);
   const seed = Number(q.get("seed") ?? 3);
-  const raw: Spec = { index: 0, kind, style, grade: kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false };
+  const raw: Spec = { index: 0, kind, style, grade: kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false, model: id };
   const s = { ...fitReal(raw), x: 0, z: 0, rot: 0 };
   const { group, info } = building(s);
   for (const m of info.night) m.emissiveIntensity = night ? (m.userData.night ?? 1) : 0;

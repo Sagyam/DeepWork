@@ -472,6 +472,57 @@ def shake_tex(t, n=1024):
     t.save("shake_nrm", normals(h, 6.0))
 
 
+def slate_tex(t, n=1024):
+    """Natural roofing slates 0.25 m wide at a 0.2 m gauge, half-bonded: tile 2 x 1.2 m.
+
+    Blue-grey for the app to tint (Welsh purple, Westmorland green, dark),
+    each slate its own tone with a riven face, a thin dark joint between
+    neighbours, the butt's edge catching the light over a shadow on the
+    course below, a chipped corner here and there and a little lichen;
+    row 0 (the image's top) is up the slope.
+    """
+    rows, cols, T = 6, 8, 2.0
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / rows)
+    row = np.floor(cy).astype(int)
+    fy = cy - row  # 0 just under the butt of the course above, 1 at this course's butt
+    rng = np.random.default_rng(191)
+    # Slates are cut to near the same width; each joint wanders a little.
+    shift = rng.random(rows) * 0.06
+    u = (x / n * T / 0.25 + 0.5 * (row % 2) + shift[row]) % cols
+    sl = np.floor(u).astype(int)
+    fx = u - sl
+    sid = row * cols + sl
+    wob = (rng.random(rows * cols) - 0.5) * 0.08
+    fx = fx + wob[sid] * (1 - fy)
+    joint = np.minimum(fx, 1 - fx) * 0.25 < 0.0035
+    tone = rng.random(rows * cols)[sid]
+    hue = rng.random(rows * cols)[sid]
+    off = (rng.random(rows * cols)[sid] * n).astype(int)
+    riven = fbm(n, 16, 6, 192, stretch=(3, 1))
+    riven = riven[(y.astype(int) + off) % n, x.astype(int)]  # each slate split from its own block
+    col = np.ones((n, n, 3), np.float32) * srgb(124, 128, 136)
+    col *= (0.78 + 0.32 * tone + 0.35 * (riven - 0.5))[..., None]
+    col *= 1 + 0.06 * (hue - 0.5)[..., None] * np.array([1.0, -0.4, -0.8], np.float32)
+    lichen = fbm(n, 8, 5, 193)
+    moss = (np.clip((lichen - 0.66) / 0.1, 0, 1) * np.clip(fy * 1.6 - 0.3, 0, 1) * 0.4)[..., None]
+    col = col * (1 - moss) + srgb(170, 164, 120) * moss
+    col *= (0.42 + 0.58 * np.clip(fy / 0.12, 0, 1) ** 0.6)[..., None]  # shadow under the course above
+    butt = fy > 0.975
+    col[butt] *= 1.3
+    # A chipped lower corner on some slates: the course below shows through.
+    chip = (rng.random(rows * cols)[sid] < 0.18) & (fy > 0.86) & (np.minimum(fx, 1 - fx) < (fy - 0.86) * 0.9)
+    col[chip] *= 0.45
+    col[joint] = srgb(30, 32, 36)
+    h = 0.2 + 0.8 * fy + 0.25 * (riven - 0.5)
+    h[joint] = 0.0
+    h[chip] = 0.05
+    rough = 0.62 + 0.25 * riven
+    t.save("slate_col", col)
+    t.save("slate_nrm", normals(h, 6.0))
+    t.save("slate_rgh", rough)
+
+
 def boards_tex(t, n=1024):
     """Vertical tongue-and-groove boards 0.14 m wide with V-grooves: tile 1.4 m.
 
@@ -564,7 +615,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, ground_tex, grime_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, slate_tex, ground_tex, grime_tex,
 )
 
 
@@ -736,14 +787,34 @@ class Side:
     """A facade's frame: u along it (left to right seen from outside), z up, w outward."""
 
     def __init__(self, m, o, t, n):
-        self.m, self.o, self.t, self.n = m, Vector(o), Vector(t), Vector(n)
+        self.m, self.o, self.t, self.n = m, Vector(o), Vector(t).normalized(), Vector(n).normalized()
+        self.square = all(abs(c) < 1e-6 or abs(abs(c) - 1) < 1e-6 for c in (*self.t, *self.n))
 
     def p(self, u, z, w=0.0):
         return self.o + self.t * u + Z * z + self.n * w
 
     def box(self, role, u0, u1, z0, z1, w0, w1, skip=("back",), m=None):
-        names = {"back": key(-self.n), "front": key(self.n), "left": key(-self.t), "right": key(self.t), "top": "z1", "bottom": "z0"}
-        (m or self.m).box(role, self.p(u0, z0, w0), self.p(u1, z1, w1), [names[s] for s in skip])
+        m = m or self.m
+        if self.square:
+            names = {"back": key(-self.n), "front": key(self.n), "left": key(-self.t), "right": key(self.t), "top": "z1", "bottom": "z0"}
+            m.box(role, self.p(u0, z0, w0), self.p(u1, z1, w1), [names[s] for s in skip])
+            return
+        # A facade at an angle (a canted bay): the same box, oriented along it.
+        u0, u1 = sorted((u0, u1))
+        z0, z1 = sorted((z0, z1))
+        w0, w1 = sorted((w0, w1))
+        p = self.p
+        faces = {
+            "back": ([p(u0, z0, w0), p(u1, z0, w0), p(u1, z1, w0), p(u0, z1, w0)], -self.n),
+            "front": ([p(u0, z0, w1), p(u1, z0, w1), p(u1, z1, w1), p(u0, z1, w1)], self.n),
+            "left": ([p(u0, z0, w0), p(u0, z0, w1), p(u0, z1, w1), p(u0, z1, w0)], -self.t),
+            "right": ([p(u1, z0, w0), p(u1, z0, w1), p(u1, z1, w1), p(u1, z1, w0)], self.t),
+            "bottom": ([p(u0, z0, w0), p(u1, z0, w0), p(u1, z0, w1), p(u0, z0, w1)], -Z),
+            "top": ([p(u0, z1, w0), p(u1, z1, w0), p(u1, z1, w1), p(u0, z1, w1)], Z),
+        }
+        for k, (pts, out) in faces.items():
+            if k not in skip:
+                m.poly(role, pts, out)
 
     def quad(self, role, u0, u1, z0, z1, w=0.0, uvs=None, out=None, m=None):
         pts = [self.p(u0, z0, w), self.p(u1, z0, w), self.p(u1, z1, w), self.p(u0, z1, w)]

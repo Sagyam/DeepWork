@@ -404,11 +404,13 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
 /**
  * The realistic model that draws a spec, if it is loaded. A model takes over
  * the kit style it replaces (docs/models.md) as a whole, until its siblings
- * exist to take their own variants of it.
+ * exist to take their own variants of it; siblings (C1 and C2 for the
+ * classic cottage) share the style, picked per building from its seed.
  */
 export function realDef(s: Spec): RealDef | null {
-  const def = Object.values(DEFS).find((d) => d.kind === s.kind && d.style === s.style);
-  return def && hasReal(def.id) ? def : null;
+  if (s.model) return DEFS[s.model] && hasReal(s.model) ? DEFS[s.model] : null;
+  const defs = Object.values(DEFS).filter((d) => d.kind === s.kind && d.style === s.style && hasReal(d.id));
+  return defs.length ? defs[Math.floor(rng(s.seed * 29 + 3)() * defs.length)] : null;
 }
 
 /** A spec sized and placed for its realistic model (real-world sizes, not the kit's); others unchanged. */
@@ -488,6 +490,32 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       hedge(p, LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.55, s.seed);
       // Shrubs along the porch, either side of the steps.
       for (const x of [-3.9, -2.4, 2.4, 3.9]) if (r() < 0.8) shrub(p, x, steps + 0.7, s.seed * 5 + x * 3);
+      break;
+    }
+    case "c2": {
+      // A front garden behind a clipped hedge, brick gate piers in the gap and
+      // a chequered tile path to the door steps; flowers under the bay, a
+      // tree on the bay side. Behind, a lawn closed by board fences and a hedge.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.5;
+      const gx = 0.25; // the front door
+      const steps = s.d / 2 + 0.05;
+      const tiles = [mat(0x9a4a36, { roughness: 0.7 }), mat(0xd8ccb4, { roughness: 0.6 })];
+      const edging = mat(0x5a3a30, { roughness: 0.8 });
+      const n = Math.max(1, Math.round((fz - steps) / 0.3));
+      const step = (fz - steps) / n;
+      for (let i = 0; i < n; i++) for (let j = 0; j < 4; j++) p.box(tiles[(i + j) % 2], 0.3, KERB + 0.03, step, gx - 0.45 + j * 0.3, 0, steps + (i + 0.5) * step);
+      for (const x of [gx - 0.65, gx + 0.65]) p.box(edging, 0.06, KERB + 0.1, fz - steps, x, 0, (fz + steps) / 2);
+      putReal(rp, def, "gate", paintOf(s), 0, null, gx, KERB, fz);
+      hedge(p, gx - 1.05 + half, KERB + 0.9, 0.6, (-half + gx - 1.05) / 2, 0, fz, s.seed);
+      hedge(p, half - gx - 1.05, KERB + 0.9, 0.6, (half + gx + 1.05) / 2, 0, fz, s.seed);
+      for (const x of [-5.0, -4.1, -3.2, -2.3]) if (r() < 0.85) shrub(p, x, 5.15, s.seed * 5 + x * 3, KERB, 0.6);
+      for (const x of [2.2, 3.2]) if (r() < 0.8) shrub(p, x, 4.55, s.seed * 7 + x * 3, KERB, 0.7);
+      tree(p, -half + 1.4, fz - 1.4, 0.6, s.seed + 1, KERB, ["cherry", "birch", "maple", "cherry"]);
+      const yb = -s.d / 2 + 0.6; // the back wall
+      if (hasReal("street")) for (const x of [-half + 0.1, half - 0.1]) fenceRun(p, "fence_panel", x, yb, x, back + 0.6);
+      hedge(p, LOT - 0.4, KERB + 1.5, 0.7, 0, 0, back + 0.55, s.seed);
+      tree(p, -half + 2.2, back + 1.6, 0.7, s.seed + 2, KERB, ["young", "cherry", "linden"]);
       break;
     }
     case "c3": {

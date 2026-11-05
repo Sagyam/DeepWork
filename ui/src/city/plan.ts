@@ -64,6 +64,8 @@ export interface Spec {
   seed: number;
   damage: number;
   rubble: boolean;
+  /** A realistic model to draw it with (the viewer); otherwise one of its style's, from the seed. */
+  model?: string;
 }
 
 export interface SiteSpec extends Spec {
