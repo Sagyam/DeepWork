@@ -761,7 +761,11 @@ optimisations, tried there behind `&opt=N` and measured with
 impostors, a cached sky, selective image-based light; then map controls
 with camera limits, a moonlit night with light pools, and shader prewarming
 against hitches (the user judges by the 1% low); results and lessons
-in `docs/models.md` ("Tried in the showcase town"). Not yet in the app.
+in `docs/models.md` ("Tried in the showcase town"). Ported to the app
+the same day (`city/scene.ts`, impostors shared in `city/impostor.ts`):
+GPU 67 to 30 ms a frame for the metropolis mock, 50 to 18 for the city,
+42 to 15 for the hamlet (`ui/scripts/bench-app.ts`, 7700X iGPU), with the
+look matched to the old frames by mean brightness, day and night.
 Next: progression v2 and the
 master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
@@ -935,7 +939,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       A1 brick block, A2 brownstone row, A3 balcony block, C1 farmhouse, C2 brick cottage, S1 main-street shop, S2 corner café, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app (the Hamlet is complete); progression v2 and the master plan next;
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge;
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
-      with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), not yet in the app
+      with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
+      (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement

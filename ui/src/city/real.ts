@@ -9,6 +9,7 @@
 // shows a room behind it (interior.ts). models.ts stacks the pieces.
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { KTXLoader } from "three/examples/jsm/loaders/KTXLoader.js";
 import { glass, interiorUniforms, type RoomKind } from "./interior";
 import type { Kind } from "./plan";
 
@@ -372,9 +373,70 @@ export const DEFS: Record<string, RealDef> = {
  */
 export const PROPS = ["cars", "trees", "street", "bridge"];
 
-/** Loads every model there is; missing ones are left to the kit. Never throws. */
-export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS]): Promise<void> {
-  const tex = new THREE.TextureLoader();
+// ---- compressed textures ------------------------------------------------------------
+//
+// Textures listed in models/bc7.json (scripts/textures.ts) load as BC7, which
+// the GPU keeps compressed: a quarter of the memory of a decoded PNG. They are
+// transcoded at build time, so loading one is a fetch, a gunzip (the
+// browser's own DecompressionStream) and an upload: no worker, no WebAssembly.
+// GPUs without BC7, and anything not listed, load PNG.
+
+const packed = new Set<string>();
+let bc7Ready: Promise<void> | null = null;
+
+/** Reads the BC7 list once, if this GPU has BC7 (`renderer` tells). Any failure leaves everything PNG. */
+function initBc7(renderer?: THREE.WebGLRenderer): Promise<void> {
+  // ?png (dev): the PNGs, for comparing.
+  if (!renderer || new URLSearchParams(location.search).has("png")) return Promise.resolve();
+  if (!renderer.extensions.has("EXT_texture_compression_bptc") || typeof DecompressionStream === "undefined") return Promise.resolve();
+  return (bc7Ready ??= (async () => {
+    try {
+      const r = await fetch(`${BASE}bc7.json`);
+      if (r.ok) for (const n of (await r.json()) as string[]) packed.add(n);
+    } catch {
+      packed.clear();
+    }
+  })());
+}
+
+const ktx = new KTXLoader();
+
+/**
+ * Fills `t` (a CompressedTexture not yet uploaded: version 0) from a gzipped
+ * BC7 KTX file. Its GPU storage is made once, at the right size, when it is.
+ */
+async function fillBc7(t: THREE.CompressedTexture, url: string) {
+  const r = await fetch(url);
+  if (!r.ok || !r.body) throw new Error(`${url}: ${r.status}`);
+  const k = ktx.parse(await new Response(r.body.pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(), true);
+  t.mipmaps = k.mipmaps;
+  t.image = { width: k.width, height: k.height } as unknown as typeof t.image;
+  // The files hold BC7 UNORM; the texture's colour space picks the sRGB variant.
+  t.format = THREE.RGBA_BPTC_Format;
+  t.minFilter = k.mipmaps.length > 1 && t.minFilter !== THREE.LinearFilter ? THREE.LinearMipmapLinearFilter : THREE.LinearFilter;
+  t.needsUpdate = true;
+}
+
+/** A texture to load: BC7 if it is listed (and this GPU has it), else the PNG. */
+const isBc7 = (url: string) => packed.has(url.slice(BASE.length, -4));
+
+/** Loads every model there is; missing ones are left to the kit. Never throws. `renderer` lets textures load compressed. */
+export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?: THREE.WebGLRenderer): Promise<void> {
+  await initBc7(renderer);
+  const png = new THREE.TextureLoader();
+  const tex = {
+    loadAsync: async (url: string): Promise<THREE.Texture> => {
+      if (!isBc7(url)) return png.loadAsync(url);
+      const t = new THREE.CompressedTexture([], 1, 1);
+      try {
+        await fillBc7(t, url.replace(/\.png$/, ".bc7"));
+        return t;
+      } catch (e) {
+        console.warn("texture", url, e);
+        return png.loadAsync(url);
+      }
+    },
+  };
   await Promise.all(
     ids.map(async (id) => {
       if (loaded.has(id)) return;
@@ -469,7 +531,7 @@ function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE
   const key = `${name}:${tile}`;
   let t = library.get(key);
   if (!t) {
-    t = texLoader.load(`${BASE}tex/${name}.png`);
+    t = isBc7(`${BASE}tex/${name}.png`) ? compressed(`${BASE}tex/${name}`) : texLoader.load(`${BASE}tex/${name}.png`);
     t.wrapS = t.wrapT = THREE.RepeatWrapping;
     t.flipY = false;
     t.repeat.set(1 / tile[0], 1 / tile[1]);
@@ -477,6 +539,28 @@ function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE
     t.anisotropy = 8;
     library.set(key, t);
   }
+  return t;
+}
+
+/**
+ * A BC7 texture as tex() hands out textures: at once, filled in when it has
+ * loaded (materials share it before then; it is not drawn until then). If
+ * the BC7 file fails, the PNG is decoded into it instead.
+ */
+function compressed(base: string): THREE.Texture {
+  const t = new THREE.CompressedTexture([], 1, 1);
+  fillBc7(t, `${base}.bc7`).catch(async (e) => {
+    console.warn("texture", base, e);
+    const img = await texLoader.loadAsync(`${base}.png`);
+    const c = new OffscreenCanvas(img.image.width, img.image.height);
+    const g = c.getContext("2d")!;
+    g.drawImage(img.image, 0, 0);
+    t.mipmaps = [{ data: new Uint8Array(g.getImageData(0, 0, c.width, c.height).data.buffer), width: c.width, height: c.height }] as unknown as typeof t.mipmaps;
+    t.image = { width: c.width, height: c.height } as unknown as typeof t.image;
+    t.format = THREE.RGBAFormat as unknown as THREE.CompressedPixelFormat;
+    t.minFilter = THREE.LinearFilter;
+    t.needsUpdate = true;
+  });
   return t;
 }
 
@@ -548,6 +632,20 @@ const SHOPS: [string, string, string, string][] = [
   ["#5a3a1a", "#f6e6c2", "OLD MILL TAILORS", "bespoke since 1924"],
 ];
 
+const sheets = new Map<HTMLCanvasElement, THREE.Texture>();
+
+/**
+ * A texture of a shared sheet of signs. Each building gets its own (for its
+ * offset and repeat), but they are clones of one, so they share one upload:
+ * a new CanvasTexture each would upload the sheet again per building (60
+ * copies of the shop signs, 640 MB, in the metropolis mock).
+ */
+function sheet(c: HTMLCanvasElement): THREE.Texture {
+  let base = sheets.get(c);
+  if (!base) sheets.set(c, (base = new THREE.CanvasTexture(c)));
+  return base.clone();
+}
+
 let signCanvas: HTMLCanvasElement | null = null;
 
 /** Shop signs, two columns by four rows of 1024 x 256; a building shows one row, from column `col` on. */
@@ -573,7 +671,7 @@ function signs(row: number, col = 0): THREE.Texture {
       g.fillText(sub, x + 512, y + 212);
     });
   }
-  const t = new THREE.CanvasTexture(signCanvas);
+  const t = sheet(signCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
@@ -630,7 +728,7 @@ function ghosts(row: number): THREE.Texture {
     }
     g.globalCompositeOperation = "source-over";
   }
-  const t = new THREE.CanvasTexture(ghostCanvas);
+  const t = sheet(ghostCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.25);
@@ -666,7 +764,7 @@ function towerNames(row: number): THREE.Texture {
       g.fillText(text, 1024, y, 1400);
     });
   }
-  const t = new THREE.CanvasTexture(towerCanvas);
+  const t = sheet(towerCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.125);
@@ -704,7 +802,7 @@ function dinerNames(row: number): THREE.Texture {
       g.fillText(text, 1024, y, 1900);
     });
   }
-  const t = new THREE.CanvasTexture(dinerCanvas);
+  const t = sheet(dinerCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.125);
@@ -754,7 +852,7 @@ function worksNames(row: number): THREE.Texture {
     }
     g.globalCompositeOperation = "source-over";
   }
-  const t = new THREE.CanvasTexture(worksCanvas);
+  const t = sheet(worksCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.125);
@@ -791,7 +889,7 @@ function cafeNames(row: number): THREE.Texture {
       g.fillText(text, 1024, y, 1960);
     });
   }
-  const t = new THREE.CanvasTexture(cafeCanvas);
+  const t = sheet(cafeCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.125);
@@ -835,7 +933,7 @@ function decoNames(row: number): THREE.Texture {
       g.restore();
     });
   }
-  const t = new THREE.CanvasTexture(decoCanvas);
+  const t = sheet(decoCanvas);
   t.flipY = false;
   t.colorSpace = THREE.SRGBColorSpace;
   t.repeat.set(1, 0.125);

@@ -539,12 +539,32 @@ showcase town" above); they are ticked here once the app has them.
 - [ ] **Quality presets** (Low / Medium / High): render scale, shadow-map
       size, LOD distances, MSAA, bloom. Low for weak iGPUs on 1440p and 4K
       screens, where pixel count costs more than triangles.
-- [ ] **Texture compression:** KTX2 / Basis for the shared library (~250 MB
-      of VRAM uncompressed, ~40-60 MB compressed); single-channel AO maps.
+- [x] **Texture compression** (done 2026-11-05): the AO bakes and the tex/
+      library as BC7 (`scripts/textures.ts`, part of `bun run models`):
+      basisu encodes each PNG to UASTC, transcodes it to BC7 at build time and
+      the app uploads the gzipped KTX file as it is (`real.ts`, `fillBc7`).
+      Model textures on the GPU: 546 to 142 MB in the metropolis mock, 647 to
+      167 MB in the city; download unchanged (91 MB); looks the same close
+      up; frame time unchanged. Not KTX2 with the runtime transcoder: it is
+      Emscripten embind, which needs 'unsafe-eval' in the CSP (without it the
+      loads never settled and the city never appeared). GPUs without BC7 get
+      the PNGs; WebKitGTK here exposes it (EXT_texture_compression_bptc).
+      Same day, a bigger find: the shop-sign and name sheets (`signs()` and
+      six more in `real.ts`) made a new CanvasTexture per building, so each
+      building uploaded its own copy of the sheet: 820 MB of canvases in the
+      metropolis, now 76 MB as clones of one (`sheet()`). Texture memory in
+      all: 1,370 to 218 MB.
+      Tested first (2026-11-05, `scripts/texshrink.js` with `bench-app.ts`
+      EVAL, which re-uploads every texture smaller in the same page): 4x and
+      16x fewer texels changed GPU time by under 1 ms (noise) in every view,
+      metropolis by day and night, city overview and street level. Texture
+      bandwidth is not what limits frames on this iGPU (dual-channel DDR5);
+      compression would be for memory and download size, not frame rate. A
+      laptop 610M on single-channel memory might differ.
 - [ ] **Geometry compression:** quantised meshes (meshopt), ~3 MB to ~1 MB a
       model; also shrinks the download.
-- [ ] **Port the showcase town's optimisations to the app** (`ui/src/proto/town.ts`,
-      each commented where it is made): 1x render scale with MSAA 4x and
+- [x] **Port the showcase town's optimisations to the app** (`ui/src/proto/town.ts`,
+      each commented where it is made; done 2026-11-05, see "In the app" below): 1x render scale with MSAA 4x and
       alpha to coverage; a static shadow map, redrawn when the sun has moved
       on, a building changes or cut-out textures finish loading (blob
       shadows under moving cars); no frames while nothing moves; scenery
@@ -637,6 +657,46 @@ What it taught, for the app:
   texture reads a building pixel), the shadow filter (5 taps into 8192²,
   3-4 ms), and what a frame cap saves in energy (idle frames cost
   nothing; a moving scene at 30 fps costs half the GPU of 60).
+
+### In the app (2026-11-05)
+
+`city/scene.ts` has every step but `merge` (the app's buildings change one
+at a time, and merging bought no GPU time), each commented where it is
+made; the impostors moved to `city/impostor.ts`, which the town now shares.
+Measured with `ui/scripts/bench-app.ts` (the app on the mock daemon,
+headless, 1600 x 900 at 1.5x, the 7700X's iGPU), GPU ms per frame, before
+and after:
+
+| Mock | Before | After | Draws | Triangles |
+|---|---|---|---|---|
+| metropolis, day | 67 (14 fps) | 30 (31 fps) | 7,700 to 4,100 | 11.2M to 4.5M |
+| metropolis, night | 67 | 31 | | |
+| city, day | 50 (19 fps) | 18 (53 fps) | 2,300 to 1,250 | 3.6M to 1.2M |
+| city, street level | 85 | 36 | 2,000 to 1,000 | 3.1M to 1.0M |
+| hamlet, day | 42 | 15 | 620 to 375 | 1.5M to 0.4M |
+
+What differs from the town:
+
+- **The environment light is most of the city's fill**: RoomEnvironment at
+  0.15-0.6, not the town's faint sky at 0.12, and the night hemisphere is
+  dark blue. A brighter hemisphere could not make it up (at 3x the frame stayed
+  27% darker by day, and 85% at night); a neutral ambient light at 6.5 x the
+  environment intensity matches the old frames' mean brightness by day
+  and by night (`LUMA=1`). Glossy and metal materials keep the environment.
+- **The woods are instanced** (`land.ts`), so their impostors are too: one
+  InstancedMesh a model a sector whose vertex shader drops the instances
+  within 150 m of the camera, and real trees in 96 m tiles (384 m in the far
+  clumps) whose shader keeps only those. Street and garden-edge trees
+  switch per block or 64 m tile, as in the town; yard trees stay real.
+- **The shadow map is redrawn** when the sun has moved 0.7° (about three
+  minutes), a building is added or removed, every frame while one rises,
+  shakes or collapses or debris flies, when a crane's jib has turned, and
+  once the cut-out textures arrive. Vehicles get blobs sized to each model.
+- **Idle frames rarely happen**: the city has traffic and people whenever it
+  has a block, so it keeps drawing; this pays off only with "Pause on
+  inactivity" (freezing traffic when the window is unfocused or hidden).
+- **The 1% lows still dip** at load and whenever a building is built
+  (geometry built on the main thread, new shaders), as they did before.
 
 ## Rough total
 

@@ -253,7 +253,7 @@ function lineup() {
   scene.add(g);
 }
 
-Promise.all([loadKit(), loadReal([id, ...PROPS])]).then(() => {
+Promise.all([loadKit(), loadReal([id, ...PROPS], renderer)]).then(() => {
   if (props) {
     lineup();
     frames = 0;

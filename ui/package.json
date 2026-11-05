@@ -8,7 +8,8 @@
     "test": "bun test",
     "tauri": "tauri",
     "kit": "blender -b --factory-startup -P blender/city_kit.py -- public/city-kit.glb",
-    "models": "blender -b --factory-startup -P blender/real/build.py -- public/models"
+    "models": "blender -b --factory-startup -P blender/real/build.py -- public/models && bun scripts/textures.ts",
+    "textures": "bun scripts/textures.ts"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.4",

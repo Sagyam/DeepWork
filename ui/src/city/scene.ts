@@ -9,20 +9,51 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { World, WorldEvent } from "../proto";
+import { Bench } from "./bench";
 import { Fx } from "./fx";
+import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
 import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
-import { building, fitReal, furniture, KERB, kitLook, mat, park, Parts, rubble, site, tree, type ModelInfo } from "./models";
+import { building, fitReal, furniture, KERB, kitLook, mat, park, Parts, rubble, site, SPECIES, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
+
+// The rendering optimisations tried first in the showcase town (proto/town.ts,
+// measured in docs/models.md "Tried in the showcase town"), each commented
+// where it is made: res, shadow, idle, cull, trees, sky, ibl, prewarm, clamp.
+
+/** cull: tiny props (signals, hydrants, bins, benches) drop out past this many metres, */
+const TINY = 140;
+/** and lamps past this. */
+const SMALL = 320;
+/** Side of the tiles the trees round town are grouped in, for impostors. */
+const TREE_TILE = 64;
+/** shadow: redraw the shadow map once the sun has moved this far (radians, ~3 minutes). */
+const SUN_STEP = 0.0125;
+/**
+ * ibl: the neutral ambient light that stands in for the environment light
+ * rough materials lost, per unit of environment intensity. Unlike the town's
+ * faint sky, the room environment is most of the city's fill light (night
+ * included); 6.5 matched the old frames' mean brightness by day and by night
+ * (scripts/bench-app.ts with LUMA=1).
+ */
+const FILL = 6.5;
+
+/** clamp: caps brightness before the bloom (see the constructor). */
+const CLAMP = {
+  uniforms: { tDiffuse: { value: null }, uMax: { value: 8 } },
+  vertexShader: "varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform sampler2D tDiffuse;\nuniform float uMax;\nvarying vec2 vUv;\nvoid main() { vec4 c = texture2D(tDiffuse, vUv); gl_FragColor = vec4(min(c.rgb, vec3(uMax)), c.a); }",
+};
 
 interface Entry {
   key: string;
@@ -30,6 +61,8 @@ interface Entry {
   info: ModelInfo;
   spec: Spec;
   jib?: THREE.Group;
+  /** The jib's turn when the shadow map was last drawn. */
+  jibShadow?: number;
   ghost?: THREE.Mesh;
   surrendering?: boolean;
   /** Seconds of accumulated emitter time, per emitter. */
@@ -57,9 +90,31 @@ export class City {
   private composer: EffectComposer;
   private bloom: UnrealBloomPass;
   private sky = new Sky();
+  private skyScene = new THREE.Scene();
+  private skyCube = new THREE.WebGLCubeRenderTarget(512, { type: THREE.HalfFloatType });
+  private cubeCam = new THREE.CubeCamera(1, 6000, this.skyCube);
+  private clamp: ShaderPass;
+  private roomEnv: THREE.Texture;
+  /** Materials that took the environment light in prepare(); their intensity follows the day. */
+  private glossy = new Set<THREE.MeshStandardMaterial>();
+  private prepared = new WeakSet<THREE.Material>();
+  /** Cut-out textures the shadow map waits for. */
+  private shadowWait = new Set<THREE.Texture>();
+  private shadowDir: THREE.Vector3 | null = null;
+  private impostors: Impostors;
+  /** Street props that drop out with distance (cull). */
+  private chunks: { group: THREE.Group; centre: THREE.Vector3; far: number }[] = [];
+  /** Trees round town, real near the camera and impostors further out. */
+  private treeTiles: { real: THREE.Group; imp: THREE.Group | null; centre: THREE.Vector3 }[] = [];
+  /** Something changed that a frame should show (idle). */
+  private dirty = true;
+  /** Compile shaders and upload textures before the next frame (prewarm). */
+  private warm = false;
+  private bench: Bench | null = null;
   private stars: THREE.Points;
   private sunLight = new THREE.DirectionalLight(0xffffff, 3);
   private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x4a5a3a, 1);
+  private fill = new THREE.AmbientLight(0xffffff, 0);
   private land = new Land();
   private fx = new Fx();
   private traffic = new Traffic();
@@ -91,10 +146,20 @@ export class City {
 
   private constructor(private el: HTMLElement, story: (text: string) => void) {
     this.story = story;
-    const r = (this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" }));
-    r.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    // res: one pixel per CSS pixel (1.5x cost double), antialiased by MSAA 4x
+    // in the composer's target, with alpha to coverage on cut-out leaves,
+    // railings and grilles (prepare()). SMAA at 1x stair-stepped edges once
+    // stretched to a 1.5x screen and broke thin railings up. The canvas
+    // itself needs no MSAA: only the output pass draws to it.
+    const r = (this.renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance" }));
+    r.setPixelRatio(1);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
+    // shadow: the city stands still nearly all the time and the sun moves
+    // slowly, so the shadow map is drawn only when the sun has moved on, a
+    // building changes or cut-out textures arrive (shadowsDirty()), not every
+    // frame. Moving vehicles cast a blob instead (traffic.ts).
+    r.shadowMap.autoUpdate = false;
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     el.appendChild(r.domElement);
@@ -108,23 +173,33 @@ export class City {
     this.controls.maxDistance = 1200;
     this.controls.autoRotate = true;
     this.controls.autoRotateSpeed = 0.25;
+    this.controls.addEventListener("change", () => (this.dirty = true));
     this.controls.addEventListener("start", () => {
       this.controls.autoRotate = false;
       this.idle = 0;
       this.focus = null;
     });
 
+    // ibl: image-based light costs every pixel several texture reads, yet on
+    // rough brick, render and roofs it is a faint fill: only glossy and metal
+    // materials take it (prepare()), and a brighter hemisphere light fills the
+    // rest for nearly nothing. So the scene has no environment of its own.
     const pmrem = new THREE.PMREMGenerator(r);
-    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    this.roomEnv = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     this.scene.environmentIntensity = 0.6;
+    this.impostors = new Impostors(r);
+    if (new URLSearchParams(location.search).has("bench")) this.bench = new Bench(r);
 
+    // sky: the scattering sky is a full-screen shader; it is drawn into a
+    // cube map when the light changes (light()), which the background samples.
     this.sky.scale.setScalar(5000);
     const u = this.sky.material.uniforms;
     u.turbidity.value = 6;
     u.rayleigh.value = 1.6;
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.85;
-    this.scene.add(this.sky);
+    this.skyScene.add(this.sky);
+    this.scene.background = this.skyCube.texture;
 
     const starGeo = new THREE.BufferGeometry();
     const sr = rng(99);
@@ -143,13 +218,19 @@ export class City {
     this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.bias = -0.0004;
     this.sunLight.shadow.normalBias = 0.6;
-    this.scene.add(this.sunLight, this.sunLight.target, this.hemi);
+    this.scene.add(this.sunLight, this.sunLight.target, this.hemi, this.fill);
 
     this.scene.add(this.land.group, this.base, this.fx.group, this.traffic.group);
     this.scene.fog = new THREE.Fog(0xb8c8d8, 350, 3600);
 
-    this.composer = new EffectComposer(r);
+    this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
     this.composer.addPass(new RenderPass(this.scene, this.camera));
+    // clamp: near-mirror glass catching the moon (or a lamp) exactly makes one
+    // pixel hundreds of times brighter than anything else, which bloom smears
+    // into a disc. Capping brightness before the bloom keeps glints small. By
+    // night only: by day the sun disc is meant to bloom.
+    this.clamp = new ShaderPass(CLAMP);
+    this.composer.addPass(this.clamp);
     this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.4, 0.5, 0.82);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
@@ -160,11 +241,14 @@ export class City {
   }
 
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {
-    await Promise.all([loadKit(), loadReal()]);
-    return new City(el, story);
+    // The renderer first: it picks the format compressed textures transcode to (real.ts).
+    const city = new City(el, story);
+    await Promise.all([loadKit(), loadReal(undefined, city.renderer)]);
+    return city;
   }
 
   private resize() {
+    this.dirty = true;
     const w = this.el.clientWidth || 1;
     const h = this.el.clientHeight || 1;
     this.renderer.setSize(w, h);
@@ -187,7 +271,9 @@ export class City {
     this.buildBase(p);
     if (first) {
       this.frameCamera(p, true);
+      this.benchCamera();
       this.firstSync(world, p);
+      this.warm = true;
     } else {
       this.sync(p, true);
     }
@@ -251,12 +337,14 @@ export class City {
     if (old) this.scene.remove(old.group);
     this.entries.set(index, e);
     this.scene.add(e.group);
+    this.prepare(e.group);
   }
 
   private remove(index: number) {
     const old = this.entries.get(index);
     if (old) this.scene.remove(old.group);
     this.entries.delete(index);
+    this.shadowsDirty();
   }
 
   private specs(p: CityPlan): Map<number, Spec | SiteSpec> {
@@ -413,7 +501,37 @@ export class City {
     this.scene.remove(this.base);
     this.base = new THREE.Group();
     this.lampMats = [];
-    const parts = new Parts();
+    // cull: the streets are merged per block (and per kind of prop) instead
+    // of once for the whole city, so blocks out of view are skipped, and
+    // small props drop out with distance (TINY, SMALL; frame()).
+    const chunks = new Map<string, { parts: Parts; centre: THREE.Vector3; far: number }>();
+    const chunk = (key: string, x: number, z: number, far = Infinity) => {
+      let c = chunks.get(key);
+      if (!c) chunks.set(key, (c = { parts: new Parts(), centre: new THREE.Vector3(x, 0, z), far }));
+      return c.parts;
+    };
+    // trees: past IMPOSTOR_NEAR a tile's trees are drawn as impostors
+    // (impostor.ts); the real ones still draw the shadow map, and come back up close.
+    const impostors = hasReal("trees") ? this.impostors : null;
+    type Tile = { real: Parts; imp: Parts | null; centre: THREE.Vector3 };
+    const tiles = new Map<string, Tile>();
+    const tile = (key: string, x: number, z: number) => {
+      let t = tiles.get(key);
+      if (!t) tiles.set(key, (t = { real: new Parts(), imp: impostors && new Parts(), centre: new THREE.Vector3(x, 0, z) }));
+      return t;
+    };
+    const gridTile = (x: number, z: number) => {
+      const gx = Math.floor(x / TREE_TILE);
+      const gz = Math.floor(z / TREE_TILE);
+      return tile(`${gx},${gz}`, (gx + 0.5) * TREE_TILE, (gz + 0.5) * TREE_TILE);
+    };
+    /** A tree as tree() places it, plus its impostor. */
+    const treeAt = (t: Tile, x: number, z: number, s: number, seed: number, y: number) => {
+      tree(t.real, x, z, s, seed, y);
+      if (t.imp) impostors!.tree(t.imp, x, z, s, seed, y, SPECIES);
+    };
+    // Parks, empty lots and the bridge: always drawn.
+    const parts = chunk("all", 0, 0);
     // With the realistic street furniture come textured streets: asphalt,
     // paving slabs, granite kerbs, drains and manhole covers.
     const real = hasReal("street");
@@ -428,35 +546,40 @@ export class City {
     this.lampMats.push(bulb);
     const pw = PAVEMENT;
     for (const b of p.blocks) {
-      parts.box(asphalt, PITCH_X + 0.02, 0.06, PITCH_Z + 0.02, b.x, 0, b.z);
+      const key = `${b.x},${b.z}`;
+      const surf = chunk(key, b.x, b.z);
+      const props = chunk(`${key}:props`, b.x, b.z, SMALL);
+      const tiny = chunk(`${key}:tiny`, b.x, b.z, TINY);
+      const trees = tile(`block:${key}`, b.x, b.z);
+      surf.box(asphalt, PITCH_X + 0.02, 0.06, PITCH_Z + 0.02, b.x, 0, b.z);
       // Pavement: a raised ring round the block, kerb on the road side.
-      for (const sz of [-1, 1]) parts.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
-      for (const sx of [-1, 1]) parts.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
+      for (const sz of [-1, 1]) surf.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
+      for (const sx of [-1, 1]) surf.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
       if (real) {
         // Granite kerbs on the road side, a drain grate by each kerb, and
         // manhole covers in the carriageway.
         const kx = BLOCK_X / 2 + pw - 0.09;
         const kz = BLOCK_Z / 2 + pw - 0.09;
-        for (const sz of [-1, 1]) parts.box(kerbStone, BLOCK_X + 2 * pw, KERB + 0.004, 0.18, b.x, 0, b.z + sz * kz);
-        for (const sx of [-1, 1]) parts.box(kerbStone, 0.18, KERB + 0.004, BLOCK_Z + 2 * pw - 0.36, b.x + sx * kx, 0, b.z);
-        for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) parts.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
-        for (const sx of [-1, 1]) parts.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
-        for (const t of [-0.35, 0.35]) parts.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
+        for (const sz of [-1, 1]) surf.box(kerbStone, BLOCK_X + 2 * pw, KERB + 0.004, 0.18, b.x, 0, b.z + sz * kz);
+        for (const sx of [-1, 1]) surf.box(kerbStone, 0.18, KERB + 0.004, BLOCK_Z + 2 * pw - 0.36, b.x + sx * kx, 0, b.z);
+        for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) surf.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
+        for (const sx of [-1, 1]) surf.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
+        for (const t of [-0.35, 0.35]) surf.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
       }
       // Dashed centre lines on the roads around the block.
       for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) {
-        parts.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
+        surf.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
       }
       for (let z = -PITCH_Z / 2; z < PITCH_Z / 2; z += 5) {
-        parts.box(line, 0.25, 0.07, 2.4, b.x - PITCH_X / 2, 0, b.z + z + 1.2);
+        surf.box(line, 0.25, 0.07, 2.4, b.x - PITCH_X / 2, 0, b.z + z + 1.2);
       }
       // Zebra crossings at the corners.
       const kerb = ROAD - 2 * pw;
       for (const sx of [-1, 1]) {
         const x = b.x + sx * (BLOCK_X / 2 - 2.2);
-        for (let i = 0; i < 6; i++) parts.box(line, 2.6, 0.07, 0.5, x, 0, b.z - BLOCK_Z / 2 - pw - 0.8 - i * ((kerb - 1) / 5));
+        for (let i = 0; i < 6; i++) surf.box(line, 2.6, 0.07, 0.5, x, 0, b.z - BLOCK_Z / 2 - pw - 0.8 - i * ((kerb - 1) / 5));
         const z = b.z + (sx < 0 ? -1 : 1) * (BLOCK_Z / 2 - 2.2);
-        for (let i = 0; i < 6; i++) parts.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
+        for (let i = 0; i < 6; i++) surf.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
       }
       // Street lamps along the kerb, and trees between them.
       const ex = BLOCK_X / 2 + pw - 0.45;
@@ -468,21 +591,22 @@ export class City {
           if (real) {
             // The arm reaches out over the road; at night its light pools
             // on the road and pavement below (lit faces point down, so from
-            // the usual overhead view the pool is what shows).
-            furniture(parts, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
-            parts.add(pool!, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
+            // the usual overhead view the pool is what shows). The pool
+            // stays when the lamp drops out with distance.
+            furniture(props, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
+            surf.add(pool!, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
             continue;
           }
-          parts.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
-          parts.box(pole, 0.2, 0.15, 1.4, x, KERB + 4.9, z + lz * 0.6);
-          parts.box(bulb, 0.5, 0.18, 0.5, x, KERB + 4.75, z + lz * 1.1);
+          props.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
+          props.box(pole, 0.2, 0.15, 1.4, x, KERB + 4.9, z + lz * 0.6);
+          props.box(bulb, 0.5, 0.18, 0.5, x, KERB + 4.75, z + lz * 1.1);
         }
         for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
-          tree(parts, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
+          treeAt(trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
         }
       }
-      for (const sx of [-1, 1]) tree(parts, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
-      if (real) this.streetFurniture(parts, b, p.tier);
+      for (const sx of [-1, 1]) treeAt(trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
+      if (real) this.streetFurniture(tiny, b, p.tier);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
     // Empty lots: rough grass with survey stakes, waiting to be built on.
@@ -495,13 +619,16 @@ export class City {
       for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
       for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
       const r = rng(l.seed);
-      if (r() < 0.35) tree(parts, l.x + (r() - 0.5) * 8, l.z + (r() - 0.5) * 8, 0.8 + r() * 0.4, l.seed, KERB);
+      if (r() < 0.35) {
+        const [tx, tz] = [l.x + (r() - 0.5) * 8, l.z + (r() - 0.5) * 8];
+        treeAt(gridTile(tx, tz), tx, tz, 0.8 + r() * 0.4, l.seed, KERB);
+      }
     }
-    this.land.build(p);
+    this.land.build(p, impostors);
     const ground = this.land.shape;
     for (const t of p.trees) {
       const y = ground.height(t.x, t.z);
-      if (y > WATER + 1.2 && Math.abs(t.z - ROAD_Z) > 7) tree(parts, t.x, t.z, t.s * 1.3, t.seed, y - 0.1);
+      if (y > WATER + 1.2 && Math.abs(t.z - ROAD_Z) > 7) treeAt(gridTile(t.x, t.z), t.x, t.z, t.s * 1.3, t.seed, y - 0.1);
     }
     // Roads out of town, along the street north of the first block row.
     // ... all the way to the mountains, over the river on a truss bridge.
@@ -561,7 +688,26 @@ export class City {
         parts.add(m, geo, bx, 0, bz);
       }
     }
-    parts.into(this.base);
+    this.chunks = [];
+    for (const c of chunks.values()) {
+      const g = new THREE.Group();
+      c.parts.into(g);
+      this.base.add(g);
+      if (c.far < Infinity) this.chunks.push({ group: g, centre: c.centre, far: c.far });
+    }
+    this.treeTiles = [];
+    for (const t of tiles.values()) {
+      const real = new THREE.Group();
+      t.real.into(real);
+      this.base.add(real);
+      let imp: THREE.Group | null = null;
+      if (t.imp) {
+        imp = new THREE.Group();
+        t.imp.into(imp, false);
+        this.base.add(imp);
+      }
+      this.treeTiles.push({ real, imp, centre: t.centre });
+    }
     this.base.traverse((o) => {
       if (o instanceof THREE.Mesh) {
         o.castShadow = o.material !== asphalt && o.material !== walk && o.material !== pool && !(o.material as THREE.Material).userData.noShadow;
@@ -573,6 +719,10 @@ export class City {
     this.scene.add(this.base);
     this.applyNight({ height: 0, emitters: [], beacons: [], night: this.lampMats, debris: 0 });
     this.traffic.build(p);
+    this.prepare(this.base);
+    this.prepare(this.land.group);
+    this.prepare(this.traffic.group);
+    this.warm = true;
     this.fitShadows(p);
   }
 
@@ -656,23 +806,108 @@ export class City {
     const centre = this.sunLight.target.position;
     const dir = d.day > 0.02 ? d.sun : new THREE.Vector3(-d.sun.x, Math.max(0.5, -d.sun.y), -d.sun.z).normalize();
     this.sunLight.position.copy(centre).addScaledVector(dir, 500);
+    if (!this.shadowDir || this.shadowDir.angleTo(dir) > SUN_STEP) {
+      this.shadowDir = dir.clone();
+      this.shadowsDirty();
+    }
     this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 3.2, d.day);
     this.sunLight.color.setHex(d.day > 0.02 ? 0xffffff : 0x9fb4ff).lerp(new THREE.Color(0xffa860), d.golden * 0.7);
     this.hemi.intensity = THREE.MathUtils.lerp(0.25, 1.1, d.day);
     this.hemi.color.setHex(0xbcd4ff).lerp(new THREE.Color(0x2a3560), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
+    this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity;
+    for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
     this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.6, d.day);
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
     const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
+    this.clamp.enabled = d.night > 0.05;
     this.bloom.threshold = 0.9 - d.night * 0.1;
     for (const e of this.entries.values()) this.applyNight(e.info);
     for (const m of this.lampMats) m.emissiveIntensity = d.night * (m.userData.night ?? 1);
     interiorUniforms.uDay.value = d.day;
     interiorUniforms.uNight.value = d.night;
     this.skyEnv(d.sun, d.night);
+    this.cubeCam.update(this.renderer, this.skyScene);
+    this.dirty = true;
+  }
+
+  // ---- rendering optimisations ------------------------------------------------
+
+  /** shadow: the shadow map is drawn again on the next frame. */
+  private shadowsDirty() {
+    this.renderer.shadowMap.needsUpdate = true;
+    this.dirty = true;
+  }
+
+  /**
+   * Readies new objects for the renderer: alpha to coverage on cut-out
+   * materials (res), the environment light on glossy ones only (ibl), and
+   * the shadow map redrawn now and again once their cut-out textures arrive
+   * (drawn before the leaf textures loaded, every leaf card would be cut away
+   * and trees would cast the shadows of bare branches).
+   */
+  private prepare(root: THREE.Object3D) {
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        const s = m as THREE.MeshStandardMaterial;
+        if (mesh.castShadow && m.alphaTest > 0 && s.map && !loaded(s.map)) this.shadowWait.add(s.map);
+        if (this.prepared.has(m)) continue;
+        this.prepared.add(m);
+        if (m.alphaTest > 0 && !m.alphaToCoverage) {
+          m.alphaToCoverage = true;
+          m.needsUpdate = true;
+        }
+        if (s.isMeshStandardMaterial && !s.envMap && (s.metalness >= 0.3 || s.roughness <= 0.45)) {
+          s.envMap = this.roomEnv;
+          s.envMapIntensity = this.scene.environmentIntensity;
+          s.needsUpdate = true;
+          this.glossy.add(s);
+        }
+      }
+    });
+    this.shadowsDirty();
+  }
+
+  /**
+   * prewarm: compiles every shader and uploads every texture now, with
+   * everything shown, instead of the first time it comes into view: a shader
+   * compiled mid-pan is a hitch of tens to hundreds of milliseconds (the 1% lows).
+   */
+  private prewarm() {
+    const hidden: THREE.Object3D[] = [];
+    this.scene.traverse((o) => {
+      if (!o.visible) {
+        hidden.push(o);
+        o.visible = true;
+      }
+    });
+    const seen = new Set<THREE.Texture>();
+    this.scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as unknown as Record<string, unknown> | undefined;
+      if (!m) return;
+      for (const v of Object.values(m)) if (v instanceof THREE.Texture && v.image && !seen.has(v)) seen.add(v);
+    });
+    for (const t of seen) this.renderer.initTexture(t);
+    // compileAsync() picks its programs before it returns, so the hidden can hide again at once.
+    const done = this.renderer.compileAsync(this.scene, this.camera);
+    for (const o of hidden) o.visible = false;
+    void done.then(() => (this.dirty = true));
+  }
+
+  /** Bench (`?bench&cam=x,y,z,tx,ty,tz`): a fixed camera, no auto-rotate. */
+  private benchCamera() {
+    const cam = new URLSearchParams(location.search).get("cam");
+    if (!this.bench || !cam) return;
+    const [x, y, z, tx, ty, tz] = cam.split(",").map(Number);
+    this.camera.position.set(x, y, z);
+    this.controls.target.set(tx, ty, tz);
+    this.controls.autoRotate = false;
+    this.idle = -1e9;
   }
 
   private envAt: THREE.Vector3 | null = null;
@@ -712,11 +947,12 @@ export class City {
   // ---- per frame --------------------------------------------------------------
 
   private frame() {
+    // Nothing to draw before the first world (the models are still loading).
+    if (!this.world) return;
     this.timer.update();
     const raw = this.timer.getDelta();
     const dt = Math.min(0.05, raw);
     this.t += dt;
-    this.fpsCount++;
     if ((this.fpsT += raw) >= 1) {
       this.fps = this.fpsCount / this.fpsT;
       this.fpsCount = this.fpsT = 0;
@@ -753,7 +989,13 @@ export class City {
           else this.fx.smokeAt(tmp, em.rate > 3, this.night);
         }
       });
-      if (e.jib) e.jib.rotation.y = Math.sin(this.t * 0.15 + e.spec.index) * 0.9;
+      if (e.jib) {
+        e.jib.rotation.y = Math.sin(this.t * 0.15 + e.spec.index) * 0.9;
+        if (Math.abs(e.jib.rotation.y - (e.jibShadow ?? 1e9)) > 0.03) {
+          e.jibShadow = e.jib.rotation.y;
+          this.shadowsDirty();
+        }
+      }
       if (e.ghost) {
         const m = e.ghost.material as THREE.MeshBasicMaterial;
         m.opacity = e.surrendering ? 0.1 + 0.12 * (Math.sin(this.t * 6) * 0.5 + 0.5) : 0.1 + 0.04 * Math.sin(this.t * 1.5);
@@ -796,13 +1038,55 @@ export class City {
     setSignals(this.t, this.night);
     setWaterTime(this.t);
 
+    // shadow: buildings rising, shaking or falling, and debris, move
+    // through the shadow map: it is drawn every frame while they do.
+    let animating = this.dying.length > 0 || this.fx.falling;
+    let busy = false;
+    for (const e of this.entries.values()) {
+      if (e.rise || e.hit !== undefined) animating = true;
+      if (e.ghost || e.jib || e.info.emitters.length) busy = true;
+    }
+    if (animating) this.shadowsDirty();
+    if (this.shadowWait.size && [...this.shadowWait].every(loaded)) {
+      this.shadowWait.clear();
+      this.shadowsDirty();
+      this.warm = true;
+    }
+    if (this.impostors.pending) this.impostors.draw();
+
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 0.8);
       const a = this.shake * 1.2;
       this.camera.position.x += (Math.random() - 0.5) * a;
       this.camera.position.y += (Math.random() - 0.5) * a;
     }
+    // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
+    // traffic, effects or transitions): a focus timer's city can sit on screen
+    // for hours, and a still frame costs as much as a busy one.
+    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || this.traffic.active || this.impostors.pending > 0;
+    if (!moving && !this.dirty && !this.bench) return;
+    this.dirty = false;
+    if (this.warm) {
+      this.warm = false;
+      this.prewarm();
+    }
+    // cull and trees: small props out with distance, trees real near the
+    // camera and impostors further out (everything in while the shadow map is
+    // drawn, so what drops out keeps its shadow).
+    const shadowing = this.renderer.shadowMap.needsUpdate;
+    const eye = this.camera.position;
+    for (const c of this.chunks) c.group.visible = shadowing || eye.distanceTo(c.centre) < c.far;
+    for (const t of this.treeTiles) {
+      if (!t.imp) continue;
+      const near = shadowing || eye.distanceTo(t.centre) < IMPOSTOR_NEAR;
+      t.real.visible = near;
+      t.imp.visible = !near;
+    }
+    this.land.cull(eye);
+    this.fpsCount++;
+    this.bench?.begin();
     this.composer.render(dt);
+    this.bench?.end();
   }
 }
 
