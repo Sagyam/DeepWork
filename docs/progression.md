@@ -15,7 +15,8 @@ so a cottage goes up in one sitting and a tower over many. Focusing also
 earns coins, which buy building designs (blueprints); a design, once owned,
 can be built any number of times. When every need of a level is met, the
 settlement graduates and new needs appear. Whatever order the mayor chose,
-the finished level looks exactly like the plan.
+the finished level has exactly the plan's layout; only the facades, picked
+from the mayor's blueprints, are theirs.
 
 ## Two currencies, one source
 
@@ -28,6 +29,9 @@ convert by themselves.
 | Earned by | Focused time of completed sessions, with bonuses | Focused time of completed sessions, at face value (no bonuses) |
 | Spent on | Blueprints | The building under construction |
 | Lost on surrender | Nothing earned for that session | The session's work on the site (see "Penalties") |
+
+Decided 2026-11-06: a third currency, diamonds, comes later (see
+"Later: diamonds and loot boxes").
 
 Bonuses touch coins only, so build times stay honest: a 20 h tower always
 means 20 h of focus.
@@ -57,7 +61,20 @@ means 20 h of focus.
 - **One starter blueprint is free** (the farmhouse), so the very first
   session builds something.
 
-How a blueprint relates to a lot is the main open question (below, Q1).
+### Lots take a kind and size, not a model (decided 2026-11-06)
+
+- Each lot names a **kind and size** ("cottage", "corner shop", "mid-rise
+  apartments") and a **district**. The mayor fills it with any owned
+  blueprint of that kind that the district allows; the district's list
+  keeps the look coherent (no A-frame on main street, no farmhouse
+  downtown).
+- So streets, lots, sizes and the order of a need's lots stay ours; the
+  facades are the mayor's. Buying a design is a real choice, and building
+  it many times means something.
+- A need's card shows the owned blueprints that fit, and the locked ones
+  that would; with one fitting blueprint the choice is skipped.
+- The renderer still varies each copy (colours, signs, yard), as today, so
+  a street of the same design does not look cloned.
 
 ## Residents' needs
 
@@ -129,28 +146,48 @@ progress visible (scaffolding and crane growing with it).
 - The app asks "What next?" when a site completes, and at session start if
   nothing is under construction.
 
-## Penalties become needs
+## Penalties and repairs (decided 2026-11-06: automatic for now)
 
 Penalty tiers stay (surrender severe, tamper major, refused root /
-clock jump / tunnel minor), but damage turns into resident requests:
+clock jump / tunnel minor) and so does today's automatic repair:
 
-- **Surrender:** the active site loses that session's work and a building
-  near it catches fire. Residents ask for the repair ("The bakery on Mill
-  Lane burned down"), which costs build hours like a new building (a share
-  of its own, say half).
-- **Tamper:** an earthquake damages a district; one repair need per
-  building, or one "district repair" need.
-- **Minor:** light damage to the newest building; a short repair (0.25 h).
-- A level cannot graduate with repairs open, which keeps the final layout
-  exact. Coins are never taken away: loss is what the user sees in the city.
+- **Surrender:** the active site loses that session's work, and fire does
+  damage to the buildings nearest it.
+- **Tamper:** an earthquake damages a district.
+- **Minor:** light damage to the newest building.
+- **Repair is automatic:** each completed session repairs damage, most
+  damaged first, as `world.rs` does now (`1 + mins / 25` levels, doubled on
+  a 3+ day streak), without spending build hours.
+- **Nothing is lost for good:** a plan lot is never taken away, so a ruined
+  building (damage 3) stays a ruin, scarred but standing, until repairs
+  bring it back. Coins are never taken away; the loss is what the user sees
+  in the city, and the time it takes to heal.
+- Damage does not block graduation.
+
+The user may revisit this to make repairs part of the game (repair needs
+that cost build hours, or diamonds).
+
+## Later: diamonds and loot boxes (idea, 2026-11-06, not designed)
+
+- **Diamonds:** a rare currency that repairs damage at once or speeds up a
+  construction.
+- **Only from loot boxes**, and loot boxes **only from meeting daily streak
+  goals**, never bought and never from coins. So diamonds reward
+  consistency, the one thing coins' streak bonus touches lightly.
+- Keep room for it now: loot boxes and diamonds fold from the ledger like
+  everything else, opening a box is a daemon decision with a seeded result
+  (deterministic from the ledger, so a client cannot reroll), and spending
+  is a `diamonds_spent` event. Expediting must not make build hours a lie
+  in the memories ("4 h focused, finished early with 2 diamonds").
 
 ## Building memories
 
 Every finished building keeps its story, all folded from the sessions that
 put minutes into it:
 
-- Name and address from the plan ("Hart's Bakery, 4 Mill Lane"), the need
-  it answered.
+- Name and address: the plan gives a default name ("Hart's Bakery, 4 Mill
+  Lane"); the mayor can rename it from its card (decided 2026-11-06). The
+  address stays. The need it answered and the blueprint used.
 - Started, finished, and how long it took in calendar time ("over 3 days").
 - Focused hours, number of sessions, the longest one, and their kind:
   countdown or stopwatch, routine or manual, profile.
@@ -183,30 +220,21 @@ against the ground plane and the lot under it, not the buildings' meshes.
   size class, kind and build hours), coins, blueprints, sites, repairs and
   memories, all folded from the ledger. New ledger events:
   `blueprint_bought { id }`, `need_chosen { need }`, `site_paused { lot }`.
-  The daemon checks the balance, the level and that the need is open; the
-  app only asks.
+  `need_chosen` carries the blueprint picked; `building_renamed { lot,
+  name }` holds a rename (trimmed, at most 40 characters, no control
+  characters). The daemon checks the balance, the level, that the need is
+  open and that the blueprint fits the lot; the app only asks.
 - **The renderer** maps lot ids to places and models (`plan.ts`) and draws
   them. A test checks the two lists of lot ids agree.
 - **Fold must be deterministic** and the plan versioned: changing the plan
   later must not reshuffle a user's existing city (lots are only ever
   appended).
 
-## Open questions for the user
+## Decided
 
-1. **Does a lot fix the model, or only its kind?**
-   - (a) Each lot names its model. "Exactly the same" holds to the last
-     facade; a blueprint is then a toll to unlock the lots that use it,
-     with no real choice in buying.
-   - (b) Each lot names a kind and size ("cottage", "corner shop"); the
-     mayor builds it with any owned blueprint of that kind. The layout,
-     streets and sizes stay exactly ours; the facades are the mayor's.
-     Buying a design means something, and "build it many times" too.
-   Recommended: (b), with each district allowing a set of styles so
-   nothing clashes (no A-frame on main street).
-2. **Repairs:** should a repair cost build hours (as above), or
-   come first automatically from the next session, as today?
-3. **Naming:** do residents name buildings (from the plan), or may the
-   mayor rename one from its card?
+- 2026-11-06: lots take a kind and size, the mayor picks the design;
+  repairs stay automatic for now; buildings get a default name the mayor
+  can change; diamonds and loot boxes come later.
 
 ## Holes, to fix as we go
 
