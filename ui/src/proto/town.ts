@@ -549,7 +549,7 @@ function traffic() {
 
 // ---- go ----
 
-Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async () => {
+Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS], renderer)]).then(async () => {
   const missing = [...Object.keys(DEFS), ...PROPS].filter((id) => !hasReal(id));
   if (missing.length) console.warn("not built:", missing);
   const ground = new Parts();

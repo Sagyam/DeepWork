@@ -940,7 +940,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge;
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
-      (metropolis 67 to 30 ms, city 50 to 18)
+      (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement

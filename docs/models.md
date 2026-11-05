@@ -539,8 +539,21 @@ showcase town" above); they are ticked here once the app has them.
 - [ ] **Quality presets** (Low / Medium / High): render scale, shadow-map
       size, LOD distances, MSAA, bloom. Low for weak iGPUs on 1440p and 4K
       screens, where pixel count costs more than triangles.
-- [ ] **Texture compression:** KTX2 / Basis for the shared library (~250 MB
-      of VRAM uncompressed, ~40-60 MB compressed); single-channel AO maps.
+- [x] **Texture compression** (done 2026-11-05): the AO bakes and the tex/
+      library as BC7 (`scripts/textures.ts`, part of `bun run models`):
+      basisu encodes each PNG to UASTC, transcodes it to BC7 at build time and
+      the app uploads the gzipped KTX file as it is (`real.ts`, `fillBc7`).
+      Model textures on the GPU: 546 to 142 MB in the metropolis mock, 647 to
+      167 MB in the city; download unchanged (91 MB); looks the same close
+      up; frame time unchanged. Not KTX2 with the runtime transcoder: it is
+      Emscripten embind, which needs 'unsafe-eval' in the CSP (without it the
+      loads never settled and the city never appeared). GPUs without BC7 get
+      the PNGs; WebKitGTK here exposes it (EXT_texture_compression_bptc).
+      Same day, a bigger find: the shop-sign and name sheets (`signs()` and
+      six more in `real.ts`) made a new CanvasTexture per building, so each
+      building uploaded its own copy of the sheet: 820 MB of canvases in the
+      metropolis, now 76 MB as clones of one (`sheet()`). Texture memory in
+      all: 1,370 to 218 MB.
       Tested first (2026-11-05, `scripts/texshrink.js` with `bench-app.ts`
       EVAL, which re-uploads every texture smaller in the same page): 4x and
       16x fewer texels changed GPU time by under 1 ms (noise) in every view,

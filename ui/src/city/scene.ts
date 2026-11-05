@@ -241,8 +241,10 @@ export class City {
   }
 
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {
-    await Promise.all([loadKit(), loadReal()]);
-    return new City(el, story);
+    // The renderer first: it picks the format compressed textures transcode to (real.ts).
+    const city = new City(el, story);
+    await Promise.all([loadKit(), loadReal(undefined, city.renderer)]);
+    return city;
   }
 
   private resize() {
@@ -945,6 +947,8 @@ export class City {
   // ---- per frame --------------------------------------------------------------
 
   private frame() {
+    // Nothing to draw before the first world (the models are still loading).
+    if (!this.world) return;
     this.timer.update();
     const raw = this.timer.getDelta();
     const dt = Math.min(0.05, raw);
