@@ -933,7 +933,9 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
       A1 brick block, A2 brownstone row, A3 balcony block, C1 farmhouse, C2 brick cottage, S1 main-street shop, S2 corner café, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app (the Hamlet is complete); progression v2 and the master plan next;
-      props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
+      props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge;
+      L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
+      with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), not yet in the app
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 
 ### Phase 4: Deeper enforcement
