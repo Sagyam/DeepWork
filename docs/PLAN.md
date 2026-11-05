@@ -543,7 +543,7 @@ TypeScript + three.js frontend, built with bun.
     from `ui/blender/real/`) alongside the kit, with PBR library textures,
     baked AO on UV1, world-space grime and interior-mapped glass. A model
     replaces a kit style (`realDef` in `models.ts`: A1 for classic
-    apartments, C1 and C2 for classic cottages (siblings share a style,
+    apartments, A2 for townhouses, C1 and C2 for classic cottages (siblings share a style,
     picked per building from its seed; `Spec.model` forces one), C3 for modern cottages, C4 for
     A-frame cottages, S1 and S2 for classic shops, S3 for diners, S4 for factories; each `DEFS` entry names the kind and style it takes) at its own real-world size on the
     lot (`fitReal`), stacked from its pieces; damage darkens it and puts its
@@ -744,6 +744,9 @@ a setback stack (`RealDef.stack` gets the finished storey count, so a site
 or a damaged tower steps back at the same storey), a louvre-blade texture,
 an "office" room (open plan, lit by zones) and an "atrium" one in the
 window shader, tinted glass, and the tower's name on the fascia.
+A2, the brownstone row, came the same day: three Italianate row houses with
+stoops, canted bays and a bracketed cornice on a new brownstone texture;
+the townhouse apartments.
 Next: progression v2 and the
 master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
@@ -914,7 +917,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block, C1 farmhouse, C2 brick cottage, S1 main-street shop, S2 corner café, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app (the Hamlet is complete); progression v2 and the master plan next;
+      A1 brick block, A2 brownstone row, C1 farmhouse, C2 brick cottage, S1 main-street shop, S2 corner café, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app (the Hamlet is complete); progression v2 and the master plan next;
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 

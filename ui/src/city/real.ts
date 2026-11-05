@@ -59,6 +59,9 @@ export interface RealDef {
 
 const A1_G = 4.5;
 const A1_FL = 3.1;
+const A2_G = 5.6;
+const A2_FL = 3.3;
+const A2_TF = 3.1;
 const C1_PLATE = 6.1;
 const C2_PLATE = 4.0;
 const C3_G = 3.3;
@@ -105,6 +108,30 @@ export const DEFS: Record<string, RealDef> = {
     top: (floors) => A1_G + Math.max(2, floors - 1) * A1_FL,
     height: (floors) => A1_G + Math.max(2, floors - 1) * A1_FL + 2.3,
     debris: 0x8a4e3c,
+  },
+  a2: {
+    id: "a2",
+    kind: "apartment",
+    style: "townhouse",
+    // Three houses wall to wall, the stoops in front.
+    w: 15.6,
+    d: 13.63,
+    front: 0.8,
+    // Storeys over the garden storey: the parlour, typical storeys, the top storey.
+    floors: (plan) => Math.min(4, Math.max(3, plan)),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      let y = A2_G;
+      for (let f = 2; f < floors; f++, y += A2_FL) out.push({ piece: "floor", y });
+      if (floors > 1) out.push({ piece: "top", y });
+      if (floors > 1 && roof) out.push({ piece: "roof", y: y + A2_TF });
+      return out;
+    },
+    top: (floors) => (floors > 1 ? A2_G + (floors - 2) * A2_FL + A2_TF : A2_G),
+    height: (floors) => A2_G + (floors - 2) * A2_FL + A2_TF + 1.45,
+    // The front stack on the first party wall.
+    smoke: (floors) => new THREE.Vector3(-2.6, A2_G + (floors - 2) * A2_FL + A2_TF + 3.5, 1.08),
+    debris: 0x6e4a3a,
   },
   c1: {
     id: "c1",
@@ -733,6 +760,12 @@ const CORNICES = [0xe6dcc4, 0xc8beac, 0x2e4434, 0x5a2420, 0x4a5058];
 const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
 /** Ridge rolls: red clay, blue-black, buff. */
 const RIDGES = [0x9a4a32, 0x2e3034, 0x9a4a32, 0xb08a60];
+/** Brownstone: chocolate, pinkish, dark, warm, umber. */
+const BROWNSTONES = [0xffffff, 0xf4dcd0, 0xd4c8c0, 0xf0dcc4, 0xc0b4ac];
+/** A2's cornices: brown, black, brownstone, dark green, cream. */
+const ROW_CORNICES = [0x3a2c24, 0x1e2022, 0x6a5040, 0x26342a, 0xd8ccb4];
+/** A2's sashes: cream, dark brown, black-green, white. */
+const SASHES = [0xe9e4d8, 0x2e2520, 0x1e2a24, 0xf0eee8];
 /** Front doors in heritage paint: black, Brunswick green, oxblood, navy, plum, ochre, teal. */
 const HERITAGE = [0x1c1d1f, 0x1f3a2c, 0x5a1e1c, 0x1e2a44, 0x3e2638, 0xb07a2a, 0x2a5458];
 /** S2's stucco: Schönbrunn yellow, ochre, salmon, sage, cream, terracotta, pale blue-grey, white. */
@@ -857,7 +890,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "brownstone", "door2", "door3", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -908,13 +941,17 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "shingle": m = w(pbr("shingle", [2, 1.12], { roughness: 0.95, color: pick(SHINGLES, paint.roof) }), 0.8); break;
     case "shutter": m = w(pbr("louvre", [1, 1], { roughness: 0.55, color: id === "s2" ? pick(S2_SHUTTERS, paint.wall + paint.roof) : accent })); break;
     case "trim": m = w(plain(0xeeebe2, 0.55), 0.5); break;
-    case "cornice": m = w(plain(pick(CORNICES, paint.roof), 0.5, 0.2), 1.2); break;
+    case "cornice": m = w(plain(pick(id === "a2" ? ROW_CORNICES : CORNICES, paint.roof), 0.5, 0.2), 1.2); break;
+    case "brownstone": m = w(pbr("brownstone", [2.4, 1.8], { rough: true, color: pick(BROWNSTONES, paint.wall) }), 1.5); break;
     case "paint": m = w(plain(0xf0ede4, 0.6), 0.6); break;
     case "ceiling": m = w(plain(0xb4d4d2, 0.6)); break;
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
-    case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : 0xe9e4d8, 0.42)); break;
+    case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : id === "a2" ? pick(SASHES, paint.roof) : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "a2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    // A2's other two houses.
+    case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
+    case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
     case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "s2" ? pick(STUCCO, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : 0.4); break;
     // S2's banded rustication: the stucco a shade deeper.
     case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
