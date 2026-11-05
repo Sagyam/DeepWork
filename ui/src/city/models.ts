@@ -558,6 +558,26 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-3.9, 3.9]) if (r() < 0.8) shrub(p, x, 4.5, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "s2": {
+      // Paved to the pavement: the café's terrace of umbrella tables before
+      // its windows and round the cut-off corner, closed to the street by
+      // planters, a menu board by the corner door; the bins down the side.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const tz = s.d / 2 + 1.55;
+      const tables: [number, number][] = [[-2.2, tz], [0.75, tz], [4.4, tz - 0.9]];
+      tables.forEach(([x, z], i) => putReal(rp, def, "table", paintOf(s), 0, null, x, KERB, z, (s.seed + i * 2.3) % (Math.PI * 2)));
+      const box = mat(0x3a3a36, { roughness: 0.8, metalness: 0.2 });
+      for (const x of [-4.6, -0.75, 2.4]) {
+        p.box(box, 1.3, 0.5, 0.45, x, KERB, front - 0.45);
+        shrub(p, x - 0.3, front - 0.45, s.seed * 3 + x, KERB + 0.5, 0.55);
+        shrub(p, x + 0.3, front - 0.45, s.seed * 5 + x, KERB + 0.5, 0.5);
+      }
+      const board = mat(0x1e1e1e, { roughness: 0.7 });
+      for (const k of [-1, 1]) p.box(board, 0.55, 0.95, 0.05, 4.9, KERB, s.d / 2 - 0.4 + k * 0.08, 0, Math.PI / 4 - k * 0.17);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6, KERB, back + 0.7 + i * 0.85);
+      break;
+    }
     case "s3": {
       // An asphalt forecourt to the pavement with a car drawn up beside the
       // steps and shrubs either side of them; behind, a concrete service yard

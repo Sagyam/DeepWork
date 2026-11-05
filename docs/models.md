@@ -9,8 +9,9 @@ that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
 the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
-factory, C2, the brick cottage (sharing the classic cottages with C1),
-and O1, the curtain-wall office tower;
+factory, C2, the brick cottage (sharing the classic cottages with C1), and
+S2, the corner café (sharing the classic shops with S1), and O1, the
+curtain-wall office tower;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -140,12 +141,15 @@ every model after this one:
   (galvanised, rust bleeding from the fixings and laps; tinted or painted
   per building), also for S6's canopy and sheds; with C2, natural slate
   (riven, chipped butts, a little lichen; blue-grey, tinted per building);
-  with O1, horizontal metal blades (louvre screens, roller shutters).
+  with S2, banded rustication in render (horizontal V-joints, no vertical
+  ones; tinted with the stucco); with O1, horizontal metal blades (louvre
+  screens, roller shutters).
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
-  names painted on a factory's brick, weathered; with O1, office buildings'
-  names in brushed-steel capitals for the fascia.
+  names painted on a factory's brick, weathered; with S2, cafés' names in
+  gilt serif capitals for a frieze; with O1, office buildings' names in
+  brushed-steel capitals for the fascia.
 - Lettering (with S3): `lib.letters` builds solid channel letters from
   Blender's bundled font (reproducible on any machine), `lib.neon` neon tubes
   along their outlines (`Mesh.tube`: a round tube along any path, also for
@@ -172,7 +176,13 @@ every model after this one:
   openings, bulkhead lamps, and a round brick stack (bands, staples, a
   conductor, corbelled cap). With C2, `Side` builds oriented boxes for a
   facade at any angle in plan (a canted bay's faces), so every helper
-  (sashes, sills, walls) works on it.
+  (sashes, sills, walls) works on it. With S2, `fpoly` (moved from S4) for
+  any polygon in a facade's plane and `Mesh.psweep`, a sweep round any
+  convex footprint (cornices and bands round a cut-off corner); in
+  `s2_cafe.py`, round-arched heads with archivolt and keystone, arched
+  timber windows and doors with radiating fanlights, oriels on a stepped
+  corbel, wall lanterns, stucco pediments and a straight-skeleton hip over
+  a cut-off corner.
 - Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
   the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
@@ -188,7 +198,10 @@ every model after this one:
   green dado, painted gangways, lathes and presses, a bench under the sill,
   truss ties and stanchions, the bands of north light overhead, lamps in
   enamel shades, a night shift in some) and north-light glazing that glows
-  at night; with O1, an open-plan office floor (carpet, a ceiling of light
+  at night; with S2, a café (diagonal black and white tiles, panelling,
+  gilt mirrors, globe lamps, a bistro table in the window with customers,
+  the zinc counter with an espresso machine or a lit pastry case, bottles
+  behind); with O1, an open-plan office floor (carpet, a ceiling of light
   panels, benches of desks with screens and chairs, columns, the core wall;
   continuous from bay to bay, lit by zones of three bays, most by day and
   fewer at night, some roller blinds down) behind tinted, coated glass
@@ -205,7 +218,8 @@ every model after this one:
   metalwork colour and the building's name (O1).
 - Sibling models (with C2): models with the same kind and style share it,
   each building picking one from its seed (`realDef`); C1 and C2 are the
-  classic cottage now, as the kit had gable and hip variants of it.
+  classic cottage now, as the kit had gable and hip variants of it; S1 and
+  S2 the classic shop.
 
 ## Decisions (2026-11-03)
 
@@ -256,9 +270,11 @@ every model after this one:
   a fenced service yard behind; S4 is 13.5 x 10.4 m with its dock, boiler
   house and stack, 3 m back behind a concrete apron (a car nosed in by the
   stack, pallets by the dock steps, oil drums), a walled yard with a skip
-  behind; O1 is 14.4 x 11.2 m, 3 m back behind a paved plaza (trees in
-  planters, benches, bollards before the entrance), bins behind. Lots get
-  resized with the master plan.
+  behind; S2 is 11.1 x 12.6 m with its cornice, 3.2 m back behind a paved
+  terrace of umbrella tables closed by planters, a menu board by the
+  corner door, bins down the side; O1 is 14.4 x 11.2 m, 3 m back
+  behind a paved plaza (trees in planters, benches, bollards before the
+  entrance), bins behind. Lots get resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -325,7 +341,7 @@ P2 is variety, so one kind can fill a city.
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
 | S1 | Main-street shop | Two-storey brick, shop under flats, cornice, awning (a smaller sibling of the prototype) | shop classic | **done** (2026-11-04): 9 x 11 m, 1 m back; pieces ground / floor / awning / roof for 2-3 storeys; pressed-metal cornice, raised name panel, party wall with a ghost sign; 5.3 k triangles | 8% | P1 |
-| S2 | Corner café | European: painted render, arched windows, oriel, umbrella tables | shop classic (café) | render | 12% | P1 |
+| S2 | Corner café | European: painted render, arched windows, oriel, umbrella tables | shop classic (café) | **done** (2026-11-05): a European corner house of the 1890s, 10 x 11.5 m with the corner cut off 2.6 m for the café door; banded rustication under stucco, round-arched timber windows with radiating fanlights, archivolts and keystones, the name in gilt on the frieze and CAFÉ in brass over the door between lanterns; an oriel on a stepped corbel through the upper storeys to a copper helmet; a piano nobile of French windows with balconettes and pediments, a top storey of casements with louvred shutters; attic vents, a modillion cornice, a slate hip cut back over the corner, stacks on the party wall; terrace tables under parasols; pieces ground / first / second / roof / table for 2-3 storeys; 15 k triangles | 12% | P1 |
 | S3 | Diner | Stainless-steel railcar body, neon sign, booths in the windows | shop diner | **done** (2026-11-04): 1950s factory-built diner, 13.6 x 5 m body with rounded ends, fluted stainless with two enamel stripes, a window band with glass-block corners, an enamel frieze with the name, a barrel roof curving down over the ends; vestibule with steps and pipe rails; roof sign in channel letters with neon; brick kitchen behind; roadside pylon (EAT, an arrow of bulbs, a neon star); pieces body / roof; 7.7 k triangles | 18% | P1 |
 | S4 | Brick factory | Sawtooth roof, tall smokestack, loading doors, steel windows | shop factory | **done** (2026-11-05): a late-Victorian machine works, 10.8 x 9 m shed under a three-bay sawtooth of corrugated sheet and north-light glazing, serrated coped gables to the street with a works clock and round vents; blue-brick plinth, pilasters, steel windows under segmental arches with stone keys, a frieze with the firm's name painted on; loading dock with buffers, steps and a canopy before ledged doors under a steel beam, an office door under a stone hood; lean-to boiler house, brick flue and a 17 m round stack; pieces body / roof; 10.7 k triangles | 18% | P1 |
 | S5 | Corner store | One storey, roller shutters, painted signage, ice chest out front | | brick, metal | 10% | P2 |
@@ -511,7 +527,7 @@ above; none of it changes how models look.
 | Download on first run (pack, manifest, fallback) | ~0.5 |
 | Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
-| P1 buildings (14 left, incl. 3 civic) | ~3 |
+| P1 buildings (13 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
@@ -527,8 +543,8 @@ above; none of it changes how models look.
 2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
    farmhouse~~, ~~S1 main-street shop~~, ~~C3 modern house~~, ~~C4 A-frame
    cabin~~, ~~S3 diner~~ (done 2026-11-04), ~~S4 brick factory~~ (done
-   2026-11-05), ~~C2 brick cottage~~ (done 2026-11-05), then S2 corner café for variety. After
-   that the hamlet has no low-poly buildings left.
+   2026-11-05), ~~C2 brick cottage~~ (done 2026-11-05), ~~S2 corner café~~ (done
+   2026-11-05). The hamlet has no low-poly buildings left.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
    needed where, so it comes before most of them.
