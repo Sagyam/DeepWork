@@ -731,6 +731,11 @@ in the window shader (machines, trusses, hanging lamps) and the firm's name
 painted on the frieze. C2, the brick cottage, followed (2026-11-05): a slate
 texture, oriented `Side` boxes for facades at an angle (its canted bay), and
 the first style shared by two models (C1 and C2 split the classic cottages).
+O1, the curtain-wall office tower, followed (2026-11-05), the first office:
+a setback stack (`RealDef.stack` gets the finished storey count, so a site
+or a damaged tower steps back at the same storey), a louvre-blade texture,
+an "office" room (open plan, lit by zones) and an "atrium" one in the
+window shader, tinted glass, and the tower's name on the fascia.
 Next: S2; the rest of the Hamlet in
 `docs/models.md` ("Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
@@ -901,7 +906,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block, C1 farmhouse, C2 brick cottage, S1 main-street shop, C3 modern house, C4 A-frame cabin, S3 diner and S4 brick factory in the app; the rest of the Hamlet next, one model per session;
+      A1 brick block, C1 farmhouse, C2 brick cottage, S1 main-street shop, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app; the rest of the Hamlet next, one model per session;
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 

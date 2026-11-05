@@ -636,6 +636,26 @@ def corrugated_tex(t, n=1024):
     t.save("corrugated_rgh", rough)
 
 
+def blades_tex(t, n=512):
+    """Horizontal metal blades every 0.1 m, louvre screens and roller shutters: tile 1 m.
+
+    Light grey for tinting: each blade's sloped face lit from above, the dark
+    gap under its lip, a little weathering.
+    """
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    fy = (y / (n / 10)) % 1  # 0 at a blade's top edge, 1 at the next blade
+    face = np.clip(fy / 0.78, 0, 1)
+    gap = fy > 0.82
+    grime = fbm(n, 6, 4, 231, stretch=(4, 1))
+    col = np.ones((n, n, 3), np.float32) * srgb(196, 198, 200)
+    col *= (0.92 - 0.3 * face)[..., None] * (0.9 + 0.15 * grime)[..., None]
+    col[gap] = srgb(30, 32, 34)
+    col[(fy > 0.78) & ~gap] *= 1.25  # the lip catches the light
+    h = np.where(gap, 0.0, 1.0 - 0.5 * face)
+    t.save("blades_col", col)
+    t.save("blades_nrm", normals(h, 5.0))
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -665,7 +685,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, ground_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, ground_tex, blades_tex,
     grime_tex,
 )
 
@@ -1046,11 +1066,12 @@ def french(F, a, b, c, e, D=0.22):
         pane(F, "glass", a, b, c, e, l0 + 0.06, l1 - 0.06, c + 0.51, t - 0.12, -D + 0.04, wid)
 
 
-def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, True)):
+def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, True), glass="glass"):
     """A modern window or glass wall in the opening (a..b, c..e), glass D deep:
     a slim aluminium frame and `lights` panes between mullions, one room
     behind them all. `slide` makes the lights sliding leaves in sashes of
-    their own, alternately in front and behind; an end in `ends` that is
+    their own, alternately in front and behind; `glass` is the panes' role
+    (the room behind them). An end in `ends` that is
     False is left frameless, for glass meeting glass at a corner: the
     opening runs to the corner and the glass stops D short of it, where the
     other side's glass is."""
@@ -1076,11 +1097,11 @@ def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, 
             s = 0.045
             for box in ((u0, u0 + s, ic, ie), (u1 - s, u1, ic, ie), (u0 + s, u1 - s, ic, ic + s), (u0 + s, u1 - s, ie - s, ie)):
                 F.box(fr, *box, w - 0.022, w + 0.022)
-            pane(F, "glass", a, b, c, e, u0 + s, u1 - s, ic + s, ie - s, w, wid)
+            pane(F, glass, a, b, c, e, u0 + s, u1 - s, ic + s, ie - s, w, wid)
         else:
             if i:
                 F.box(fr, u0 - 0.025, u0 + 0.025, ic, ie, -D - 0.03, -D + 0.05)
-            pane(F, "glass", a, b, c, e, u0 + (0.025 if i else 0), u1 - (0.025 if i < lights - 1 else 0), ic, ie, -D, wid)
+            pane(F, glass, a, b, c, e, u0 + (0.025 if i else 0), u1 - (0.025 if i < lights - 1 else 0), ic, ie, -D, wid)
     return wid
 
 

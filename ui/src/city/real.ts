@@ -41,8 +41,12 @@ export interface RealDef {
   front: number;
   /** Storeys for the plan's floor count. */
   floors(plan: number): number;
-  /** Pieces bottom to top for `floors` storeys, without the roof if not `roof`. */
-  stack(floors: number, roof: boolean, r: () => number): { piece: string; y: number }[];
+  /**
+   * Pieces bottom to top for `floors` storeys, without the roof if not `roof`;
+   * `total` is the finished building's storeys, for models whose stack
+   * depends on it (a setback) while it is being built or is damaged.
+   */
+  stack(floors: number, roof: boolean, r: () => number, total: number): { piece: string; y: number }[];
   /** Height of the body (top of the last storey, or the eaves). */
   top(floors: number): number;
   /** Height with the roof. */
@@ -65,6 +69,10 @@ const S1_G = 4.45;
 const S1_FL = 3.3;
 const S3_TOP = 3.36;
 const S4_TOP = 5.3;
+const O1_G = 5.4;
+const O1_FL = 3.6;
+/** Where O1 steps back: after about two thirds of its storeys, never at the top. */
+const o1Lower = (total: number) => Math.min(total - 1, Math.max(2, Math.round(total * 0.68)));
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -209,6 +217,33 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 7.85,
     smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
     debris: 0x8a4e3c,
+  },
+  o1: {
+    id: "o1",
+    kind: "office",
+    style: "classic",
+    // The lower block; the colonnade is inside it, the plaza in front.
+    w: 14.4,
+    d: 11.2,
+    front: 3.0,
+    floors: (plan) => Math.max(6, plan),
+    stack(floors, roof, _r, total) {
+      // The lobby, the lower block's storeys, the terrace where it steps
+      // back, the upper block's storeys, the roof.
+      const lower = o1Lower(Math.max(total, floors));
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) {
+        const y = O1_G + (f - 1) * O1_FL;
+        if (f === lower) out.push({ piece: "setback", y });
+        out.push({ piece: f < lower ? "floor" : "upper", y });
+      }
+      if (roof) out.push({ piece: "roof", y: O1_G + (floors - 1) * O1_FL });
+      return out;
+    },
+    top: (floors) => O1_G + (floors - 1) * O1_FL,
+    // The parapet, the lift overrun and plant; the mast goes 8 m higher.
+    height: (floors) => O1_G + (floors - 1) * O1_FL + 4.4,
+    debris: 0x5a6a70,
   },
 };
 
@@ -486,6 +521,42 @@ function ghosts(row: number): THREE.Texture {
   return t;
 }
 
+const TOWERS = ["MERIDIAN HOUSE", "ONE HARBOUR PLACE", "CARLTON TOWER", "NORTHBRIDGE CENTRE", "THE EXCHANGE", "ATLAS BUILDING", "200 PARK ROW", "SOVEREIGN HOUSE"];
+
+let towerCanvas: HTMLCanvasElement | null = null;
+
+/** Office buildings' names for the fascia, eight rows of 2048 x 128: spaced brushed-steel capitals on clear. */
+function towerNames(row: number): THREE.Texture {
+  if (!towerCanvas) {
+    const c = (towerCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "500 64px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+    TOWERS.forEach((name, i) => {
+      const y = i * 128 + 66;
+      const text = name.split("").join(String.fromCharCode(8202, 8202, 8202));
+      g.fillStyle = "rgba(10,10,12,0.9)";
+      g.fillText(text, 1026, y + 3, 1400);
+      const grad = g.createLinearGradient(0, y - 30, 0, y + 30);
+      grad.addColorStop(0, "#f4f6f8");
+      grad.addColorStop(0.5, "#b8bec4");
+      grad.addColorStop(1, "#e2e6ea");
+      g.fillStyle = grad;
+      g.fillText(text, 1024, y, 1400);
+    });
+  }
+  const t = new THREE.CanvasTexture(towerCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 const DINERS = ["STARLITE DINER", "MOONBEAM DINER", "SILVER SPOON", "PARKWAY DINER", "NIGHT OWL DINER", "LUCKY 7 DINER", "COMET DINER", "SUNRISE DINER"];
 
 let dinerCanvas: HTMLCanvasElement | null = null;
@@ -622,6 +693,10 @@ const STEELS = [0x1e2022, 0x2c4436, 0x5a5e62, 0x6a2a20, 0xd8d2c0, 0x34465a];
 const WORKS_DOORS = [0x3a5a40, 0x6a2620, 0x5a3e2a, 0x2e4a66, 0x7a7c78];
 /** Corrugated sheet: weathered galvanising (most), grey paint, oxide red, green, dark grey. */
 const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
+/** O1's glass: blue-green, blue, bronze, neutral grey, green, silver-blue. */
+const OFFICE_GLASS = [0x7fb2aa, 0x7f9cc4, 0xb89a74, 0x949aa0, 0x86b48e, 0xb4c4d0];
+/** O1's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
+const MULLIONS = [0xb8bcc0, 0x4a3e34, 0x1e2022, 0xc8b894, 0xe8e8e4, 0x7a8086];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -710,15 +785,15 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "officeglass", "spandrel", "mullion", "blades", "towername", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
   const shade = [1, 0.72, 0.42][Math.min(2, damage)];
   const w = (mat: THREE.MeshStandardMaterial, weather = 0) => weathered(mat, ao, weather + damage * 0.8);
-  const room = (kind: RoomKind) => {
-    const g = glass(kind, damage / 2);
+  const room = (kind: RoomKind, tint?: number) => {
+    const g = glass(kind, damage / 2, tint);
     if (skyEnv) g.envMap = skyEnv;
     glassMats.add(g);
     return g;
@@ -915,9 +990,37 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       // paint.wall < 0: white, for instance colours to tint (the woods).
       m = foliage(role, role === "blossom" || role === "bloom" || paint.wall < 0 ? 0xffffff : pick(FOLIAGE, paint.wall), ao);
       break;
+    // The office tower: tinted, coated glass with the floor behind it.
+    case "officeglass": {
+      const tint = pick(OFFICE_GLASS, paint.wall);
+      // Tinted glass lets through about half the light, in its colour.
+      const g = room("office", new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.35).getHex());
+      // A reflective coating: more of the sky, in the glass's colour.
+      g.ior = 2.1;
+      g.specularColor.setHex(tint).lerp(new THREE.Color(0xffffff), 0.35);
+      m = g;
+      break;
+    }
+    case "spandrel": {
+      const tint = new THREE.Color(pick(OFFICE_GLASS, paint.wall));
+      m = sheen({ color: tint.clone().multiplyScalar(0.07).getHex(), roughness: 0.05, ior: 2.1, specularColor: tint.lerp(new THREE.Color(0xffffff), 0.35) });
+      break;
+    }
+    case "mullion": m = w(plain(pick(MULLIONS, paint.accent), 0.35, 0.6), 0.3); break;
+    case "blades": m = w(pbr("blades", [1, 1], { roughness: 0.45, metalness: 0.5, color: new THREE.Color(pick(MULLIONS, paint.accent)).lerp(new THREE.Color(0xffffff), 0.3).getHex() }), 0.8); break;
+    case "towername": {
+      const t = towerNames(paint.signs);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.7, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.35;
+      break;
+    }
+    case "beacon":
+      m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 4;
+      break;
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room("lobby"); break;
+    case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;
     default: m = plain(0xff00ff);

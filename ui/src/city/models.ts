@@ -440,7 +440,7 @@ function stackReal(p: Parts, s: Spec, def: RealDef, floors: number, roof: boolea
   const paint = paintOf(s);
   // Window ids restart in every piece: offset them per storey and building.
   const base = (s.seed % 8) * 8 * 256;
-  def.stack(floors, roof, r).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
+  def.stack(floors, roof, r, s.floors).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
   const anchors: Record<string, THREE.Vector3> = {};
   if (roof && def.smoke) anchors.smoke = def.smoke(floors).add(new THREE.Vector3(0, KERB, 0));
   return { top: def.top(floors) + KERB, w: s.w, d: s.d, anchors };
@@ -604,6 +604,22 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         const wall = mat(0x7a4636, { roughness: 0.95 });
         p.box(wall, LOT - 0.4, 1.8, 0.25, 0, KERB, back + 0.12);
       }
+      break;
+    }
+    case "o1": {
+      // A plaza paved to the pavement: trees in planters either side of the
+      // colonnade, benches under them, bollards before the entrance; behind,
+      // a service strip with the bins by the loading bay.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = s.d / 2;
+      for (const sx of [-1, 1]) {
+        planter(p, sx * 5.6, front - 1.3, s.seed + (sx > 0 ? 1 : 2));
+        if (hasReal("street")) furniture(p, "bench", sx * 3.3, KERB, front - 1.3, 0);
+      }
+      if (hasReal("street")) for (let i = 0; i < 5; i++) furniture(p, "bollard", -2.4 + i * 1.2, KERB, front - 0.45);
+      p.box(mat(0x6a6a6c, { roughness: 0.6 }), 4.4, 0.02, 1.6, 0, KERB, fz + 0.9);
+      const bin = mat(0x2a3a4a, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
       break;
     }
     case "s1": {

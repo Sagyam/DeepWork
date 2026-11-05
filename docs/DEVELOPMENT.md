@@ -54,11 +54,11 @@ bun run models               # every model, a few minutes; or: bun run models c1
 # then http://localhost:5173/proto.html?model=c1&view=hero&hour=15
 ```
 
-Models: the buildings `a1 c1 c2 c3 c4 s1 s3 s4` and the props `cars trees street bridge`
+Models: the buildings `a1 c1 c2 c3 c4 s1 s3 s4 o1` and the props `cars trees street bridge`
 (`--no-tex` skips the shared texture library; a model's own textures, such
 as the leaves, are always made with it).
 
-The viewer shows one model on its lot with the app's own code: `model=a1|c1|c2|c3|c4|s1|s3|s4`,
+The viewer shows one model on its lot with the app's own code: `model=a1|c1|c2|c3|c4|s1|s3|s4|o1`,
 `floors`, `seed` (paint), `damage=0|1|2`, `view=hero|city|detail|roof|back|street`,
 `hour`; `&count=N` is the instanced stress test. `?props=cars|trees|street|bridge`
 lays out a props model's pieces instead (`&only=suv,hatch` picks and orders

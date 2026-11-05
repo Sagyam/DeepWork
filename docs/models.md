@@ -9,7 +9,8 @@ that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
 the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
-factory, and C2, the brick cottage (sharing the classic cottages with C1);
+factory, C2, the brick cottage (sharing the classic cottages with C1),
+and O1, the curtain-wall office tower;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -138,11 +139,13 @@ every model after this one:
   block (lit from behind at night); with S4, weathered corrugated sheet
   (galvanised, rust bleeding from the fixings and laps; tinted or painted
   per building), also for S6's canopy and sheds; with C2, natural slate
-  (riven, chipped butts, a little lichen; blue-grey, tinted per building).
+  (riven, chipped butts, a little lichen; blue-grey, tinted per building);
+  with O1, horizontal metal blades (louvre screens, roller shutters).
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
-  names painted on a factory's brick, weathered.
+  names painted on a factory's brick, weathered; with O1, office buildings'
+  names in brushed-steel capitals for the fascia.
 - Lettering (with S3): `lib.letters` builds solid channel letters from
   Blender's bundled font (reproducible on any machine), `lib.neon` neon tubes
   along their outlines (`Mesh.tube`: a round tube along any path, also for
@@ -185,7 +188,12 @@ every model after this one:
   green dado, painted gangways, lathes and presses, a bench under the sill,
   truss ties and stanchions, the bands of north light overhead, lamps in
   enamel shades, a night shift in some) and north-light glazing that glows
-  at night.
+  at night; with O1, an open-plan office floor (carpet, a ceiling of light
+  panels, benches of desks with screens and chairs, columns, the core wall;
+  continuous from bay to bay, lit by zones of three bays, most by day and
+  fewer at night, some roller blinds down) behind tinted, coated glass
+  (`glass(kind, burn, tint)`), and a double-height lobby (stone floor,
+  panelled back wall with lifts, reception desk) for its entrance.
 - Per-building variation by parameters: brick tint, shopfront colour and
   sign pair (A1); siding, shutter and door, and roof colours (C1); brick
   tint, shopfront and cornice colours, sign, ghost sign, an awning or none,
@@ -193,7 +201,8 @@ every model after this one:
   (C3); board stain, shake, trim, door and deck-chair colours (C4); enamel
   colour, the two neon colours and the name (S3); brick tint, steelwork
   paint, door paint, roof sheet and the firm's name (S4); brick tint, slate
-  and ridge colours, door paint (C2).
+  and ridge colours, door paint (C2); glass tint (spandrels match),
+  metalwork colour and the building's name (O1).
 - Sibling models (with C2): models with the same kind and style share it,
   each building picking one from its seed (`realDef`); C1 and C2 are the
   classic cottage now, as the kit had gable and hip variants of it.
@@ -247,7 +256,9 @@ every model after this one:
   a fenced service yard behind; S4 is 13.5 x 10.4 m with its dock, boiler
   house and stack, 3 m back behind a concrete apron (a car nosed in by the
   stack, pallets by the dock steps, oil drums), a walled yard with a skip
-  behind. Lots get resized with the master plan.
+  behind; O1 is 14.4 x 11.2 m, 3 m back behind a paved plaza (trees in
+  planters, benches, bollards before the entrance), bins behind. Lots get
+  resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -336,7 +347,7 @@ P2 is variety, so one kind can fill a city.
 
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
-| O1 | Curtain-wall tower | Blue-green glass, mullions, setback, plant room | office classic (curtain wall) | new: curtain wall | 18% | P1 |
+| O1 | Curtain-wall tower | Blue-green glass, mullions, setback, plant room | office classic (curtain wall) | **done** (2026-11-05): 14.4 x 11.2 m on a 1.6 m grid, 3 m back behind a plaza; stick curtain wall of tinted vision glass between spandrel glass, mullions with deep fins, corner posts; a double-height lobby behind a granite colonnade with a revolving door and the name on the fascia; a stone core strip up the back; steps back a bay at the front and sides after about two thirds of its storeys onto a planted terrace with a glass wind screen; roof with louvre plant screen, chillers, lift overrun, a parked window-cleaning gantry, condensers and an antenna with a warning light; pieces ground / floor / setback / upper / roof, 6-14+ storeys; 8 k triangles a set (~22 k for 12 storeys) | 18% | P1 |
 | O2 | Round glass tower | Cylinder, horizontal fins, crown | office round | curtain wall | 12% | P1 |
 | O3 | Brutalist office | Board-marked concrete, deep punched windows, pilotis | office classic (brutalist) | new: concrete | 15% | P1 |
 | O4 | Stone office | Classical base, terracotta shaft, cornice (Chicago school) | | stone, new: terracotta | 15% | P2 |
@@ -523,7 +534,7 @@ above; none of it changes how models look.
    needed where, so it comes before most of them.
 4. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
-5. One model per kind (C1, S1, A2, O1, L1) so a real mixed city can be seen.
+5. One model per kind (C1, S1, A2, ~~O1~~ (done 2026-11-05), L1) so a real mixed city can be seen.
 6. The first civic landmarks (L5-L7) on their reserved ground.
 7. The rest of P1, then building states.
 8. Surroundings: streets, trees and terrain first, as they fill the most
