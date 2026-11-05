@@ -119,7 +119,8 @@ export class Parts {
   into(group: THREE.Group, shadows = true) {
     for (const [material, list] of this.byMat) {
       const mesh = new THREE.Mesh(mergeGeometries(list), material);
-      mesh.castShadow = shadows;
+      // Clear glass (balcony rails) would cast a solid shadow: it casts none.
+      mesh.castShadow = shadows && !material.userData.noShadow;
       mesh.receiveShadow = true;
       group.add(mesh);
     }
@@ -653,6 +654,26 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         const wall = mat(0x7a4636, { roughness: 0.95 });
         p.box(wall, LOT - 0.4, 1.8, 0.25, 0, KERB, back + 0.12);
       }
+      break;
+    }
+    case "a3": {
+      // Lawn to the pavement, a paved path to the entrance and a gravel
+      // strip along the front under the balconies, planted with shrubs, a
+      // tree either side; Behind, a lawn closed by a hedge,
+      // a bench, the bins, a path to the back door.
+      const wall = 4.8; // the front wall's z (a3_balcony.py)
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(paving, 2.6, KERB + 0.02, front - wall, 0, 0, (front + wall) / 2);
+      p.box(mat(0xb4aea2, { roughness: 1 }), 15, KERB + 0.015, 1.0, 0, 0, wall + 0.5);
+      for (const x of [-6.6, -5.0, -3.4, 3.4, 5.0, 6.6]) if (r() < 0.8) shrub(p, x, wall + 0.55, s.seed * 7 + x * 5, KERB, 0.6);
+      tree(p, -5.6, front - 1.3, 0.55, s.seed + 2, KERB, ["young", "linden", "cherry"]);
+      if (r() < 0.6) tree(p, 5.8, front - 1.1, 0.5, s.seed + 5, KERB, ["young", "linden", "cherry"]);
+      const bin = mat(0x3a5a46, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 0.75, 1.15, 0.75, half - 0.6 - i * 0.85, KERB, back + 1.5);
+      const backWall = -s.d / 2 + 0.3;
+      p.box(paving, 1.6, KERB + 0.02, backWall - back, 0, 0, (backWall + back) / 2);
+      hedge(p, LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.5, s.seed + 3);
+      if (hasReal("street")) furniture(p, "bench", -3.5, KERB, back + 1.6, Math.PI);
       break;
     }
     case "o1": {
