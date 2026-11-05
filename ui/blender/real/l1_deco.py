@@ -233,7 +233,7 @@ def portal(m, F):
     for u0, u1, z0, z1 in ((-1.1, -1.04, cz, 4.7), (1.04, 1.1, cz, 4.7), (-1.1, 1.1, 4.64, 4.7)):
         D.box("bronze", u0, u1, z0, z1, -0.03, 0.04, skip=("back",))
     # The step and the vestibule floor.
-    F.box("jet", -1.35, 1.35, 0, 0.15, -0.9, 0.3, skip=("back", "bottom"))
+    F.box("granite", -1.35, 1.35, 0, 0.15, -0.9, 0.3, skip=("back", "bottom"))
     # The name over the portal, lanterns either side of it.
     outer.quad("deconame", -1.95, 1.95, 5.22, 5.84, 0.005, uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
     for u in (-1.78, 1.78):
