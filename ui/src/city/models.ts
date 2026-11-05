@@ -440,7 +440,7 @@ function stackReal(p: Parts, s: Spec, def: RealDef, floors: number, roof: boolea
   const paint = paintOf(s);
   // Window ids restart in every piece: offset them per storey and building.
   const base = (s.seed % 8) * 8 * 256;
-  def.stack(floors, roof, r).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
+  def.stack(floors, roof, r, s.floors).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
   const anchors: Record<string, THREE.Vector3> = {};
   if (roof && def.smoke) anchors.smoke = def.smoke(floors).add(new THREE.Vector3(0, KERB, 0));
   return { top: def.top(floors) + KERB, w: s.w, d: s.d, anchors };
@@ -587,6 +587,26 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-3.9, 3.9]) if (r() < 0.8) shrub(p, x, 4.5, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "s2": {
+      // Paved to the pavement: the café's terrace of umbrella tables before
+      // its windows and round the cut-off corner, closed to the street by
+      // planters, a menu board by the corner door; the bins down the side.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const tz = s.d / 2 + 1.55;
+      const tables: [number, number][] = [[-2.2, tz], [0.75, tz], [4.4, tz - 0.9]];
+      tables.forEach(([x, z], i) => putReal(rp, def, "table", paintOf(s), 0, null, x, KERB, z, (s.seed + i * 2.3) % (Math.PI * 2)));
+      const box = mat(0x3a3a36, { roughness: 0.8, metalness: 0.2 });
+      for (const x of [-4.6, -0.75, 2.4]) {
+        p.box(box, 1.3, 0.5, 0.45, x, KERB, front - 0.45);
+        shrub(p, x - 0.3, front - 0.45, s.seed * 3 + x, KERB + 0.5, 0.55);
+        shrub(p, x + 0.3, front - 0.45, s.seed * 5 + x, KERB + 0.5, 0.5);
+      }
+      const board = mat(0x1e1e1e, { roughness: 0.7 });
+      for (const k of [-1, 1]) p.box(board, 0.55, 0.95, 0.05, 4.9, KERB, s.d / 2 - 0.4 + k * 0.08, 0, Math.PI / 4 - k * 0.17);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6, KERB, back + 0.7 + i * 0.85);
+      break;
+    }
     case "s3": {
       // An asphalt forecourt to the pavement with a car drawn up beside the
       // steps and shrubs either side of them; behind, a concrete service yard
@@ -633,6 +653,22 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         const wall = mat(0x7a4636, { roughness: 0.95 });
         p.box(wall, LOT - 0.4, 1.8, 0.25, 0, KERB, back + 0.12);
       }
+      break;
+    }
+    case "o1": {
+      // A plaza paved to the pavement: trees in planters either side of the
+      // colonnade, benches under them, bollards before the entrance; behind,
+      // a service strip with the bins by the loading bay.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = s.d / 2;
+      for (const sx of [-1, 1]) {
+        planter(p, sx * 5.6, front - 1.3, s.seed + (sx > 0 ? 1 : 2));
+        if (hasReal("street")) furniture(p, "bench", sx * 3.3, KERB, front - 1.3, 0);
+      }
+      if (hasReal("street")) for (let i = 0; i < 5; i++) furniture(p, "bollard", -2.4 + i * 1.2, KERB, front - 0.45);
+      p.box(mat(0x6a6a6c, { roughness: 0.6 }), 4.4, 0.02, 1.6, 0, KERB, fz + 0.9);
+      const bin = mat(0x2a3a4a, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
       break;
     }
     case "s1": {

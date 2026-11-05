@@ -545,7 +545,7 @@ TypeScript + three.js frontend, built with bun.
     replaces a kit style (`realDef` in `models.ts`: A1 for classic
     apartments, A2 for townhouses, C1 and C2 for classic cottages (siblings share a style,
     picked per building from its seed; `Spec.model` forces one), C3 for modern cottages, C4 for
-    A-frame cottages, S1 for classic shops, S3 for diners, S4 for factories; each `DEFS` entry names the kind and style it takes) at its own real-world size on the
+    A-frame cottages, S1 and S2 for classic shops, S3 for diners, S4 for factories; each `DEFS` entry names the kind and style it takes) at its own real-world size on the
     lot (`fitReal`), stacked from its pieces; damage darkens it and puts its
     rooms out, damage 2 drops the roof and top storeys under wreckage.
   - `city/kit.ts` loads the kit before the scene starts (`City.create`).
@@ -731,11 +731,24 @@ in the window shader (machines, trusses, hanging lamps) and the firm's name
 painted on the frieze. C2, the brick cottage, followed (2026-11-05): a slate
 texture, oriented `Side` boxes for facades at an angle (its canted bay), and
 the first style shared by two models (C1 and C2 split the classic cottages).
-A2, the brownstone row, followed the same day while S2 was in hand
-elsewhere: three Italianate row houses with stoops, canted bays and a
-bracketed cornice, on a new brownstone texture; the townhouse apartments.
-Next: S2; the rest of the Hamlet in
-`docs/models.md` ("Suggested order"). Checked headless in the viewer and
+S2, the corner café, followed (2026-11-05): a European corner house with the
+corner cut off for the café door and an oriel over it under a copper helmet,
+round-arched windows with fanlights in banded rustication (a new texture),
+gilt café names on the frieze, a "cafe" room in the window shader (tiles,
+mirrors, globe lamps, bistro tables, the counter) and a terrace of umbrella
+tables; S1 and S2 now share the classic shop. `lib` gained `fpoly` (from S4)
+and `Mesh.psweep`, a sweep round any convex footprint. That completes the
+Hamlet: no low-poly buildings are left in it.
+O1, the curtain-wall office tower, followed (2026-11-05), the first office:
+a setback stack (`RealDef.stack` gets the finished storey count, so a site
+or a damaged tower steps back at the same storey), a louvre-blade texture,
+an "office" room (open plan, lit by zones) and an "atrium" one in the
+window shader, tinted glass, and the tower's name on the fascia.
+A2, the brownstone row, came the same day: three Italianate row houses with
+stoops, canted bays and a bracketed cornice on a new brownstone texture;
+the townhouse apartments.
+Next: progression v2 and the
+master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
 
 Realistic city (2026-11-03): the user found the low-poly look lacking and
@@ -904,7 +917,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       `Request::History` / `Request::Routines` (also `deepwork history`, `deepwork routines`); pending config notice
 - [x] Penalty tiers wired to surrender / tamper / refused root / clock jump events (surrender is the only early quit); agent notifies losses
 - [ ] Realistic city (`docs/models.md`): pipeline and loading in the app done (`ui/blender/real`, `city/real.ts`, kit fallback);
-      A1 brick block, A2 brownstone row, C1 farmhouse, C2 brick cottage, S1 main-street shop, C3 modern house, C4 A-frame cabin, S3 diner and S4 brick factory in the app; the rest of the Hamlet next, one model per session;
+      A1 brick block, A2 brownstone row, C1 farmhouse, C2 brick cottage, S1 main-street shop, S2 corner café, C3 modern house, C4 A-frame cabin, S3 diner, S4 brick factory and O1 curtain-wall tower in the app (the Hamlet is complete); progression v2 and the master plan next;
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge
 - [ ] Progression v2 (`docs/progression.md`): coins, a level-gated shop, our master plan (ideas, not built)
 

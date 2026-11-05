@@ -8,7 +8,8 @@
 // size in metres comes from screen derivatives, so no extra attributes.
 import * as THREE from "three";
 
-export type RoomKind = "home" | "shop" | "lobby" | "diner" | "works";
+export type RoomKind = "home" | "shop" | "lobby" | "diner" | "works" | "cafe" | "office" | "atrium";
+const KINDS: RoomKind[] = ["home", "shop", "lobby", "diner", "works", "cafe", "office", "atrium"];
 
 export const interiorUniforms = {
   uDay: { value: 1 },
@@ -20,6 +21,7 @@ uniform float uDay;
 uniform float uNight;
 uniform int uKind;
 uniform float uBurn;
+uniform vec3 uTint;
 varying vec3 vWP;
 varying vec3 vWN;
 varying vec2 vPane;
@@ -233,6 +235,250 @@ vec3 works(vec3 ro, vec3 rd, float id, float W) {
   return room * mix(1.0, 0.1, uBurn);
 }
 
+// A café seen through one of its arched windows: a tall room with a floor of
+// black and white tiles laid on the diagonal, dark panelling to the dado and
+// warm walls above hung with gilt mirrors, globe lamps on long flexes, a
+// marble-topped bistro table in the window with its chairs (and sometimes
+// someone at it), and the zinc counter across the back with its espresso
+// machine, a lit pastry case, and shelves of bottles behind; the room runs on
+// to either side, so the windows show one long room.
+vec3 cafe(vec3 ro, vec3 rd, float id, float W) {
+  float fl = -0.3, ce = fl + 4.0, depth = 6.8;
+  float x0 = -9.0, x1 = W + 9.0;
+  float tx = rd.x > 0.0 ? (x1 - ro.x) / rd.x : (x0 - ro.x) / rd.x;
+  float ty = rd.y > 0.0 ? (ce - ro.y) / rd.y : (fl - ro.y) / rd.y;
+  float tz = depth / rd.z;
+  float t = min(tx, min(ty, tz));
+  vec3 p = ro + rd * t;
+  vec3 col, nn;
+  vec3 wallc = mix(vec3(0.62, 0.36, 0.22), vec3(0.72, 0.6, 0.38), hash(floor(id / 4.0) + 3.0));
+  if (t == ty && rd.y < 0.0) {
+    float ch = mod(floor((p.x + p.z) / 0.32) + floor((p.x - p.z) / 0.32), 2.0);
+    col = mix(vec3(0.84, 0.82, 0.76), vec3(0.08), ch);
+    nn = vec3(0.0, 1.0, 0.0);
+  } else if (t == ty) {
+    col = vec3(0.86, 0.8, 0.66);
+    // Moulded panels in the ceiling.
+    if (min(fract(p.x / 2.2), fract(p.z / 2.2)) < 0.04) col *= 0.8;
+    nn = vec3(0.0, -1.0, 0.0);
+  } else {
+    float y = p.y - fl;
+    float u = t == tz ? p.x : p.z;
+    if (y < 1.1) {
+      col = vec3(0.24, 0.13, 0.07) * (0.85 + 0.15 * step(0.06, fract(u / 0.8)));
+      if (abs(y - 1.05) < 0.05) col = vec3(0.32, 0.18, 0.09);
+    } else {
+      col = wallc * (0.92 + 0.08 * step(0.5, fract(u / 0.12 + y * 0.3)));
+      // Gilt-framed mirrors: a pale reflection of the room inside a gold frame.
+      float mu = fract(u / 2.6), my = y - 1.6;
+      if (t == tz && mu > 0.15 && mu < 0.85 && my > 0.0 && my < 1.6) {
+        bool frame = mu < 0.18 || mu > 0.82 || my < 0.06 || my > 1.54;
+        col = frame ? vec3(0.7, 0.52, 0.2) : vec3(0.5, 0.46, 0.4) * (0.85 + 0.15 * fract(mu * 3.0 + my));
+      }
+    }
+    nn = t == tz ? vec3(0.0, 0.0, -1.0) : vec3(1.0, 0.0, 0.0);
+  }
+  vec3 marble = vec3(0.9, 0.89, 0.86);
+  vec3 wood = vec3(0.3, 0.17, 0.09);
+  vec3 zinc = vec3(0.62, 0.64, 0.66);
+  vec3 iron = vec3(0.1);
+  // The counter across the back, its zinc top, and what stands on it.
+  float cz0 = 4.6, cz1 = 5.3;
+  hitBox(ro, rd, vec3(x0, fl, cz0), vec3(x1, fl + 1.05, cz1), wood, t, col, nn);
+  hitBox(ro, rd, vec3(x0, fl + 1.05, cz0 - 0.06), vec3(x1, fl + 1.1, cz1), zinc, t, col, nn);
+  float tc = (cz0 - ro.z) / rd.z;
+  float cx = floor((ro.x + rd.x * tc) / 3.0);
+  float glow = 0.0;
+  for (int i = -1; i <= 1; i++) {
+    float k = cx + float(i);
+    float h = hash(k + id * 0.01 + 5.0);
+    float bx = k * 3.0 + 0.6 + h * 1.2;
+    if (h < 0.5) {
+      // The espresso machine: chrome with a brass eagle on top.
+      hitBox(ro, rd, vec3(bx, fl + 1.1, cz0 + 0.15), vec3(bx + 0.75, fl + 1.55, cz0 + 0.6), zinc * 1.25, t, col, nn);
+      hitBox(ro, rd, vec3(bx + 0.3, fl + 1.55, cz0 + 0.3), vec3(bx + 0.45, fl + 1.75, cz0 + 0.45), vec3(0.75, 0.56, 0.22), t, col, nn);
+    } else {
+      // A pastry case, lit from inside.
+      vec3 n2;
+      float tb = boxHit(ro, rd, vec3(bx, fl + 1.1, cz0 + 0.05), vec3(bx + 1.0, fl + 1.5, cz0 + 0.55), n2);
+      if (tb > 0.0 && tb < t) {
+        t = tb; nn = n2;
+        vec3 q = ro + rd * tb;
+        float cake = step(0.5, fract((q.x - bx) * 4.0)) * step(q.y - fl - 1.1, 0.16);
+        col = mix(vec3(0.95, 0.92, 0.82), vec3(0.62, 0.36, 0.2), cake);
+        glow += 0.35;
+      }
+    }
+  }
+  // Shelves of bottles on the back wall over the counter.
+  if (t == tz) {
+    float y = p.y - fl;
+    if ((y > 1.25 && y < 1.55) || (y > 1.7 && y < 2.0)) {
+      float b = floor(p.x / 0.11);
+      if (fract(p.x / 0.11) < 0.7) col = mix(vec3(0.2, 0.32, 0.18), vec3(0.55, 0.28, 0.1), hash(b)) * (0.8 + 0.4 * hash(b + 1.0));
+    }
+    if (abs(y - 1.22) < 0.025 || abs(y - 1.67) < 0.025) col = wood * 1.4;
+  }
+  // The bistro table in the window, two chairs, and sometimes a customer with a cup.
+  float tm = W * 0.5;
+  hitBox(ro, rd, vec3(tm - 0.33, fl + 0.72, 0.5), vec3(tm + 0.33, fl + 0.76, 1.16), marble, t, col, nn);
+  hitBox(ro, rd, vec3(tm - 0.03, fl, 0.8), vec3(tm + 0.03, fl + 0.72, 0.86), iron, t, col, nn);
+  for (int s = 0; s < 2; s++) {
+    float sx = s == 0 ? tm - 0.75 : tm + 0.45;
+    hitBox(ro, rd, vec3(sx, fl + 0.44, 0.62), vec3(sx + 0.3, fl + 0.48, 1.02), wood * 1.3, t, col, nn);
+    float bx2 = s == 0 ? sx : sx + 0.27;
+    hitBox(ro, rd, vec3(bx2, fl + 0.48, 0.64), vec3(bx2 + 0.03, fl + 0.95, 1.0), wood * 1.3, t, col, nn);
+    hitBox(ro, rd, vec3(sx + 0.02, fl, 0.66), vec3(sx + 0.05, fl + 0.44, 0.69), wood, t, col, nn);
+    hitBox(ro, rd, vec3(sx + 0.25, fl, 0.95), vec3(sx + 0.28, fl + 0.44, 0.98), wood, t, col, nn);
+    if (hash(id + 47.0 + float(s) * 13.0) < 0.55) {
+      vec3 skin = mix(vec3(0.85, 0.66, 0.52), vec3(0.42, 0.28, 0.2), hash(id + 51.0 + float(s)));
+      float px = s == 0 ? sx + 0.02 : sx + 0.0;
+      hitBox(ro, rd, vec3(px, fl + 0.48, 0.66), vec3(px + 0.28, fl + 1.15, 1.0), fabric(hash(id + 53.0 + float(s) * 7.0)), t, col, nn);
+      hitBox(ro, rd, vec3(px + 0.05, fl + 1.17, 0.73), vec3(px + 0.23, fl + 1.42, 0.93), skin, t, col, nn);
+      hitBox(ro, rd, vec3(tm + (s == 0 ? -0.2 : 0.12), fl + 0.76, 0.75), vec3(tm + (s == 0 ? -0.12 : 0.2), fl + 0.84, 0.83), vec3(0.95), t, col, nn);
+    }
+  }
+  // Globe lamps on long flexes, in two rows.
+  for (int r = 0; r < 2; r++) {
+    float lz = r == 0 ? 1.6 : 3.8;
+    float tl = (lz - ro.z) / rd.z;
+    float lx = (floor((ro.x + rd.x * tl) / 2.2) + 0.5) * 2.2;
+    for (int i = -1; i <= 1; i++) {
+      vec3 c = vec3(lx + float(i) * 2.2, ce - 1.3, lz);
+      hitBox(ro, rd, c - vec3(0.15), c + vec3(0.15), vec3(1.0, 0.96, 0.86), t, col, nn);
+      hitBox(ro, rd, c + vec3(-0.008, 0.15, -0.008), vec3(c.x + 0.008, ce, c.z + 0.008), iron, t, col, nn);
+      vec3 w = ro + rd * max(dot(c - ro, rd), 0.0) - c;
+      glow += smoothstep(0.38, 0.0, length(w));
+    }
+  }
+  p = ro + rd * t;
+  float shade = abs(nn.y) > 0.5 ? (nn.y > 0.0 ? 1.0 : 0.8) : abs(nn.x) > 0.5 ? 0.74 : 0.9;
+  float fall = mix(1.0, 0.5, clamp(p.z / depth, 0.0, 1.0));
+  bool lit = hash(id + 7.0) >= uBurn;
+  vec3 lamp = vec3(1.0, 0.82, 0.58);
+  vec3 light = vec3(0.56, 0.54, 0.5) * uDay * fall + (lit ? lamp * (0.25 * uDay + 0.85 * uNight) * mix(1.0, 0.7, clamp(p.z / depth, 0.0, 1.0)) : vec3(0.0));
+  vec3 room = col * shade * light;
+  if (lit) room += lamp * 1.5 * glow * (0.35 + 0.65 * uNight);
+  return room * mix(1.0, 0.1, uBurn);
+}
+
+// An open-plan office floor behind a curtain wall: carpet tiles, a
+// suspended ceiling of tiles and light panels, benches of desks back to back
+// with screens and chairs, a row of columns and a second bench beyond, the
+// core's wall at the back with its doors. Coordinates run on from bay to bay
+// (ids are consecutive along a facade), so a facade shows one floor. The
+// lights are on by day in most zones of three bays and in fewer at night;
+// some bays have their roller blinds down. With hall, the double-height
+// lobby instead: stone floor, a reception desk, lifts in the back wall.
+vec3 office(vec3 ro, vec3 rd, float id, float W, float H, bool hall) {
+  float fl = hall ? 0.0 : -0.75;
+  float ce = hall ? max(H + 0.3, 4.6) : max(fl + 2.95, H + 0.02);
+  float depth = hall ? 9.0 : 7.4;
+  // Bays are on a 1.6 m grid; W from the derivatives wobbles from pixel to
+  // pixel, so it must not scale the offset (wrapped to keep it small).
+  float ox = mod(id, 64.0) * 1.6;
+  ro.x += ox;
+  float x0 = ox - 16.0, x1 = ox + W + 16.0;
+  float tx = rd.x > 0.0 ? (x1 - ro.x) / rd.x : (x0 - ro.x) / rd.x;
+  float ty = rd.y > 0.0 ? (ce - ro.y) / rd.y : (fl - ro.y) / rd.y;
+  float tz = depth / rd.z;
+  float t = min(tx, min(ty, tz));
+  vec3 p = ro + rd * t;
+  vec3 col, nn;
+  float zone = floor(id / 3.0);
+  bool on = hash(zone * 1.37 + 11.0) < (hall ? 1.0 : mix(0.88, 0.42, uNight)) && hash(zone + 7.0) >= uBurn;
+  float panel = 0.0;
+  if (t == ty && rd.y < 0.0) {
+    if (hall) col = vec3(0.46, 0.45, 0.43) * (0.9 + 0.1 * hash(floor(p.x / 1.2) + floor(p.z / 1.2) * 19.0));
+    else col = vec3(0.3, 0.32, 0.35) * (0.9 + 0.1 * hash(floor(p.x * 2.0) + floor(p.z * 2.0) * 17.0));
+    nn = vec3(0.0, 1.0, 0.0);
+  } else if (t == ty) {
+    vec2 g = fract(p.xz / 0.6);
+    col = vec3(0.86) * (0.92 + 0.08 * step(0.04, min(g.x, g.y)));
+    if (hall) panel = smoothstep(0.22, 0.12, length(fract(p.xz / 1.8) - 0.5));
+    else panel = step(abs(fract(p.x / 2.4) - 0.5), 0.25) * step(abs(fract(p.z / 1.8) - 0.5), 0.17);
+    nn = vec3(0.0, -1.0, 0.0);
+  } else if (t == tz) {
+    // The hall's back wall is timber panelling.
+    col = hall ? vec3(0.42, 0.3, 0.2) * (0.9 + 0.1 * step(0.5, fract(p.x / 1.2))) : vec3(0.78, 0.78, 0.76);
+    float y = p.y - fl;
+    // Doors in the core wall (lifts in the hall).
+    float dx = fract(p.x / (hall ? 2.4 : 6.0));
+    if (hall && abs(dx - 0.5) < 0.22 && y < 2.4) col = vec3(0.72, 0.74, 0.76);
+    if (!hall && abs(dx - 0.3) < 0.08 && y < 2.1) col = vec3(0.42, 0.36, 0.3);
+    nn = vec3(0.0, 0.0, -1.0);
+  } else {
+    col = vec3(0.8, 0.8, 0.78);
+    nn = vec3(1.0, 0.0, 0.0);
+  }
+  float glow = 0.0;
+  vec3 steel = vec3(0.12, 0.12, 0.13);
+  if (hall) {
+    // Reception desk, a sofa group, and a tree in a planter.
+    hitBox(ro, rd, vec3(ox + W * 0.5 - 2.2, fl, 5.0), vec3(ox + W * 0.5 + 2.2, fl + 1.1, 5.8), vec3(0.85, 0.83, 0.78), t, col, nn);
+    hitBox(ro, rd, vec3(ox - 3.0, fl, 2.2), vec3(ox - 1.0, fl + 0.45, 3.0), vec3(0.25, 0.27, 0.3), t, col, nn);
+    hitBox(ro, rd, vec3(ox + W + 1.2, fl, 2.0), vec3(ox + W + 1.9, fl + 3.2, 2.7), vec3(0.24, 0.36, 0.22), t, col, nn);
+  } else {
+    // Columns on an 8 m grid between the benches.
+    float tc = (3.8 - ro.z) / rd.z;
+    float cx = floor((ro.x + rd.x * tc) / 8.0 + 0.5) * 8.0;
+    hitBox(ro, rd, vec3(cx - 0.3, fl, 3.5), vec3(cx + 0.3, ce, 4.1), vec3(0.82, 0.82, 0.8), t, col, nn);
+    // Two benches of desks, each two deep, broken every 6.4 m for a walkway.
+    for (int b = 0; b < 2; b++) {
+      float z0 = b == 0 ? 1.3 : 4.6;
+      float tb = (z0 + 0.8 - ro.z) / rd.z;
+      float bx = floor((ro.x + rd.x * tb) / 6.4);
+      for (int i = -1; i <= 1; i++) {
+        float k = bx + float(i);
+        float a = k * 6.4 + 0.6, e = a + 5.2;
+        hitBox(ro, rd, vec3(a, fl + 0.71, z0), vec3(e, fl + 0.75, z0 + 1.6), vec3(0.88, 0.87, 0.84), t, col, nn);
+        hitBox(ro, rd, vec3(a, fl, z0 + 0.05), vec3(a + 0.05, fl + 0.71, z0 + 1.55), steel, t, col, nn);
+        hitBox(ro, rd, vec3(e - 0.05, fl, z0 + 0.05), vec3(e, fl + 0.71, z0 + 1.55), steel, t, col, nn);
+        hitBox(ro, rd, vec3(a, fl + 0.75, z0 + 0.78), vec3(e, fl + 1.15, z0 + 0.82), vec3(0.36, 0.42, 0.46), t, col, nn);
+      }
+      // Screens every 1.6 m both sides of the divider, chairs on the window side.
+      float sx = floor((ro.x + rd.x * tb) / 1.6);
+      for (int i = -1; i <= 1; i++) {
+        float k = sx + float(i);
+        float c = k * 1.6 + 0.8;
+        if (fract(k / 4.0) > 0.7) continue; // the walkway
+        float sh = hash(k * 3.1 + id * 0.01 + float(b));
+        for (int s = 0; s < 2; s++) {
+          float z = z0 + (s == 0 ? 0.62 : 0.86);
+          if (sh > 0.85 && s == 1) continue;
+          float tm = t;
+          hitBox(ro, rd, vec3(c - 0.28, fl + 0.92, z), vec3(c + 0.28, fl + 1.26, z + 0.04), vec3(0.04), t, col, nn);
+          if (t < tm) glow = 0.6 * (on ? 1.0 : 0.0);
+          hitBox(ro, rd, vec3(c - 0.03, fl + 0.75, z + 0.01), vec3(c + 0.03, fl + 0.92, z + 0.03), steel, t, col, nn);
+        }
+        if (b == 0 && sh > 0.2) {
+          float cz = z0 - 0.35 + 0.1 * sh;
+          hitBox(ro, rd, vec3(c - 0.25, fl + 0.42, cz - 0.24), vec3(c + 0.25, fl + 0.5, cz + 0.24), vec3(0.1), t, col, nn);
+          hitBox(ro, rd, vec3(c - 0.24, fl + 0.5, cz - 0.3), vec3(c + 0.24, fl + 1.05, cz - 0.24), vec3(0.12), t, col, nn);
+          hitBox(ro, rd, vec3(c - 0.03, fl, cz - 0.03), vec3(c + 0.03, fl + 0.42, cz + 0.03), steel, t, col, nn);
+        }
+      }
+    }
+  }
+  p = ro + rd * t;
+  float shade = abs(nn.y) > 0.5 ? (nn.y > 0.0 ? 1.0 : 0.8) : abs(nn.x) > 0.5 ? 0.75 : 0.9;
+  float fall = mix(1.0, 0.55, clamp(p.z / depth, 0.0, 1.0));
+  vec3 lamp = vec3(1.0, 0.97, 0.9);
+  vec3 light = vec3(0.42, 0.43, 0.45) * uDay * fall * (hall ? 0.7 : 1.0) + (on ? lamp * (hall ? 0.18 + 0.5 * uNight : 0.3 + 0.45 * uNight) : vec3(0.0));
+  vec3 room = col * shade * light;
+  if (on) room += lamp * panel * (1.0 + 1.4 * uNight);
+  room += vec3(0.25, 0.35, 0.5) * glow * (0.2 + uNight);
+  // Roller blinds in the glass plane, part way down.
+  if (!hall && hash(id + 29.0) < 0.35) {
+    float b = 0.1 + 0.75 * hash(id + 43.0);
+    if (1.0 - ro.y / max(H, 0.5) < b) {
+      vec3 bl = vec3(0.78, 0.78, 0.76) * (vec3(0.45) * uDay + (on ? lamp * 0.55 : vec3(0.02)) * uNight + (on ? lamp * 0.12 : vec3(0.0)));
+      room = mix(room, bl, 0.85);
+    }
+  }
+  return room * mix(1.0, 0.1, uBurn);
+}
+
 vec3 interior() {
   float id = floor(vPane.x + 1e-4);
   float lu = vPane.x - id;
@@ -250,6 +496,8 @@ vec3 interior() {
   rd.z = max(rd.z, 0.05);
   if (uKind == 3) return diner(ro, rd, id, W);
   if (uKind == 4) return works(ro, rd, id, W);
+  if (uKind == 5) return cafe(ro, rd, id, W);
+  if (uKind >= 6) return office(ro, rd, id, W, H, uKind == 7) * uTint;
 
   bool shop = uKind == 1;
   float r1 = hash(id), r2 = hash(id + 17.0), r3 = hash(id + 41.0), r4 = hash(id + 73.0);
@@ -354,14 +602,15 @@ vec3 interior() {
 }
 `;
 
-/** `burn` 0 to 1 darkens the rooms and puts their lights out, for damage. */
-export function glass(kind: RoomKind, burn = 0): THREE.MeshPhysicalMaterial {
+/** `burn` 0 to 1 darkens the rooms and puts their lights out, for damage; `tint` is tinted glass (offices). */
+export function glass(kind: RoomKind, burn = 0, tint = 0xffffff): THREE.MeshPhysicalMaterial {
   const m = new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.03, metalness: 0, ior: 1.65, envMapIntensity: 1 });
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDay = interiorUniforms.uDay;
     sh.uniforms.uNight = interiorUniforms.uNight;
-    sh.uniforms.uKind = { value: ["home", "shop", "lobby", "diner", "works"].indexOf(kind) };
+    sh.uniforms.uKind = { value: KINDS.indexOf(kind) };
     sh.uniforms.uBurn = { value: burn };
+    sh.uniforms.uTint = { value: new THREE.Color(tint) };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying vec2 vPane;")
       .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nmat4 wm = modelMatrix;\n#ifdef USE_INSTANCING\nwm = modelMatrix * instanceMatrix;\n#endif\nvWP = (wm * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(wm) * objectNormal);\nvPane = uv;");

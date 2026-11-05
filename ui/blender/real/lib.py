@@ -345,6 +345,33 @@ def render_tex(t, n=1024):
     t.save("render_nrm", normals(0.5 * grain + 0.4 * trowel, 1.2))
 
 
+def rustic_tex(t, n=1024):
+    """Banded rustication in render: smooth courses 0.4 m tall between V-joints,
+    no vertical joints (the French and Viennese way); tile 3 x 1.2 m.
+
+    Near-white like the render, so the app tints it with the building's
+    stucco; the joints hold dirt and the lower edge of each band is worn.
+    """
+    rows = 3
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / rows)
+    fy = cy - np.floor(cy)  # 0 at a band's top, 1 at its foot
+    # Distance to the nearest joint in metres; the V is 0.025 deep, 0.03 wide each side.
+    d = np.minimum(fy, 1 - fy) * 0.4
+    v = np.clip(d / 0.03, 0, 1)
+    grain = fbm(n, 384, 2, 141)
+    trowel = fbm(n, 10, 4, 142, stretch=(4, 1))
+    patch = fbm(n, 3, 4, 143)
+    col = np.ones((n, n, 3), np.float32) * srgb(236, 232, 222)
+    col *= ((0.95 + 0.06 * grain) * (0.97 + 0.04 * trowel) * (0.94 + 0.07 * patch))[..., None]
+    # Dirt in the joints, and a soft shadow under each band's arris.
+    col *= (0.55 + 0.45 * v ** 0.7)[..., None]
+    col *= (1 - 0.08 * np.clip(1 - (fy - 0.0) / 0.12, 0, 1) * (fy < 0.5))[..., None]
+    h = np.sqrt(v) + 0.3 * grain * 0.1 + 0.25 * trowel * 0.2
+    t.save("rustic_col", col)
+    t.save("rustic_nrm", normals(h, 5.0))
+
+
 def battens_tex(t, n=1024):
     """Vertical timber battens, 45 mm with 20 mm shadow gaps: tile 1.3 m.
 
@@ -681,6 +708,26 @@ def corrugated_tex(t, n=1024):
     t.save("corrugated_rgh", rough)
 
 
+def blades_tex(t, n=512):
+    """Horizontal metal blades every 0.1 m, louvre screens and roller shutters: tile 1 m.
+
+    Light grey for tinting: each blade's sloped face lit from above, the dark
+    gap under its lip, a little weathering.
+    """
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    fy = (y / (n / 10)) % 1  # 0 at a blade's top edge, 1 at the next blade
+    face = np.clip(fy / 0.78, 0, 1)
+    gap = fy > 0.82
+    grime = fbm(n, 6, 4, 231, stretch=(4, 1))
+    col = np.ones((n, n, 3), np.float32) * srgb(196, 198, 200)
+    col *= (0.92 - 0.3 * face)[..., None] * (0.9 + 0.15 * grime)[..., None]
+    col[gap] = srgb(30, 32, 34)
+    col[(fy > 0.78) & ~gap] *= 1.25  # the lip catches the light
+    h = np.where(gap, 0.0, 1.0 - 0.5 * face)
+    t.save("blades_col", col)
+    t.save("blades_nrm", normals(h, 5.0))
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -710,7 +757,7 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, brownstone_tex, ground_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
     grime_tex,
 )
 
@@ -827,6 +874,34 @@ class Mesh:
                     continue
                 self.poly(role, [r0[i], r0[j], r1[j], r1[i]], out=out)
 
+    def psweep(self, role, poly, profile):
+        """Sweeps (offset, z) points round a convex polygon of (x, y) points, counter-clockwise
+        seen from above, with mitred corners: cornices and plinths round any footprint."""
+        P = [Vector((x, y)) for x, y in poly]
+        n = len(P)
+
+        def ring(o, z):
+            out = []
+            for i in range(n):
+                a, b, c = P[i - 1], P[i], P[(i + 1) % n]
+                t0, t1 = (b - a).normalized(), (c - b).normalized()
+                n0, n1 = Vector((t0.y, -t0.x)), Vector((t1.y, -t1.x))  # outward
+                bis = (n0 + n1).normalized()
+                q = b + bis * (o / bis.dot(n0))
+                out.append((q.x, q.y, z))
+            return out
+
+        for (o0, z0), (o1, z1) in zip(profile, profile[1:]):
+            r0, r1 = ring(o0, z0), ring(o1, z1)
+            for i in range(n):
+                j = (i + 1) % n
+                t = (P[j] - P[i]).normalized()
+                nrm = Vector((t.y, -t.x, 0))
+                out = nrm * (z1 - z0) - Z * (o1 - o0)
+                if out.length < 1e-6:
+                    continue
+                self.poly(role, [r0[i], r0[j], r1[j], r1[i]], out=out)
+
     def tube(self, role, pts, r, up, closed=True, seg=6):
         """A round tube of radius r along points (neon, pipe rails); `up` is the
         normal of the plane the path lies in (or any vector off its tangents)."""
@@ -934,6 +1009,18 @@ class Side:
             self.m.poly(rv, [self.p(b, c, 0), self.p(b, c, -d), self.p(b, e, -d), self.p(b, e, 0)], out=-self.t)
             self.m.poly(rv, [self.p(a, e, 0), self.p(b, e, 0), self.p(b, e, -d), self.p(a, e, -d)], out=-Z)
             self.m.poly(rv, [self.p(a, c, 0), self.p(b, c, 0), self.p(b, c, -d), self.p(a, c, -d)], out=Z)
+
+
+def fpoly(F, role, pts, w=0.0, out=None, m=None):
+    """A polygon of (u, z) points in facade F's plane at depth w; repeated points are dropped."""
+    q = []
+    for u, z in pts:
+        if not q or abs(q[-1][0] - u) + abs(q[-1][1] - z) > 1e-6:
+            q.append((u, z))
+    if len(q) > 2 and abs(q[0][0] - q[-1][0]) + abs(q[0][1] - q[-1][1]) < 1e-6:
+        q.pop()
+    if len(q) > 2:
+        (m or F.m).poly(role, [F.p(u, z, w) for u, z in q], out=out or F.n)
 
 
 def sides(m, W, D, cx=0.0, cy=0.0, z=0.0):
@@ -1111,11 +1198,12 @@ def french(F, a, b, c, e, D=0.22):
         pane(F, "glass", a, b, c, e, l0 + 0.06, l1 - 0.06, c + 0.51, t - 0.12, -D + 0.04, wid)
 
 
-def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, True)):
+def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, True), glass="glass"):
     """A modern window or glass wall in the opening (a..b, c..e), glass D deep:
     a slim aluminium frame and `lights` panes between mullions, one room
     behind them all. `slide` makes the lights sliding leaves in sashes of
-    their own, alternately in front and behind; an end in `ends` that is
+    their own, alternately in front and behind; `glass` is the panes' role
+    (the room behind them). An end in `ends` that is
     False is left frameless, for glass meeting glass at a corner: the
     opening runs to the corner and the glass stops D short of it, where the
     other side's glass is."""
@@ -1141,11 +1229,11 @@ def glazing(F, a, b, c, e, lights=1, D=0.12, fr="alu", slide=False, ends=(True, 
             s = 0.045
             for box in ((u0, u0 + s, ic, ie), (u1 - s, u1, ic, ie), (u0 + s, u1 - s, ic, ic + s), (u0 + s, u1 - s, ie - s, ie)):
                 F.box(fr, *box, w - 0.022, w + 0.022)
-            pane(F, "glass", a, b, c, e, u0 + s, u1 - s, ic + s, ie - s, w, wid)
+            pane(F, glass, a, b, c, e, u0 + s, u1 - s, ic + s, ie - s, w, wid)
         else:
             if i:
                 F.box(fr, u0 - 0.025, u0 + 0.025, ic, ie, -D - 0.03, -D + 0.05)
-            pane(F, "glass", a, b, c, e, u0 + (0.025 if i else 0), u1 - (0.025 if i < lights - 1 else 0), ic, ie, -D, wid)
+            pane(F, glass, a, b, c, e, u0 + (0.025 if i else 0), u1 - (0.025 if i < lights - 1 else 0), ic, ie, -D, wid)
     return wid
 
 

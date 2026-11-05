@@ -41,8 +41,12 @@ export interface RealDef {
   front: number;
   /** Storeys for the plan's floor count. */
   floors(plan: number): number;
-  /** Pieces bottom to top for `floors` storeys, without the roof if not `roof`. */
-  stack(floors: number, roof: boolean, r: () => number): { piece: string; y: number }[];
+  /**
+   * Pieces bottom to top for `floors` storeys, without the roof if not `roof`;
+   * `total` is the finished building's storeys, for models whose stack
+   * depends on it (a setback) while it is being built or is damaged.
+   */
+  stack(floors: number, roof: boolean, r: () => number, total: number): { piece: string; y: number }[];
   /** Height of the body (top of the last storey, or the eaves). */
   top(floors: number): number;
   /** Height with the roof. */
@@ -66,8 +70,17 @@ const C4_TOP = 3.35;
 const C4_RIDGE = 7.8;
 const S1_G = 4.45;
 const S1_FL = 3.3;
+const S2_G = 4.5;
+const S2_F1 = 3.3;
+const S2_F2 = 3.2;
+/** S2's frieze, cornice and roof above its top storey: the slates start 1.04 m up, the stacks top out 4.8 m up. */
+const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
 const S4_TOP = 5.3;
+const O1_G = 5.4;
+const O1_FL = 3.6;
+/** Where O1 steps back: after about two thirds of its storeys, never at the top. */
+const o1Lower = (total: number) => Math.min(total - 1, Math.max(2, Math.round(total * 0.68)));
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -204,6 +217,30 @@ export const DEFS: Record<string, RealDef> = {
     smoke: (floors) => new THREE.Vector3(-4.1, S1_G + (floors - 1) * S1_FL + 2.9, -1.6),
     debris: 0x8a4e3c,
   },
+  s2: {
+    id: "s2",
+    kind: "shop",
+    style: "classic",
+    // The block with its cornice all round; the oriel and balconettes stay inside it.
+    w: 11.1,
+    d: 12.6,
+    // A terrace of umbrella tables between the café and the pavement.
+    front: 3.2,
+    floors: (plan) => Math.min(3, Math.max(2, plan)),
+    stack(floors, roof) {
+      // The café, the piano nobile, the top storey if there is one, the roof.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      if (floors > 1) out.push({ piece: "first", y: S2_G });
+      if (floors > 2) out.push({ piece: "second", y: S2_G + S2_F1 });
+      if (roof) out.push({ piece: "roof", y: DEFS.s2.top(floors) });
+      return out;
+    },
+    top: (floors) => S2_G + (floors > 1 ? S2_F1 : 0) + (floors > 2 ? S2_F2 : 0),
+    height: (floors) => DEFS.s2.top(floors) + 4.8,
+    // The front stack on the party wall.
+    smoke: (floors) => new THREE.Vector3(-4.55, DEFS.s2.top(floors) + S2_EAVES + 3.75, 2.4),
+    debris: 0xd8c8a8,
+  },
   s3: {
     id: "s3",
     kind: "shop",
@@ -236,6 +273,33 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 7.85,
     smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
     debris: 0x8a4e3c,
+  },
+  o1: {
+    id: "o1",
+    kind: "office",
+    style: "classic",
+    // The lower block; the colonnade is inside it, the plaza in front.
+    w: 14.4,
+    d: 11.2,
+    front: 3.0,
+    floors: (plan) => Math.max(6, plan),
+    stack(floors, roof, _r, total) {
+      // The lobby, the lower block's storeys, the terrace where it steps
+      // back, the upper block's storeys, the roof.
+      const lower = o1Lower(Math.max(total, floors));
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) {
+        const y = O1_G + (f - 1) * O1_FL;
+        if (f === lower) out.push({ piece: "setback", y });
+        out.push({ piece: f < lower ? "floor" : "upper", y });
+      }
+      if (roof) out.push({ piece: "roof", y: O1_G + (floors - 1) * O1_FL });
+      return out;
+    },
+    top: (floors) => O1_G + (floors - 1) * O1_FL,
+    // The parapet, the lift overrun and plant; the mast goes 8 m higher.
+    height: (floors) => O1_G + (floors - 1) * O1_FL + 4.4,
+    debris: 0x5a6a70,
   },
 };
 
@@ -513,6 +577,42 @@ function ghosts(row: number): THREE.Texture {
   return t;
 }
 
+const TOWERS = ["MERIDIAN HOUSE", "ONE HARBOUR PLACE", "CARLTON TOWER", "NORTHBRIDGE CENTRE", "THE EXCHANGE", "ATLAS BUILDING", "200 PARK ROW", "SOVEREIGN HOUSE"];
+
+let towerCanvas: HTMLCanvasElement | null = null;
+
+/** Office buildings' names for the fascia, eight rows of 2048 x 128: spaced brushed-steel capitals on clear. */
+function towerNames(row: number): THREE.Texture {
+  if (!towerCanvas) {
+    const c = (towerCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "500 64px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+    TOWERS.forEach((name, i) => {
+      const y = i * 128 + 66;
+      const text = name.split("").join(String.fromCharCode(8202, 8202, 8202));
+      g.fillStyle = "rgba(10,10,12,0.9)";
+      g.fillText(text, 1026, y + 3, 1400);
+      const grad = g.createLinearGradient(0, y - 30, 0, y + 30);
+      grad.addColorStop(0, "#f4f6f8");
+      grad.addColorStop(0.5, "#b8bec4");
+      grad.addColorStop(1, "#e2e6ea");
+      g.fillStyle = grad;
+      g.fillText(text, 1024, y, 1400);
+    });
+  }
+  const t = new THREE.CanvasTexture(towerCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 const DINERS = ["STARLITE DINER", "MOONBEAM DINER", "SILVER SPOON", "PARKWAY DINER", "NIGHT OWL DINER", "LUCKY 7 DINER", "COMET DINER", "SUNRISE DINER"];
 
 let dinerCanvas: HTMLCanvasElement | null = null;
@@ -601,6 +701,43 @@ function worksNames(row: number): THREE.Texture {
   return t;
 }
 
+const CAFES = ["CAFÉ DES ARTS", "CAFFÈ BELLAVISTA", "KAFFEEHAUS ROSE", "CAFÉ DU COIN", "CAFÉ AMADEUS", "CAFÉ LUMIÈRE", "CAFFÈ DEL CORSO", "CAFÉ NOVA"];
+
+let cafeCanvas: HTMLCanvasElement | null = null;
+
+/** Cafés' names in gilt serif capitals for a frieze, eight rows of 2048 x 128: gold with a dark edge, on clear. */
+function cafeNames(row: number): THREE.Texture {
+  if (!cafeCanvas) {
+    const c = (cafeCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "700 98px Didot, 'Bodoni 72', Georgia, 'DejaVu Serif', 'Times New Roman', serif";
+    CAFES.forEach((name, i) => {
+      const y = i * 128 + 68;
+      const text = name.split("").join(String.fromCharCode(8202, 8202));
+      g.fillStyle = "rgba(40,28,10,0.9)";
+      g.fillText(text, 1027, y + 4, 1960);
+      const grad = g.createLinearGradient(0, y - 44, 0, y + 44);
+      grad.addColorStop(0, "#fff2b0");
+      grad.addColorStop(0.45, "#d8a83c");
+      grad.addColorStop(0.55, "#a8761e");
+      grad.addColorStop(1, "#e8c060");
+      g.fillStyle = grad;
+      g.fillText(text, 1024, y, 1960);
+    });
+  }
+  const t = new THREE.CanvasTexture(cafeCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 /** Per-building choices: paint colours and the like. Indexes wrap. */
 export interface Paint {
   /** Main walls: brick tint or siding paint. */
@@ -631,6 +768,12 @@ const ROW_CORNICES = [0x3a2c24, 0x1e2022, 0x6a5040, 0x26342a, 0xd8ccb4];
 const SASHES = [0xe9e4d8, 0x2e2520, 0x1e2a24, 0xf0eee8];
 /** Front doors in heritage paint: black, Brunswick green, oxblood, navy, plum, ochre, teal. */
 const HERITAGE = [0x1c1d1f, 0x1f3a2c, 0x5a1e1c, 0x1e2a44, 0x3e2638, 0xb07a2a, 0x2a5458];
+/** S2's stucco: Schönbrunn yellow, ochre, salmon, sage, cream, terracotta, pale blue-grey, white. */
+const STUCCO = [0xf6dc96, 0xeccb94, 0xf0c0a6, 0xd2dcc0, 0xf4e8d0, 0xdca07e, 0xd4dce2, 0xf6f2ea];
+/** S2's shutters: green, grey-green, grey-blue, oxblood, dove grey, brown. */
+const S2_SHUTTERS = [0x2e4a36, 0x6a7a68, 0x5a6a7a, 0x6a2a24, 0xa8aaa4, 0x5a4232];
+/** Café parasols: cream, bordeaux, bottle green, navy, terracotta, white. */
+const PARASOLS = [0xeee4cc, 0x7a1e26, 0x234a34, 0x23304e, 0xb8583a, 0xf4f2ec];
 /** Render: white, warm white, pale grey, sand, anthracite, chalk. */
 const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
 /** Timber cladding: larch, silver-weathered, charred, cedar, honey. */
@@ -655,6 +798,10 @@ const STEELS = [0x1e2022, 0x2c4436, 0x5a5e62, 0x6a2a20, 0xd8d2c0, 0x34465a];
 const WORKS_DOORS = [0x3a5a40, 0x6a2620, 0x5a3e2a, 0x2e4a66, 0x7a7c78];
 /** Corrugated sheet: weathered galvanising (most), grey paint, oxide red, green, dark grey. */
 const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
+/** O1's glass: blue-green, blue, bronze, neutral grey, green, silver-blue. */
+const OFFICE_GLASS = [0x7fb2aa, 0x7f9cc4, 0xb89a74, 0x949aa0, 0x86b48e, 0xb4c4d0];
+/** O1's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
+const MULLIONS = [0xb8bcc0, 0x4a3e34, 0x1e2022, 0xc8b894, 0xe8e8e4, 0x7a8086];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -743,15 +890,15 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "brownstone", "door2", "door3", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "brownstone", "door2", "door3", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
   const shade = [1, 0.72, 0.42][Math.min(2, damage)];
   const w = (mat: THREE.MeshStandardMaterial, weather = 0) => weathered(mat, ao, weather + damage * 0.8);
-  const room = (kind: RoomKind) => {
-    const g = glass(kind, damage / 2);
+  const room = (kind: RoomKind, tint?: number) => {
+    const g = glass(kind, damage / 2, tint);
     if (skyEnv) g.envMap = skyEnv;
     glassMats.add(g);
     return g;
@@ -792,7 +939,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "concrete": m = w(pbr("stone", [2, 2], { color: 0xb8b8b4, roughness: 0.95 }), 1); break;
     case "siding": m = w(pbr("siding", [2.4, 1.2], { rough: true, color: pick(SIDING, paint.wall) }), 0.7); break;
     case "shingle": m = w(pbr("shingle", [2, 1.12], { roughness: 0.95, color: pick(SHINGLES, paint.roof) }), 0.8); break;
-    case "shutter": m = w(pbr("louvre", [1, 1], { roughness: 0.55, color: accent })); break;
+    case "shutter": m = w(pbr("louvre", [1, 1], { roughness: 0.55, color: id === "s2" ? pick(S2_SHUTTERS, paint.wall + paint.roof) : accent })); break;
     case "trim": m = w(plain(0xeeebe2, 0.55), 0.5); break;
     case "cornice": m = w(plain(pick(id === "a2" ? ROW_CORNICES : CORNICES, paint.roof), 0.5, 0.2), 1.2); break;
     case "brownstone": m = w(pbr("brownstone", [2.4, 1.8], { rough: true, color: pick(BROWNSTONES, paint.wall) }), 1.5); break;
@@ -805,7 +952,17 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: pick(RENDERS, paint.wall) }), 0.4); break;
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "s2" ? pick(STUCCO, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : 0.4); break;
+    // S2's banded rustication: the stucco a shade deeper.
+    case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
+    case "parasol": m = w(plain(pick(PARASOLS, paint.accent + paint.signs), 0.9)); break;
+    case "cane": m = w(plain(0xc8a46a, 0.85)); break;
+    case "cafename": {
+      const t = cafeNames(paint.signs);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.7, emissive: 0xffe0a0, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.3;
+      break;
+    }
     case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
     case "alu": m = w(plain(frame, 0.4, 0.5)); break;
     case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
@@ -952,11 +1109,40 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       // paint.wall < 0: white, for instance colours to tint (the woods).
       m = foliage(role, role === "blossom" || role === "bloom" || paint.wall < 0 ? 0xffffff : pick(FOLIAGE, paint.wall), ao);
       break;
+    // The office tower: tinted, coated glass with the floor behind it.
+    case "officeglass": {
+      const tint = pick(OFFICE_GLASS, paint.wall);
+      // Tinted glass lets through about half the light, in its colour.
+      const g = room("office", new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.35).getHex());
+      // A reflective coating: more of the sky, in the glass's colour.
+      g.ior = 2.1;
+      g.specularColor.setHex(tint).lerp(new THREE.Color(0xffffff), 0.35);
+      m = g;
+      break;
+    }
+    case "spandrel": {
+      const tint = new THREE.Color(pick(OFFICE_GLASS, paint.wall));
+      m = sheen({ color: tint.clone().multiplyScalar(0.07).getHex(), roughness: 0.05, ior: 2.1, specularColor: tint.lerp(new THREE.Color(0xffffff), 0.35) });
+      break;
+    }
+    case "mullion": m = w(plain(pick(MULLIONS, paint.accent), 0.35, 0.6), 0.3); break;
+    case "blades": m = w(pbr("blades", [1, 1], { roughness: 0.45, metalness: 0.5, color: new THREE.Color(pick(MULLIONS, paint.accent)).lerp(new THREE.Color(0xffffff), 0.3).getHex() }), 0.8); break;
+    case "towername": {
+      const t = towerNames(paint.signs);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.7, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.35;
+      break;
+    }
+    case "beacon":
+      m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 4;
+      break;
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room("lobby"); break;
+    case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;
+    case "cafeglass": m = room("cafe"); break;
     default: m = plain(0xff00ff);
   }
   if (damage && !role.endsWith("glass")) (m as THREE.MeshStandardMaterial).color.multiplyScalar(shade);

@@ -23,7 +23,7 @@
 #         clock and vents, ventilators, and the stack's shaft
 import math
 
-from lib import Model, Z, hood, letters, new_id, pane, sides, sill
+from lib import Model, Z, fpoly, hood, letters, new_id, pane, sides, sill
 from mathutils import Vector
 
 ID = "s4"
@@ -60,18 +60,6 @@ def build(out, bake=True):
 
 
 # ---- helpers ------------------------------------------------------------------------
-
-
-def fpoly(F, role, pts, w=0.0, out=None, m=None):
-    """A polygon of (u, z) points in facade F's plane at depth w; repeated points are dropped."""
-    q = []
-    for u, z in pts:
-        if not q or abs(q[-1][0] - u) + abs(q[-1][1] - z) > 1e-6:
-            q.append((u, z))
-    if len(q) > 2 and abs(q[0][0] - q[-1][0]) + abs(q[0][1] - q[-1][1]) < 1e-6:
-        q.pop()
-    if len(q) > 2:
-        (m or F.m).poly(role, [F.p(u, z, w) for u, z in q], out=out or F.n)
 
 
 def disc(F, role, u, z, r, w, seg=20):
