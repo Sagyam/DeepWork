@@ -10,8 +10,8 @@ dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
 the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
 factory, C2, the brick cottage (sharing the classic cottages with C1), and
-S2, the corner café (sharing the classic shops with S1), and O1, the
-curtain-wall office tower;
+S2, the corner café (sharing the classic shops with S1), O1, the
+curtain-wall office tower, and L1, the art deco skyscraper;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -143,7 +143,11 @@ every model after this one:
   (riven, chipped butts, a little lichen; blue-grey, tinted per building);
   with S2, banded rustication in render (horizontal V-joints, no vertical
   ones; tinted with the stucco); with O1, horizontal metal blades (louvre
-  screens, roller shutters).
+  screens, roller shutters); with L1, sawn limestone cladding (1.2 x 0.6 m
+  blocks in running bond, fine joints; tinted per building) and a cast
+  spandrel panel (a border round stacked chevrons, reeded strips either
+  side; UVs 0..1 across a panel, tinted as aluminium, bronze or green), for
+  A4 and O4 too.
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
@@ -206,7 +210,10 @@ every model after this one:
   continuous from bay to bay, lit by zones of three bays, most by day and
   fewer at night, some roller blinds down) behind tinted, coated glass
   (`glass(kind, burn, tint)`), and a double-height lobby (stone floor,
-  panelled back wall with lifts, reception desk) for its entrance.
+  panelled back wall with lifts, reception desk) for its entrance; with L1,
+  floodlit stone (the cladding glowing warm at night), lit crown glass (dark
+  glass by day, a lantern at night) and polished black granite that shows
+  the sky.
 - Per-building variation by parameters: brick tint, shopfront colour and
   sign pair (A1); siding, shutter and door, and roof colours (C1); brick
   tint, shopfront and cornice colours, sign, ghost sign, an awning or none,
@@ -215,7 +222,8 @@ every model after this one:
   colour, the two neon colours and the name (S3); brick tint, steelwork
   paint, door paint, roof sheet and the firm's name (S4); brick tint, slate
   and ridge colours, door paint (C2); glass tint (spandrels match),
-  metalwork colour and the building's name (O1).
+  metalwork colour and the building's name (O1); limestone tint, metalwork
+  (frames and spandrels) and the name (L1).
 - Sibling models (with C2): models with the same kind and style share it,
   each building picking one from its seed (`realDef`); C1 and C2 are the
   classic cottage now, as the kit had gable and hip variants of it; S1 and
@@ -274,7 +282,9 @@ every model after this one:
   terrace of umbrella tables closed by planters, a menu board by the
   corner door, bins down the side; O1 is 14.4 x 11.2 m, 3 m back
   behind a paved plaza (trees in planters, benches, bollards before the
-  entrance), bins behind. Lots get resized with the master plan.
+  entrance), bins behind; L1 is 14.4 m square, 0.8 m back on granite paving
+with heritage lamps either side of the portal, bins behind. Lots get
+resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -390,7 +400,7 @@ Towers (replace today's landmarks):
 
 | ID | Model | Look | Replaces | Size | Effort | Priority |
 |---|---|---|---|---|---|---|
-| L1 | Art deco skyscraper | Stone piers, setbacks, lit stepped crown, spire | landmark deco | lot | 25% | P1 |
+| L1 | Art deco skyscraper | Stone piers, setbacks, lit stepped crown, spire | landmark deco | lot | **done** (2026-11-05): a setback office tower of about 1930, 14.4 m square on a 1.8 m bay; limestone piers unbroken from the plinth to the crown between recessed bays of steel windows over cast chevron spandrels, notched corners; a polished black granite plinth, shop windows and a mezzanine in bronze, a portal stepped back in three orders to bronze doors under a sunburst grille, the name over it between lanterns; steps back twice (10.8 m at half its storeys, 7.2 m at four fifths) behind parapets of cast panels, the piers rising through them as stepped finials, the corners as ziggurat pylons, floodlights on the terraces; a crown of two floodlit stages of tall lit windows, stainless fins down the upper one's corners, an octagonal stainless drum and a 14 m spire with an aircraft light; pieces ground / floor1 / ledge1 / floor2 / ledge2 / floor3 / crown, 12+ storeys; 10 k triangles a set (~29 k for 22 storeys) | 25% | P1 |
 | L2 | Glass supertall | Tapered glass, sky gardens, LED bands | landmark glass | lot | 20% | P1 |
 | L3 | Twisting tower | Each storey turned, glass and white bands | landmark twist | lot | 15% | P1 |
 | L4 | TV tower | Concrete shaft, observation pod, mast | landmark TV tower | lot | 15% | P1 |
@@ -527,7 +537,7 @@ above; none of it changes how models look.
 | Download on first run (pack, manifest, fallback) | ~0.5 |
 | Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
-| P1 buildings (13 left, incl. 3 civic) | ~3 |
+| P1 buildings (12 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
@@ -550,7 +560,7 @@ above; none of it changes how models look.
    needed where, so it comes before most of them.
 4. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
-5. One model per kind (C1, S1, A2, ~~O1~~ (done 2026-11-05), L1) so a real mixed city can be seen.
+5. One model per kind (C1, S1, A2, ~~O1~~ (done 2026-11-05), ~~L1~~ (done 2026-11-05)) so a real mixed city can be seen.
 6. The first civic landmarks (L5-L7) on their reserved ground.
 7. The rest of P1, then building states.
 8. Surroundings: streets, trees and terrain first, as they fill the most

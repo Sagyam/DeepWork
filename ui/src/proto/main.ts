@@ -1,7 +1,7 @@
 // Viewer for the realistic models (blender/real, `bun run models`): one
 // building on its lot, built by the app's own code (models.ts), on a street
 // corner. Open /proto.html in the dev server with
-//   ?model=a1|c1|c2|c3|c4|s1|s2|s3|s4|o1 &floors=7 &seed=3 &damage=0|1|2
+//   ?model=a1|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1 &floors=7 &seed=3 &damage=0|1|2
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
@@ -104,13 +104,15 @@ scene.environmentIntensity = Number(q.get("env") ?? (night ? 0.08 : 0.12));
 setRealEnv(env);
 
 const sun = new THREE.DirectionalLight(night ? 0x8fa8d8 : 0xfff1dc, night ? 0.25 : Number(q.get("sun") ?? 5));
-sun.position.copy(night ? new THREE.Vector3(-0.4, 0.8, 0.5) : sunDir).multiplyScalar(Math.max(80, extent));
+// The shadow box reaches the top of a tall tower and the shadow it throws.
+const reach = Math.max(32, extent * 0.75, H * 0.8);
+sun.position.copy(night ? new THREE.Vector3(-0.4, 0.8, 0.5) : sunDir).multiplyScalar(Math.max(80, extent, H * 1.6));
 sun.castShadow = true;
 sun.shadow.mapSize.setScalar(stress ? 2048 : 4096);
 const sc = sun.shadow.camera;
-sc.left = sc.bottom = -Math.max(32, extent * 0.75);
-sc.right = sc.top = Math.max(32, extent * 0.75);
-sc.far = Math.max(200, extent * 2);
+sc.left = sc.bottom = -reach;
+sc.right = sc.top = reach;
+sc.far = Math.max(200, extent * 2, H * 3.2);
 sc.near = 1;
 sun.shadow.bias = -0.0002;
 sun.shadow.normalBias = 0.03;
@@ -261,7 +263,7 @@ Promise.all([loadKit(), loadReal([id, ...PROPS])]).then(() => {
   const { kind, style } = DEFS[id];
   const floors = Number(q.get("floors") ?? 7);
   const seed = Number(q.get("seed") ?? 3);
-  const raw: Spec = { index: 0, kind, style, grade: kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false, model: id };
+  const raw: Spec = { index: 0, kind, style, grade: kind === "landmark" ? 4 : kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false, model: id };
   const s = { ...fitReal(raw), x: 0, z: 0, rot: 0 };
   const { group, info } = building(s);
   for (const m of info.night) m.emissiveIntensity = night ? (m.userData.night ?? 1) : 0;
