@@ -744,7 +744,7 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
 
 const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
 /** Realistic species, by how common they are in town. */
-const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
+export const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
 const SHRUBS = ["bush", "bush", "bush_wide", "shrub", "flowers"];
 
 /** Paint for a realistic prop: `wall` picks its tint (foliage, car paint). */

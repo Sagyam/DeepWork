@@ -77,6 +77,19 @@ CPU and GPU times (GPU via `EXT_disjoint_timer_query_webgl2`; `&gputimer=0`
 turns it off), draw calls, triangles and memory, with a frame time graph.
 A new model appears in it once it is added to `BLOCKS` in `ui/src/proto/town.ts`.
 
+It also carries the rendering optimisations, cumulative and easiest first
+(`&opt=0` is the scene as first built, `&opt=8` or no `opt` all of them;
+`docs/models.md`, "Tried in the showcase town"), and two trade-offs,
+`&aa=smaa|fxaa|none` and `&shadowmap=`. To measure them headless on this
+machine's GPU (system Chromium, timer queries):
+
+```sh
+cd ui
+bun run dev &
+bun scripts/bench-town.ts "view=overview&opt=0" "view=overview" "view=downtown"
+HIDE=woods bun scripts/bench-town.ts "view=overview"   # what the woods cost
+```
+
 ## Install
 
 From a release, on any supported distribution:

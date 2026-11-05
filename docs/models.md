@@ -545,6 +545,53 @@ above; none of it changes how models look.
       whose WebGL is usually slower than Chromium's. Target: 30 fps for an
       end-game city on a Radeon 610M-class iGPU.
 
+### Tried in the showcase town (2026-11-05)
+
+`ui/town.html` (every model in a hand-laid town, 56 buildings, ~1,700
+trees, traffic) got the cheap optimisations first, each behind a cumulative
+`&opt=N`, measured with `ui/scripts/bench-town.ts` on the Radeon 610M at
+1600 x 900 CSS pixels on a 1.5x screen. GPU ms per frame (fps):
+
+| Step (`&opt=`) | What | Overview | Street level | Homes from above |
+|---|---|---|---|---|
+| 0 | as first built (1.5x pixels, MSAA 4x, shadows every frame) | 88 (11 fps) | 95 (10) | 102 (10) |
+| 1 `res` | 1x pixels, SMAA | 55 | 60 | 61 |
+| 2 `shadow` | shadow map drawn once; blob shadows under moving cars | 30 | 32 | 35 |
+| 3 `cap` | 30 fps cap, no frames while nothing moves | (energy) | (energy) | (energy) |
+| 4 `cull` | scenery merged per tile; small props drop out with distance | 28 | 28 | 32 |
+| 5 `trees` | impostors past 150 m | 23 | 26 | 28 |
+| 6 `sky` | sky drawn once into a cube map | 21 | 23 | 28 |
+| 7 `merge` | a block's buildings merged by material (-900 draws) | 19 | 23 | 28 |
+| 8 `ibl` | environment light on glossy materials only | **17 (60 fps)** | **20 (51)** | **24 (43)** |
+
+What it taught, for the app:
+
+- **First it was GPU bound by pixels and the shadow pass**, not by draw
+  calls or (after step 2) triangles: culling cut triangles 30-45% for ~10%,
+  and merging cut ~900 draws for no GPU time (some CPU).
+- **Render scale and a static shadow map are most of the win** (84 to 27 ms):
+  the shadow map was re-drawing every triangle every frame. The app's sun
+  moves, but slowly: redraw it every few minutes or when a building changes,
+  not every frame. Moving cars get a blob instead.
+- **Trees are overdraw**: alpha-tested leaf cards, several layers deep a
+  pixel, with no early depth rejection. Impostors (three crossed cards from
+  a 2048 atlas rendered at load) past 150 m. Alpha-tested mips need a low
+  cut-off plus sharpening or far impostors vanish.
+- **The scattering sky is a full-screen shader**: drawn once into a cube
+  map, it costs nothing (4 ms at street level, where it fills half the screen).
+- **Image-based light everywhere is expensive for what it adds**: only
+  glossy and metal materials keep the environment map; a brighter hemisphere
+  light fills the rest.
+- **Not worth it here**: anisotropic filtering 8x to 1x (~0.5 ms), dropping
+  normal and roughness maps on buildings (1-2.5 ms, visible), a cheap
+  material for far buildings (0.6 ms in the overview, nothing close up),
+  geometry LODs for buildings (14-36 k triangles each: their cost is pixels),
+  FXAA for SMAA or a 4096 shadow map (~0.5 ms each, visibly worse).
+- **Still open**: KTX2 textures (bandwidth, which an iGPU is short of: six
+  texture reads a building pixel), the shadow filter (5 taps into 8192²,
+  3-4 ms), and the frame cap's real saving, which is energy: idle frames
+  cost nothing, a moving scene at 30 fps costs half the GPU of 60.
+
 ## Rough total
 
 | Work | Windows (5 h each) |

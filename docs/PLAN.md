@@ -754,7 +754,12 @@ The showcase town (`ui/town.html`, 2026-11-05) puts every model together
 in a hand-laid town with a stats panel, for development without earning
 buildings. Its first measurement: about 12 fps on the 7700X's iGPU, GPU
 bound (about 80 ms GPU against 17 ms CPU per frame, 7.8M triangles in
-5,300 draw calls), which sizes the optimisation work.
+5,300 draw calls), which sizes the optimisation work. The cheap
+optimisations, tried there behind `&opt=N` and measured with
+`ui/scripts/bench-town.ts`, took it to 60 fps overview and 43-51 at street
+level (GPU 88 to 17 ms): render scale and SMAA, a static shadow map, tree
+impostors, a cached sky, selective image-based light; results and lessons
+in `docs/models.md` ("Tried in the showcase town"). Not yet in the app.
 Next: progression v2 and the
 master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and
 the hamlet and city mocks; not yet seen in the Tauri window.
