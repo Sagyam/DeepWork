@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DeepWork: showcase town</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; background: #000; font: 13px/1.4 system-ui, sans-serif; }
+      #view { position: fixed; inset: 0; }
+      #hud { position: fixed; left: 12px; top: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: 80vw; }
+      #hud a { color: #fff; background: #0009; padding: 5px 10px; border-radius: 6px; text-decoration: none; }
+      #hud a:hover { background: #000c; }
+      #stats { position: fixed; left: 12px; bottom: 12px; background: #000b; color: #e8e8e8; padding: 8px 10px; border-radius: 8px; font: 11px/1.45 ui-monospace, "JetBrains Mono", monospace; cursor: pointer; user-select: none; backdrop-filter: blur(4px); }
+      #stats.min #stats-text, #stats.min #stats-graph, #stats.min .legend { display: none; }
+      #stats .title { color: #fff; font-weight: 600; margin-bottom: 4px; }
+      #stats.min .title::after { content: " (click to expand)"; color: #888; font-weight: 400; }
+      #stats-text { white-space: pre; }
+      #stats .k { display: inline-block; width: 68px; color: #8a9099; }
+      #stats-graph { display: block; margin-top: 6px; background: #ffffff0a; border-radius: 4px; }
+      #stats .legend { margin-top: 3px; color: #8a9099; }
+      #stats .legend b { font-weight: 400; }
+    </style>
+  </head>
+  <body>
+    <div id="view"></div>
+    <div id="hud"></div>
+    <div id="stats">
+      <div class="title">stats for nerds</div>
+      <div id="stats-text">loading…</div>
+      <canvas id="stats-graph" width="300" height="80"></canvas>
+      <div class="legend"><b style="color:#5ab0ff">■ frame</b> &nbsp;<b style="color:#7ee08a">■ cpu</b> &nbsp;<b style="color:#ffad4a">■ gpu</b> &nbsp;ms, last 240 frames</div>
+    </div>
+    <script type="module" src="/src/proto/town.ts"></script>
+  </body>
+</html>
