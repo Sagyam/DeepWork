@@ -555,16 +555,29 @@ trees, traffic) got the cheap optimisations first, each behind a cumulative
 | Step (`&opt=`) | What | Overview | Street level | Homes from above |
 |---|---|---|---|---|
 | 0 | as first built (1.5x pixels, MSAA 4x, shadows every frame) | 88 (11 fps) | 95 (10) | 102 (10) |
-| 1 `res` | 1x pixels, SMAA | 55 | 60 | 61 |
-| 2 `shadow` | shadow map drawn once; blob shadows under moving cars | 30 | 32 | 35 |
-| 3 `cap` | 30 fps cap, no frames while nothing moves | (energy) | (energy) | (energy) |
-| 4 `cull` | scenery merged per tile; small props drop out with distance | 28 | 28 | 32 |
-| 5 `trees` | impostors past 150 m | 23 | 26 | 28 |
-| 6 `sky` | sky drawn once into a cube map | 21 | 23 | 28 |
-| 7 `merge` | a block's buildings merged by material (-900 draws) | 19 | 23 | 28 |
-| 8 `ibl` | environment light on glossy materials only | **17 (60 fps)** | **20 (51)** | **24 (43)** |
+| 1 `res` | 1x pixels, MSAA 4x with alpha to coverage | 61 | 64 | 69 |
+| 2 `shadow` | shadow map drawn once; blob shadows under moving cars | 36 | 39 | 44 |
+| 3 `idle` | no frames while nothing moves | (energy) | (energy) | (energy) |
+| 4 `cull` | scenery merged per tile; small props drop out with distance | 33 | 36 | 41 |
+| 5 `trees` | impostors past 150 m | 24 | 32 | 35 |
+| 6 `sky` | sky drawn once into a cube map | 23 | 29 | 35 |
+| 7 `merge` | a block's buildings merged by material (-900 draws) | 23 | 29 | 35 |
+| 8 `ibl` | environment light on glossy materials only | **20 (51 fps)** | **24 (41)** | **29 (34)** |
+
+With SMAA instead of MSAA (`&aa=smaa`), step 8 is 17 / 20 / 24 ms.
 
 What it taught, for the app:
+
+- **Judge smoothness by the 1% low, not the average** (the user, trying
+  it: about 20 fps 1% low is where it starts to feel smooth). Hitches come
+  from shaders compiled and textures uploaded the first time something comes
+  into view, so the town compiles and uploads everything at load
+  (`prewarm()`). A frame cap hides the difference between levels, so it is
+  off by default (`&fps=30`).
+- **SMAA at 1x stair-stepped edges once stretched to a 1.5x screen**, and
+  broke thin cut-out railings up; MSAA 4x at 1x with alpha to coverage on
+  cut-out materials keeps them clean, for ~0-5 ms more than SMAA. Native
+  1.5x costs double (40 ms at street level).
 
 - **First it was GPU bound by pixels and the shadow pass**, not by draw
   calls or (after step 2) triangles: culling cut triangles 30-45% for ~10%,
@@ -586,11 +599,11 @@ What it taught, for the app:
   normal and roughness maps on buildings (1-2.5 ms, visible), a cheap
   material for far buildings (0.6 ms in the overview, nothing close up),
   geometry LODs for buildings (14-36 k triangles each: their cost is pixels),
-  FXAA for SMAA or a 4096 shadow map (~0.5 ms each, visibly worse).
+  FXAA for MSAA or a 4096 shadow map (visibly worse).
 - **Still open**: KTX2 textures (bandwidth, which an iGPU is short of: six
   texture reads a building pixel), the shadow filter (5 taps into 8192²,
-  3-4 ms), and the frame cap's real saving, which is energy: idle frames
-  cost nothing, a moving scene at 30 fps costs half the GPU of 60.
+  3-4 ms), and what a frame cap saves in energy (idle frames cost
+  nothing; a moving scene at 30 fps costs half the GPU of 60).
 
 ## Rough total
 

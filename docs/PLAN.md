@@ -756,9 +756,11 @@ buildings. Its first measurement: about 12 fps on the 7700X's iGPU, GPU
 bound (about 80 ms GPU against 17 ms CPU per frame, 7.8M triangles in
 5,300 draw calls), which sizes the optimisation work. The cheap
 optimisations, tried there behind `&opt=N` and measured with
-`ui/scripts/bench-town.ts`, took it to 60 fps overview and 43-51 at street
-level (GPU 88 to 17 ms): render scale and SMAA, a static shadow map, tree
-impostors, a cached sky, selective image-based light; results and lessons
+`ui/scripts/bench-town.ts`, took it to 51 fps overview and 34-41 close up
+(GPU 88 to 20 ms): render scale with MSAA, a static shadow map, tree
+impostors, a cached sky, selective image-based light; then map controls
+with camera limits, a moonlit night with light pools, and shader prewarming
+against hitches (the user judges by the 1% low); results and lessons
 in `docs/models.md` ("Tried in the showcase town"). Not yet in the app.
 Next: progression v2 and the
 master plan (`docs/models.md`, "Suggested order"). Checked headless in the viewer and

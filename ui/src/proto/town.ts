@@ -5,7 +5,7 @@
 //   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline &hour=15
 //   &still (parks the traffic) &gputimer=0 (no GPU timer queries)
 //   &opt=0-8 (the optimisations below, cumulative; default all)
-//   &aa=smaa|fxaa|none &shadowmap=8192 (trade-offs) &bench (see scripts/bench-town.ts)
+//   &aa=msaa|smaa|fxaa|none &scale=1 &shadowmap=8192 (trade-offs) &fps=30 (cap) &bench (see scripts/bench-town.ts)
 // The bottom-left panel ("stats for nerds") shows frame, CPU and GPU times,
 // draw calls, triangles and memory, for judging the cost of new models.
 // A new model shows up once it is added to BLOCKS below.
@@ -14,11 +14,11 @@
 // out before the app gets them (docs/models.md, "Performance"); each is
 // commented where it is made. Measured on a Radeon 610M iGPU, GPU ms per
 // frame at 1600 x 900 (1.5x), overview / street level: as first built
-// 88 / 95; 1 res 55 / 60; 2 shadow 30 / 32; 3 cap (energy, not frame time);
-// 4 cull 28 / 28; 5 trees 23 / 26; 6 sky 21 / 23; 7 merge 19 / 23 (CPU);
-// 8 ibl 17 / 20 (table in docs/models.md).
+// 88 / 95; 1 res 61 / 64; 2 shadow 36 / 39; 3 idle (energy, not frame time);
+// 4 cull 33 / 36; 5 trees 24 / 32; 6 sky 23 / 29; 7 merge 23 / 29 (CPU);
+// 8 ibl 20 / 24 (table in docs/models.md).
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
@@ -38,7 +38,7 @@ const night = hour < 6 || hour >= 19.5;
 
 // Optimisations, easiest first; ?opt=N turns on the first N (default all),
 // ?opt=0 is the scene as first built.
-const OPTS = ["res", "shadow", "cap", "cull", "trees", "sky", "merge", "ibl"] as const;
+const OPTS = ["res", "shadow", "idle", "cull", "trees", "sky", "merge", "ibl"] as const;
 type Opt = (typeof OPTS)[number];
 const level = Math.min(OPTS.length, Number(q.get("opt") ?? OPTS.length));
 const on = (o: Opt) => OPTS.indexOf(o) < level;
@@ -68,9 +68,12 @@ const EDGE_Z = 1.5 * PITCH_Z;
 
 const el = document.getElementById("view")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-// res: one pixel per CSS pixel and post-process anti-aliasing (SMAA) instead
-// of 4x MSAA at up to 1.5x: 2.25x fewer pixels to shade on a 1.5x screen.
-renderer.setPixelRatio(on("res") ? 1 : Math.min(devicePixelRatio, 1.5));
+// res: one pixel per CSS pixel, and MSAA 4x with alpha to coverage, so cut-out
+// leaves and railings antialias too (SMAA at 1x broke thin railings up and
+// stair-stepped edges once stretched to a 1.5x screen).
+// &aa=msaa (default) | smaa | fxaa | none; &scale= overrides the render scale.
+const aa = on("res") ? (q.get("aa") ?? "msaa") : "msaa";
+renderer.setPixelRatio(q.has("scale") ? Number(q.get("scale")) : on("res") ? 1 : Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -98,11 +101,60 @@ const [pos, at, fov] = VIEWS[view] ?? VIEWS.overview;
 camera.position.fromArray(pos);
 camera.fov = fov;
 camera.updateProjectionMatrix();
-const controls = new OrbitControls(camera, renderer.domElement);
+// Map controls, as in a city builder: left drag pans along the ground,
+// right drag (or ctrl / shift + left) turns, the wheel zooms, WASD pans. The
+// camera stays above ground, out of buildings and inside the map, and moves
+// no faster than SPEED times its distance to the target a second (see limit()).
+const controls = new MapControls(camera, renderer.domElement);
 controls.target.fromArray(at);
 controls.enableDamping = true;
-controls.maxPolarAngle = Math.PI * 0.62;
+controls.dampingFactor = 0.08;
+controls.screenSpacePanning = false;
+controls.maxPolarAngle = Math.PI * 0.62; // street views look up at the towers; limit() keeps the camera above ground
+controls.minDistance = 4;
+controls.maxDistance = 900;
+controls.rotateSpeed = 0.5;
+controls.zoomSpeed = 0.8;
+controls.keys = { LEFT: "KeyA", UP: "KeyW", RIGHT: "KeyD", BOTTOM: "KeyS" };
+controls.keyPanSpeed = 25;
+controls.listenToKeyEvents(window);
 controls.update();
+const SPEED = 1.6;
+const EYE = 1.6; // lowest eye height
+const BOUND = 450; // how far from the middle the target may go
+const solids: THREE.Box3[] = []; // building bodies, filled by place()
+const prevCam = camera.position.clone();
+const prevTarget = controls.target.clone();
+const push = new THREE.Vector3();
+/** Holds the camera to the rules after controls.update(); dt in seconds. */
+function limit(dt: number) {
+  const t = controls.target;
+  t.x = THREE.MathUtils.clamp(t.x, -BOUND, BOUND);
+  t.z = THREE.MathUtils.clamp(t.z, -BOUND, BOUND);
+  t.y = Math.max(0, t.y);
+  // Speed: target and eye each move at most SPEED x distance per second (and 30 m/s close up).
+  const max = Math.max(30, SPEED * camera.position.distanceTo(t)) * dt;
+  for (const [now, prev] of [[t, prevTarget], [camera.position, prevCam]] as const) {
+    push.subVectors(now, prev);
+    if (push.length() > max) now.copy(prev).addScaledVector(push.normalize(), max);
+  }
+  // Out of buildings: push the eye out through the nearest face.
+  const c = camera.position;
+  for (const b of solids) {
+    const m = 1.2;
+    if (c.x < b.min.x - m || c.x > b.max.x + m || c.z < b.min.z - m || c.z > b.max.z + m || c.y > b.max.y + m) continue;
+    const opts = [c.x - (b.min.x - m), b.max.x + m - c.x, c.z - (b.min.z - m), b.max.z + m - c.z, b.max.y + m - c.y];
+    const k = opts.indexOf(Math.min(...opts));
+    if (k === 0) c.x = b.min.x - m;
+    else if (k === 1) c.x = b.max.x + m;
+    else if (k === 2) c.z = b.min.z - m;
+    else if (k === 3) c.z = b.max.z + m;
+    else c.y = b.max.y + m;
+  }
+  c.y = Math.max(EYE, c.y);
+  prevCam.copy(c);
+  prevTarget.copy(t);
+}
 
 const hud = document.getElementById("hud")!;
 const link = (label: string, params: Record<string, string>) => {
@@ -123,8 +175,39 @@ link("☾ night", { hour: "21" });
 const elev = night ? 0.5 : Math.max(4, 50 * Math.sin(((hour - 6) / 13.5) * Math.PI));
 const az = THREE.MathUtils.degToRad(night ? 210 : -95 + (hour - 9) * 12);
 const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - (night ? -12 : elev)), az);
+// Night: a full moon behind the default views (so the facades they face are moonlit; turn round to see it), moonlight that casts shadows,
+// a dark blue sky with stars and a glow round the moon.
+const moonDir = new THREE.Vector3(-0.45, 0.5, 0.6).normalize();
+function nightSky(size: number, stars = true) {
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uMoon: { value: moonDir } },
+    side: THREE.BackSide,
+    depthWrite: false,
+    vertexShader: "varying vec3 vDir;\nvoid main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    fragmentShader: `
+      uniform vec3 uMoon;
+      varying vec3 vDir;
+      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, -0.2, 1.0);
+        vec3 col = mix(vec3(0.05, 0.075, 0.13), vec3(0.008, 0.014, 0.035), smoothstep(-0.02, 0.55, h));
+        float m = max(dot(d, uMoon), 0.0);
+        col += vec3(0.16, 0.2, 0.3) * pow(m, 40.0) + vec3(0.03, 0.04, 0.07) * pow(m, 5.0);
+        col += vec3(5.0, 4.8, 4.3) * smoothstep(0.99993, 0.99996, m);
+        ${stars ? "float s = hash(floor(d * 700.0)); col += vec3(1.0, 0.97, 0.9) * step(0.9986, s) * (0.6 + 0.8 * fract(s * 91.0)) * smoothstep(0.02, 0.25, h) * (1.0 - smoothstep(0.995, 0.9999, m));" : ""}
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), m);
+  mesh.scale.setScalar(size);
+  return mesh;
+}
 const sky = new Sky();
 sky.scale.setScalar(5000);
+const skyMesh: THREE.Mesh = night ? nightSky(5000) : sky;
 const su = sky.material.uniforms;
 su.turbidity.value = 4;
 su.rayleigh.value = night ? 0.3 : 1.4;
@@ -136,11 +219,11 @@ su.sunPosition.value.copy(sunDir);
 // redrawn when the sun moves on).
 if (on("sky")) {
   const skyScene = new THREE.Scene();
-  skyScene.add(sky);
-  const cubeRT = new THREE.WebGLCubeRenderTarget(512, { type: THREE.HalfFloatType });
+  skyScene.add(skyMesh);
+  const cubeRT = new THREE.WebGLCubeRenderTarget(night ? 1024 : 512, { type: THREE.HalfFloatType });
   new THREE.CubeCamera(1, 6000, cubeRT).update(renderer, skyScene);
   scene.background = cubeRT.texture;
-} else scene.add(sky);
+} else scene.add(skyMesh);
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envScene = new THREE.Scene();
@@ -150,7 +233,7 @@ Object.assign(envSky.material.uniforms, THREE.UniformsUtils.clone(sky.material.u
 envSky.material.uniforms.sunPosition.value.copy(sunDir);
 envSky.material.uniforms.mieDirectionalG.value = 0.6;
 envSky.material.uniforms.showSunDisc.value = 0;
-envScene.add(envSky);
+envScene.add(night ? nightSky(1000, false) : envSky);
 const envGround = new THREE.Mesh(new THREE.CircleGeometry(900, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: night ? 0x050608 : 0x3a3c3e }));
 envGround.position.y = -2;
 envScene.add(envGround);
@@ -159,9 +242,9 @@ scene.environment = env;
 scene.environmentIntensity = night ? 0.08 : 0.12;
 setRealEnv(env);
 
-const sun = new THREE.DirectionalLight(night ? 0x8fa8d8 : 0xfff1dc, night ? 0.25 : 5);
+const sun = new THREE.DirectionalLight(night ? 0xa4bbe8 : 0xfff1dc, night ? 0.9 : 5);
 const reach = 200;
-sun.position.copy(night ? new THREE.Vector3(-0.4, 0.8, 0.5) : sunDir).multiplyScalar(500);
+sun.position.copy(night ? moonDir : sunDir).multiplyScalar(500);
 sun.target.position.set(20, 0, 0);
 sun.position.add(sun.target.position);
 scene.add(sun.target);
@@ -175,10 +258,10 @@ sc.far = 1200;
 sun.shadow.bias = -0.0002;
 sun.shadow.normalBias = 0.05;
 scene.add(sun);
-const hemi = new THREE.HemisphereLight(night ? 0x223044 : 0xc8dcff, night ? 0x101010 : 0x5a5248, night ? 0.15 : 0.35);
+const hemi = new THREE.HemisphereLight(night ? 0x3a4c70 : 0xc8dcff, night ? 0x15171c : 0x5a5248, night ? 0.3 : 0.35);
 scene.add(hemi);
-scene.fog = new THREE.Fog(night ? 0x0a0e18 : 0xc4d2e0, 400, 3000);
-renderer.toneMappingExposure = night ? 0.9 : 0.75;
+scene.fog = new THREE.Fog(night ? 0x0c1424 : 0xc4d2e0, 400, 3000);
+renderer.toneMappingExposure = night ? 1.05 : 0.75;
 interiorUniforms.uDay.value = night ? 0 : 1;
 interiorUniforms.uNight.value = night ? 1 : 0;
 
@@ -200,7 +283,27 @@ function chunk(cat: keyof typeof cats, key: string, x: number, z: number, far = 
 }
 const TINY = 140;
 const SMALL = 320;
-type StreetParts = { surf: Parts; trees: Trees; props: Parts; tiny: Parts };
+type StreetParts = { surf: Parts; trees: Trees; props: Parts; tiny: Parts; pools: Parts };
+
+/** The warm pool of light a street lamp throws on the road at night: an additive decal, not a real light (which would cost every pixel). */
+let poolMatC: THREE.MeshBasicMaterial | null = null;
+const poolGeo = new THREE.PlaneGeometry(13, 13);
+function poolMat() {
+  if (poolMatC) return poolMatC;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d")!;
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.35, "rgba(255,255,255,0.55)");
+  g.addColorStop(0.7, "rgba(255,255,255,0.15)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  poolMatC = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), color: 0xffb870, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  poolMatC.userData.noShadow = true;
+  return poolMatC;
+}
 
 // trees: past IMPOSTOR_NEAR a tile's trees are drawn as impostors, three
 // crossed cards (front, side and top) carrying a picture of that species
@@ -384,6 +487,7 @@ function place(code: string, lx: number, lz: number, rot: number, seed: number) 
   };
   const g = building(s).group;
   cats.buildings.add(g);
+  solids.push(new THREE.Box3(new THREE.Vector3(s.x - def.w / 2, 0, s.z - def.d / 2), new THREE.Vector3(s.x + def.w / 2, s.height + KERB, s.z + def.d / 2)));
   return g;
 }
 
@@ -447,7 +551,10 @@ function streets(P: StreetParts, b: { x: number; z: number }, r: () => number) {
   const ex = BLOCK_X / 2 + pw - 0.45;
   const ez = BLOCK_Z / 2 + pw - 0.45;
   for (const lz of [-1, 1]) {
-    for (const t of [-1, -1 / 3, 1 / 3, 1]) furniture(P.props, "lamp_led", b.x + t * (BLOCK_X / 2 - 1), KERB, b.z + lz * ez, lz > 0 ? 0 : Math.PI);
+    for (const t of [-1, -1 / 3, 1 / 3, 1]) {
+      furniture(P.props, "lamp_led", b.x + t * (BLOCK_X / 2 - 1), KERB, b.z + lz * ez, lz > 0 ? 0 : Math.PI);
+      if (night) P.pools.add(poolMat(), poolGeo, b.x + t * (BLOCK_X / 2 - 1), KERB + 0.02, b.z + lz * (ez + 1.6), -Math.PI / 2);
+    }
     for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) treeAt(P.trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
     // Parked cars along the kerb, between the trees.
     for (const t of [-2 / 3, 0, 2 / 3]) {
@@ -581,7 +688,7 @@ function traffic() {
 
 // ---- go ----
 
-Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(() => {
+Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async () => {
   const missing = [...Object.keys(DEFS), ...PROPS].filter((id) => !hasReal(id));
   if (missing.length) console.warn("not built:", missing);
   const ground = new Parts();
@@ -593,7 +700,7 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(() => 
     const x = b.bx * PITCH_X;
     const z = b.bz * PITCH_Z;
     const key = `${x},${z}`;
-    const P = { surf: chunk("streets", key, x, z), trees: trees("streets", key, x, z), props: chunk("streets", `${key}:props`, x, z, SMALL), tiny: chunk("streets", `${key}:tiny`, x, z, TINY) };
+    const P = { surf: chunk("streets", key, x, z), trees: trees("streets", key, x, z), props: chunk("streets", `${key}:props`, x, z, SMALL), tiny: chunk("streets", `${key}:tiny`, x, z, TINY), pools: chunk("streets", `${key}:pools`, x, z) };
     streets(P, { x, z }, r);
     if (b.park) {
       park(P.props, { x, z, kind: b.park, seed: 5 + b.bx * 3 + b.bz }, pole, bulb);
@@ -627,6 +734,15 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(() => 
   }
   traffic();
   renderer.shadowMap.needsUpdate = true;
+  // With MSAA, cut-out leaves, railings and grilles antialias their edges too (alpha to coverage).
+  if (on("res") && aa === "msaa")
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (m && m.alphaTest > 0 && !m.alphaToCoverage) {
+        m.alphaToCoverage = true;
+        m.needsUpdate = true;
+      }
+    });
   // ibl: image-based light (the sky's prefiltered environment) costs every
   // pixel several texture reads, yet on rough brick, render and roofs at an
   // intensity of 0.12 it is a faint fill. Only glossy and metal surfaces
@@ -650,20 +766,43 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(() => 
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (m?.userData?.night) m.emissiveIntensity = night ? m.userData.night : 0;
   });
+  await prewarm();
   frames = 0;
 });
 
+/**
+ * Compiles every shader and uploads every texture now, with everything
+ * shown, instead of the first time it comes into view: a shader compiled
+ * mid-pan is a hitch of tens to hundreds of milliseconds, the 1% lows.
+ */
+async function prewarm() {
+  const hidden: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (!o.visible) {
+      hidden.push(o);
+      o.visible = true;
+    }
+  });
+  const seen = new Set<THREE.Texture>();
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material as unknown as Record<string, unknown> | undefined;
+    if (!m) return;
+    for (const v of Object.values(m)) if (v instanceof THREE.Texture && !seen.has(v) && v.image) seen.add(v);
+  });
+  for (const t of seen) renderer.initTexture(t);
+  await renderer.compileAsync(scene, camera);
+  for (const o of hidden) o.visible = false;
+}
+
 // ---- render ----
 
-const target_ = new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { samples: on("res") ? 0 : 4, type: THREE.HalfFloatType });
+const target_ = new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { samples: aa === "msaa" ? 4 : 0, type: THREE.HalfFloatType });
 const composer = new EffectComposer(renderer, target_);
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.5, 0.75);
 bloom.enabled = night;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
-// &aa=smaa (default with res) | fxaa (cheaper, softer) | none
-const aa = on("res") ? (q.get("aa") ?? "smaa") : "msaa";
 const smaa = aa === "smaa" ? new SMAAPass() : aa === "fxaa" ? new FXAAPass() : null;
 if (smaa) composer.addPass(smaa);
 addEventListener("resize", () => {
@@ -677,7 +816,7 @@ let frames = -1;
 let last = performance.now();
 const still = q.has("still") || q.has("bench");
 const bench = q.has("bench");
-(window as unknown as { town: object }).town = { scene, renderer, cats, camera, impostorJobs: () => impostorJobs, atlas: () => atlas, treeTiles: () => treeTiles };
+(window as unknown as { town: object }).town = { scene, renderer, cats, camera, impostorJobs: () => impostorJobs, atlas: () => atlas, treeTiles: () => treeTiles, solids: () => solids };
 
 // ---- stats for nerds (bottom left) ----
 
@@ -774,7 +913,7 @@ function updateText() {
     ["frame", `${f.avg.toFixed(2)} ms  (min ${f.min.toFixed(1)}, max ${f.max.toFixed(1)})`],
     ["cpu", `${c.avg.toFixed(2)} ms  (max ${c.max.toFixed(1)})`],
     ["gpu", timerExt ? `${g.avg.toFixed(2)} ms  (max ${g.max.toFixed(1)})` : "n/a (no timer query)"],
-    ["gpu busy", timerExt ? `${(busy * 100).toFixed(0)}%  (${capped ? "30 fps cap, idle when still" : "uncapped"})` : "n/a"],
+    ["gpu busy", timerExt ? `${(busy * 100).toFixed(0)}%  (${fpsCap ? `${fpsCap} fps cap` : "uncapped"}${idle ? ", idle when still" : ""})` : "n/a"],
     ["opt", `${level}/${OPTS.length}  ${OPTS.slice(0, level).join(" ") || "none"}`],
     ["draws", fmt(i.render.calls)],
     ["tris", fmt(i.render.triangles)],
@@ -798,7 +937,10 @@ let lastText = 0;
 let dirty = true;
 controls.addEventListener("change", () => (dirty = true));
 addEventListener("resize", () => (dirty = true));
-const capped = on("cap") && !bench;
+// idle: no frames while nothing moves (&still, camera at rest). &fps=30 caps the rate (off by default).
+const idle = on("idle") && !bench;
+const fpsCap = Number(q.get("fps") ?? 0);
+let lastTick = performance.now();
 let rendered = 0;
 let busyMs = 0;
 let busy = 0;
@@ -808,7 +950,10 @@ renderer.setAnimationLoop(() => {
   const now = performance.now();
   const moving = !still && movers.length > 0;
   controls.update();
-  if (capped && (now - last < 1000 / 30 - 2 || !(dirty || moving || frames < 10))) return;
+  limit(Math.min(0.1, (now - lastTick) / 1000));
+  lastTick = now;
+  if (fpsCap && now - last < 1000 / fpsCap - 2) return;
+  if (idle && !(dirty || moving || frames < 10)) return;
   dirty = false;
   // (Everything stays in while the shadow map is drawn, so props that pop in keep their shadows.)
   if (impostorJobs.length) drawImpostors();
@@ -868,6 +1013,6 @@ renderer.setAnimationLoop(() => {
   // Bench: once the history has filled with settled frames, publish its stats.
   if (bench && frames === 5 + N + 20) {
     const i = renderer.info;
-    (window as unknown as { bench: object }).bench = { frame: stat(frameMs), cpu: stat(cpuMs), gpu: stat(gpuMs), draws: i.render.calls, tris: i.render.triangles, geoms: i.memory.geometries, textures: i.memory.textures, canvas: [renderer.domElement.width, renderer.domElement.height] };
+    (window as unknown as { bench: object }).bench = { frame: stat(frameMs), cpu: stat(cpuMs), gpu: stat(gpuMs), draws: i.render.calls, tris: i.render.triangles, geoms: i.memory.geometries, textures: i.memory.textures, canvas: [renderer.domElement.width, renderer.domElement.height], spikes: [...cpuMs].map((v, k) => [(k - head + N) % N, +v.toFixed(1)]).filter(([, v]) => v > 2 * stat(cpuMs).avg).sort((x, y) => x[0] - y[0]) };
   }
 });
