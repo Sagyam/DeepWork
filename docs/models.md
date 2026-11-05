@@ -520,7 +520,9 @@ goals, bleachers), and the terrain.
 ## Last: performance
 
 Deferred to the end on purpose. Everything here is in the measurements
-above; none of it changes how models look.
+above; none of it changes how models look. The showcase town has tried
+several of them (idle frames, camera limits, render scale; "Tried in the
+showcase town" above); they are ticked here once the app has them.
 
 - [ ] **LODs:** LOD 1 (3-5 k triangles, facades flat with baked colour,
       normal and AO maps, glass keeps its rooms) and LOD 2 (200-400, a box
