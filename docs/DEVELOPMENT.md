@@ -71,11 +71,27 @@ CI builds ship without them.
 The showcase town, `http://localhost:5173/town.html`, puts every model
 together in a hand-laid 3 x 3 block town (downtown towers, main street,
 apartments, cottages, works, a park and a plaza, the river and bridge,
-moving traffic) without earning anything. `view=overview|downtown|main|homes|works|bridge|plaza|skyline`,
-`hour`, `&still` parks the traffic. Its bottom-left panel shows FPS, frame,
+moving traffic) without earning anything. `view=overview|downtown|main|homes|works|bridge|plaza|skyline|fountain|pond`,
+`hour`, `&still` parks the traffic, `&fps=30` caps the frame rate (off by
+default). Map controls: left drag pans, right drag turns, the wheel zooms,
+WASD pans; the camera stays above ground, out of buildings and in the map,
+with a speed limit. Its bottom-left panel shows FPS, frame,
 CPU and GPU times (GPU via `EXT_disjoint_timer_query_webgl2`; `&gputimer=0`
 turns it off), draw calls, triangles and memory, with a frame time graph.
 A new model appears in it once it is added to `BLOCKS` in `ui/src/proto/town.ts`.
+
+It also carries the rendering optimisations, cumulative and easiest first
+(`&opt=0` is the scene as first built, `&opt=8` or no `opt` all of them;
+`docs/models.md`, "Tried in the showcase town"), and two trade-offs,
+`&aa=msaa|smaa|fxaa|none` and `&shadowmap=` (plus `&scale=`, the render scale). To measure them headless on this
+machine's GPU (system Chromium, timer queries):
+
+```sh
+cd ui
+bun run dev &
+bun scripts/bench-town.ts "view=overview&opt=0" "view=overview" "view=downtown"
+HIDE=woods bun scripts/bench-town.ts "view=overview"   # what the woods cost
+```
 
 ## Install
 

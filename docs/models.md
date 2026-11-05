@@ -545,6 +545,81 @@ above; none of it changes how models look.
       whose WebGL is usually slower than Chromium's. Target: 30 fps for an
       end-game city on a Radeon 610M-class iGPU.
 
+### Tried in the showcase town (2026-11-05)
+
+`ui/town.html` (every model in a hand-laid town, 56 buildings, ~1,700
+trees, traffic) got the cheap optimisations first, each behind a cumulative
+`&opt=N`, measured with `ui/scripts/bench-town.ts` on the Radeon 610M at
+1600 x 900 CSS pixels on a 1.5x screen. GPU ms per frame (fps):
+
+| Step (`&opt=`) | What | Overview | Street level | Homes from above |
+|---|---|---|---|---|
+| 0 | as first built (1.5x pixels, MSAA 4x, shadows every frame) | 88 (11 fps) | 95 (10) | 102 (10) |
+| 1 `res` | 1x pixels, MSAA 4x with alpha to coverage | 61 | 64 | 69 |
+| 2 `shadow` | shadow map drawn once; blob shadows under moving cars | 36 | 39 | 44 |
+| 3 `idle` | no frames while nothing moves | (energy) | (energy) | (energy) |
+| 4 `cull` | scenery merged per tile; small props drop out with distance | 33 | 36 | 41 |
+| 5 `trees` | impostors past 150 m | 24 | 32 | 35 |
+| 6 `sky` | sky drawn once into a cube map | 23 | 29 | 35 |
+| 7 `merge` | a block's buildings merged by material (-900 draws) | 23 | 29 | 35 |
+| 8 `ibl` | environment light on glossy materials only | **20 (51 fps)** | **24 (41)** | **29 (34)** |
+
+With SMAA instead of MSAA (`&aa=smaa`), step 8 is 17 / 20 / 24 ms.
+
+What it taught, for the app:
+
+- **Judge smoothness by the 1% low, not the average** (the user, trying
+  it: about 20 fps 1% low is where it starts to feel smooth). Hitches come
+  from shaders compiled and textures uploaded the first time something comes
+  into view, so the town compiles and uploads everything at load
+  (`prewarm()`). A frame cap hides the difference between levels, so it is
+  off by default (`&fps=30`).
+- **SMAA at 1x stair-stepped edges once stretched to a 1.5x screen**, and
+  broke thin cut-out railings up; MSAA 4x at 1x with alpha to coverage on
+  cut-out materials keeps them clean, for ~0-5 ms more than SMAA. Native
+  1.5x costs double (40 ms at street level).
+
+- **First it was GPU bound by pixels and the shadow pass**, not by draw
+  calls or (after step 2) triangles: culling cut triangles 30-45% for ~10%,
+  and merging cut ~900 draws for no GPU time (some CPU).
+- **Render scale and a static shadow map are most of the win** (84 to 27 ms):
+  the shadow map was re-drawing every triangle every frame. The app's sun
+  moves, but slowly: redraw it every few minutes or when a building changes,
+  not every frame. Moving cars get a blob instead.
+- **Trees are overdraw**: alpha-tested leaf cards, several layers deep a
+  pixel, with no early depth rejection. Impostors (three crossed cards from
+  a 2048 atlas rendered at load) past 150 m. Alpha-tested mips need a low
+  cut-off plus sharpening or far impostors vanish.
+- **The scattering sky is a full-screen shader**: drawn once into a cube
+  map, it costs nothing (4 ms at street level, where it fills half the screen).
+- **Image-based light everywhere is expensive for what it adds**: only
+  glossy and metal materials keep the environment map; a brighter hemisphere
+  light fills the rest.
+- **Not worth it here**: anisotropic filtering 8x to 1x (~0.5 ms), dropping
+  normal and roughness maps on buildings (1-2.5 ms, visible), a cheap
+  material for far buildings (0.6 ms in the overview, nothing close up),
+  geometry LODs for buildings (14-36 k triangles each: their cost is pixels),
+  FXAA for MSAA or a 4096 shadow map (visibly worse).
+- **A shadow map drawn once must wait for its textures**: drawn on the
+  first frame, before the leaf textures loaded, every leaf card was cut away
+  and trees cast the shadows of bare branches. It is drawn again once every
+  cut-out texture has arrived (the same trap as the impostors).
+- **Sky shaders pinned to the far plane**, or a cube camera with a short
+  far plane (the environment map's is 100 m) sees nothing: night
+  reflections were black until the night sky did what three's Sky does.
+- **Water is one shader for every surface** (`real.ts` `waterMat`): the
+  river, the park pond and the kit fountain's basins ripple (waves summed in
+  world space; rings where a fountain's water lands), steep parts run with
+  falling streaks, and `fountainSpray` is a GPU-only particle spray (the
+  town adds it to the plaza). `setWaterTime` drives them; the app's scene
+  calls it too.
+- **Clamp brightness before bloom**: near-mirror glass catching the moon
+  exactly is one pixel hundreds of times too bright, smeared into a disc.
+- **Still open**: KTX2 textures (bandwidth, which an iGPU is short of: six
+  texture reads a building pixel), the shadow filter (5 taps into 8192²,
+  3-4 ms), and what a frame cap saves in energy (idle frames cost
+  nothing; a moving scene at 30 fps costs half the GPU of 60).
+
 ## Rough total
 
 | Work | Windows (5 h each) |

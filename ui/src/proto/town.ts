@@ -2,26 +2,47 @@
 // hand-laid town, built with the app's own code (models.ts, real.ts), so
 // new models can be seen in context without earning them through focus.
 // A dev tool, not part of the app. Open /town.html in the dev server with
-//   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline &hour=15
+//   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline|fountain|pond &hour=15
 //   &still (parks the traffic) &gputimer=0 (no GPU timer queries)
+//   &opt=0-8 (the optimisations below, cumulative; default all)
+//   &aa=msaa|smaa|fxaa|none &scale=1 &shadowmap=8192 (trade-offs) &fps=30 (cap) &bench (see scripts/bench-town.ts)
 // The bottom-left panel ("stats for nerds") shows frame, CPU and GPU times,
 // draw calls, triangles and memory, for judging the cost of new models.
 // A new model shows up once it is added to BLOCKS below.
+//
+// It is also where the realistic city's rendering optimisations are tried
+// out before the app gets them (docs/models.md, "Performance"); each is
+// commented where it is made. Measured on a Radeon 610M iGPU, GPU ms per
+// frame at 1600 x 900 (1.5x), overview / street level: as first built
+// 88 / 95; 1 res 61 / 64; 2 shadow 36 / 39; 3 idle (energy, not frame time);
+// 4 cull 33 / 36; 5 trees 24 / 32; 6 sky 23 / 29; 7 merge 23 / 29 (CPU);
+// 8 ibl 20 / 24 (table in docs/models.md).
 import * as THREE from "three";
-import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
+import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
+import { FXAAPass } from "three/examples/jsm/postprocessing/FXAAPass.js";
+import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { loadKit } from "../city/kit";
-import { building, furniture, KERB, mat, park, parked, Parts, tree } from "../city/models";
+import { building, furniture, KERB, mat, park, parked, Parts, SPECIES, tree } from "../city/models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, rng, type Spec } from "../city/plan";
-import { CAR_PAINTS, DEFS, groundMat, hasReal, interiorUniforms, loadReal, PROPS, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
+import { CAR_PAINTS, DEFS, fountainSpray, groundMat, hasReal, interiorUniforms, loadReal, PROPS, realMat, realPiece, realPieces, setRealEnv, setSignals, setWaterTime, waterMat } from "../city/real";
 
 const q = new URLSearchParams(location.search);
 const hour = Number(q.get("hour") ?? 15);
 const night = hour < 6 || hour >= 19.5;
+
+// Optimisations, easiest first; ?opt=N turns on the first N (default all),
+// ?opt=0 is the scene as first built.
+const OPTS = ["res", "shadow", "idle", "cull", "trees", "sky", "merge", "ibl"] as const;
+type Opt = (typeof OPTS)[number];
+const level = Math.min(OPTS.length, Number(q.get("opt") ?? OPTS.length));
+const on = (o: Opt) => OPTS.indexOf(o) < level;
 
 // ---- the plan: 3 x 3 blocks of 4 x 2 lots, a river and bridge east ----
 
@@ -48,10 +69,19 @@ const EDGE_Z = 1.5 * PITCH_Z;
 
 const el = document.getElementById("view")!;
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
+// res: one pixel per CSS pixel, and MSAA 4x with alpha to coverage, so cut-out
+// leaves and railings antialias too (SMAA at 1x broke thin railings up and
+// stair-stepped edges once stretched to a 1.5x screen).
+// &aa=msaa (default) | smaa | fxaa | none; &scale= overrides the render scale.
+const aa = on("res") ? (q.get("aa") ?? "msaa") : "msaa";
+renderer.setPixelRatio(q.has("scale") ? Number(q.get("scale")) : on("res") ? 1 : Math.min(devicePixelRatio, 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
+// shadow: the sun and the town stand still, so the shadow map is drawn once
+// (and again only when asked) instead of every frame; moving cars cast a
+// soft blob on the road instead.
+renderer.shadowMap.autoUpdate = !on("shadow");
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 el.appendChild(renderer.domElement);
 
@@ -66,17 +96,68 @@ const VIEWS: Record<string, [number[], number[], number]> = {
   bridge: [[RX + 40, 6, ROAD_Z + 34], [RX - 10, 3, ROAD_Z], 50],
   plaza: [[-PITCH_X + 10, 14, PITCH_Z + 48], [-PITCH_X, 2, PITCH_Z], 50],
   skyline: [[-260, 40, 120], [0, 30, 0], 32],
+  fountain: [[-PITCH_X + 8, 2.6, PITCH_Z + 8.5], [-PITCH_X, 2.6, PITCH_Z], 50],
+  pond: [[PITCH_X - 4, 5, -PITCH_Z + 15], [PITCH_X - 12, 0.2, -PITCH_Z + 1], 50],
 };
 const view = q.get("view") ?? "overview";
 const [pos, at, fov] = VIEWS[view] ?? VIEWS.overview;
 camera.position.fromArray(pos);
 camera.fov = fov;
 camera.updateProjectionMatrix();
-const controls = new OrbitControls(camera, renderer.domElement);
+// Map controls, as in a city builder: left drag pans along the ground,
+// right drag (or ctrl / shift + left) turns, the wheel zooms, WASD pans. The
+// camera stays above ground, out of buildings and inside the map, and moves
+// no faster than SPEED times its distance to the target a second (see limit()).
+const controls = new MapControls(camera, renderer.domElement);
 controls.target.fromArray(at);
 controls.enableDamping = true;
-controls.maxPolarAngle = Math.PI * 0.62;
+controls.dampingFactor = 0.08;
+controls.screenSpacePanning = false;
+controls.maxPolarAngle = Math.PI * 0.62; // street views look up at the towers; limit() keeps the camera above ground
+controls.minDistance = 4;
+controls.maxDistance = 900;
+controls.rotateSpeed = 0.5;
+controls.zoomSpeed = 0.8;
+controls.keys = { LEFT: "KeyA", UP: "KeyW", RIGHT: "KeyD", BOTTOM: "KeyS" };
+controls.keyPanSpeed = 25;
+controls.listenToKeyEvents(window);
 controls.update();
+const SPEED = 1.6;
+const EYE = 1.6; // lowest eye height
+const BOUND = 450; // how far from the middle the target may go
+const solids: THREE.Box3[] = []; // building bodies, filled by place()
+const prevCam = camera.position.clone();
+const prevTarget = controls.target.clone();
+const push = new THREE.Vector3();
+/** Holds the camera to the rules after controls.update(); dt in seconds. */
+function limit(dt: number) {
+  const t = controls.target;
+  t.x = THREE.MathUtils.clamp(t.x, -BOUND, BOUND);
+  t.z = THREE.MathUtils.clamp(t.z, -BOUND, BOUND);
+  t.y = Math.max(0, t.y);
+  // Speed: target and eye each move at most SPEED x distance per second (and 30 m/s close up).
+  const max = Math.max(30, SPEED * camera.position.distanceTo(t)) * dt;
+  for (const [now, prev] of [[t, prevTarget], [camera.position, prevCam]] as const) {
+    push.subVectors(now, prev);
+    if (push.length() > max) now.copy(prev).addScaledVector(push.normalize(), max);
+  }
+  // Out of buildings: push the eye out through the nearest face.
+  const c = camera.position;
+  for (const b of solids) {
+    const m = 1.2;
+    if (c.x < b.min.x - m || c.x > b.max.x + m || c.z < b.min.z - m || c.z > b.max.z + m || c.y > b.max.y + m) continue;
+    const opts = [c.x - (b.min.x - m), b.max.x + m - c.x, c.z - (b.min.z - m), b.max.z + m - c.z, b.max.y + m - c.y];
+    const k = opts.indexOf(Math.min(...opts));
+    if (k === 0) c.x = b.min.x - m;
+    else if (k === 1) c.x = b.max.x + m;
+    else if (k === 2) c.z = b.min.z - m;
+    else if (k === 3) c.z = b.max.z + m;
+    else c.y = b.max.y + m;
+  }
+  c.y = Math.max(EYE, c.y);
+  prevCam.copy(c);
+  prevTarget.copy(t);
+}
 
 const hud = document.getElementById("hud")!;
 const link = (label: string, params: Record<string, string>) => {
@@ -97,15 +178,56 @@ link("☾ night", { hour: "21" });
 const elev = night ? 0.5 : Math.max(4, 50 * Math.sin(((hour - 6) / 13.5) * Math.PI));
 const az = THREE.MathUtils.degToRad(night ? 210 : -95 + (hour - 9) * 12);
 const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.degToRad(90 - (night ? -12 : elev)), az);
+// Night: a full moon behind the default views (so the facades they face are moonlit; turn round to see it), moonlight that casts shadows,
+// a dark blue sky with stars and a glow round the moon.
+const moonDir = new THREE.Vector3(-0.45, 0.5, 0.6).normalize();
+function nightSky(size: number, stars = true, disc = true) {
+  const m = new THREE.ShaderMaterial({
+    uniforms: { uMoon: { value: moonDir } },
+    side: THREE.BackSide,
+    depthWrite: false,
+    // Pinned to the far plane (as Sky does), so any camera sees it, the environment map's (far 100 m) included.
+    vertexShader: "varying vec3 vDir;\nvoid main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position.z = gl_Position.w; }",
+    fragmentShader: `
+      uniform vec3 uMoon;
+      varying vec3 vDir;
+      float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+      void main() {
+        vec3 d = normalize(vDir);
+        float h = clamp(d.y, -0.2, 1.0);
+        vec3 col = mix(vec3(0.05, 0.075, 0.13), vec3(0.008, 0.014, 0.035), smoothstep(-0.02, 0.55, h));
+        float m = max(dot(d, uMoon), 0.0);
+        col += vec3(0.16, 0.2, 0.3) * pow(m, 40.0) + vec3(0.03, 0.04, 0.07) * pow(m, 5.0);
+        ${disc ? "col += vec3(5.0, 4.8, 4.3) * smoothstep(0.99993, 0.99996, m);" : ""}
+        ${stars ? "float s = hash(floor(d * 700.0)); col += vec3(1.0, 0.97, 0.9) * step(0.9986, s) * (0.6 + 0.8 * fract(s * 91.0)) * smoothstep(0.02, 0.25, h) * (1.0 - smoothstep(0.995, 0.9999, m));" : ""}
+        gl_FragColor = vec4(col, 1.0);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }`,
+  });
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), m);
+  mesh.scale.setScalar(size);
+  return mesh;
+}
 const sky = new Sky();
 sky.scale.setScalar(5000);
+const skyMesh: THREE.Mesh = night ? nightSky(5000) : sky;
 const su = sky.material.uniforms;
 su.turbidity.value = 4;
 su.rayleigh.value = night ? 0.3 : 1.4;
 su.mieCoefficient.value = 0.004;
 su.mieDirectionalG.value = 0.82;
 su.sunPosition.value.copy(sunDir);
-scene.add(sky);
+// sky: the scattering sky is a full-screen shader; while the sun stands
+// still it is drawn once into a cube map that the background samples (to be
+// redrawn when the sun moves on).
+if (on("sky")) {
+  const skyScene = new THREE.Scene();
+  skyScene.add(skyMesh);
+  const cubeRT = new THREE.WebGLCubeRenderTarget(night ? 1024 : 512, { type: THREE.HalfFloatType });
+  new THREE.CubeCamera(1, 6000, cubeRT).update(renderer, skyScene);
+  scene.background = cubeRT.texture;
+} else scene.add(skyMesh);
 
 const pmrem = new THREE.PMREMGenerator(renderer);
 const envScene = new THREE.Scene();
@@ -115,7 +237,8 @@ Object.assign(envSky.material.uniforms, THREE.UniformsUtils.clone(sky.material.u
 envSky.material.uniforms.sunPosition.value.copy(sunDir);
 envSky.material.uniforms.mieDirectionalG.value = 0.6;
 envSky.material.uniforms.showSunDisc.value = 0;
-envScene.add(envSky);
+// (Without the disc: glass would mirror it into a bloom blob.)
+envScene.add(night ? nightSky(1000, false, false) : envSky);
 const envGround = new THREE.Mesh(new THREE.CircleGeometry(900, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: night ? 0x050608 : 0x3a3c3e }));
 envGround.position.y = -2;
 envScene.add(envGround);
@@ -124,14 +247,14 @@ scene.environment = env;
 scene.environmentIntensity = night ? 0.08 : 0.12;
 setRealEnv(env);
 
-const sun = new THREE.DirectionalLight(night ? 0x8fa8d8 : 0xfff1dc, night ? 0.25 : 5);
+const sun = new THREE.DirectionalLight(night ? 0xa4bbe8 : 0xfff1dc, night ? 0.7 : 5);
 const reach = 200;
-sun.position.copy(night ? new THREE.Vector3(-0.4, 0.8, 0.5) : sunDir).multiplyScalar(500);
+sun.position.copy(night ? moonDir : sunDir).multiplyScalar(500);
 sun.target.position.set(20, 0, 0);
 sun.position.add(sun.target.position);
 scene.add(sun.target);
 sun.castShadow = true;
-sun.shadow.mapSize.setScalar(8192);
+sun.shadow.mapSize.setScalar(Number(q.get("shadowmap") ?? 8192));
 const sc = sun.shadow.camera;
 sc.left = sc.bottom = -reach;
 sc.right = sc.top = reach;
@@ -140,11 +263,220 @@ sc.far = 1200;
 sun.shadow.bias = -0.0002;
 sun.shadow.normalBias = 0.05;
 scene.add(sun);
-scene.add(new THREE.HemisphereLight(night ? 0x223044 : 0xc8dcff, night ? 0x101010 : 0x5a5248, night ? 0.15 : 0.35));
-scene.fog = new THREE.Fog(night ? 0x0a0e18 : 0xc4d2e0, 400, 3000);
-renderer.toneMappingExposure = night ? 0.9 : 0.75;
+const hemi = new THREE.HemisphereLight(night ? 0x3a4c70 : 0xc8dcff, night ? 0x15171c : 0x5a5248, night ? 0.3 : 0.35);
+scene.add(hemi);
+scene.fog = new THREE.Fog(night ? 0x0c1424 : 0xc4d2e0, 400, 3000);
+renderer.toneMappingExposure = night ? 1.05 : 0.75;
 interiorUniforms.uDay.value = night ? 0 : 1;
 interiorUniforms.uNight.value = night ? 1 : 0;
+
+// Everything by category, for the bench (cost per category) and culling.
+const cats = { buildings: new THREE.Group(), streets: new THREE.Group(), woods: new THREE.Group(), ground: new THREE.Group(), traffic: new THREE.Group() };
+for (const g of Object.values(cats)) scene.add(g);
+
+// cull: scenery is merged per tile (a block's street, a 64 m patch of
+// woods) instead of once for the whole town, so tiles out of view are
+// skipped, and small props drop out with distance: tiny ones (hydrants,
+// bins, benches, signals) past 140 m, lamps and parked cars past 320 m.
+type Chunk = { parts: Parts; centre: THREE.Vector3; far: number; group?: THREE.Group; cat: keyof typeof cats };
+const chunks = new Map<string, Chunk>();
+function chunk(cat: keyof typeof cats, key: string, x: number, z: number, far = Infinity): Parts {
+  const k = on("cull") ? `${cat}:${key}` : cat;
+  let c = chunks.get(k);
+  if (!c) chunks.set(k, (c = { parts: new Parts(), centre: new THREE.Vector3(x, 0, z), far: on("cull") ? far : Infinity, cat }));
+  return c.parts;
+}
+const TINY = 140;
+const SMALL = 320;
+type StreetParts = { surf: Parts; trees: Trees; props: Parts; tiny: Parts; pools: Parts };
+
+/** The warm pool of light a street lamp throws on the road at night: an additive decal, not a real light (which would cost every pixel). */
+let poolMatC: THREE.MeshBasicMaterial | null = null;
+const poolGeo = new THREE.PlaneGeometry(13, 13);
+function poolMat() {
+  if (poolMatC) return poolMatC;
+  const c = document.createElement("canvas");
+  c.width = c.height = 128;
+  const x = c.getContext("2d")!;
+  const g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, "rgba(255,255,255,1)");
+  g.addColorStop(0.35, "rgba(255,255,255,0.55)");
+  g.addColorStop(0.7, "rgba(255,255,255,0.15)");
+  g.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 128, 128);
+  poolMatC = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), color: 0xffb870, transparent: true, opacity: 0.32, blending: THREE.AdditiveBlending, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  poolMatC.userData.noShadow = true;
+  return poolMatC;
+}
+
+// trees: past IMPOSTOR_NEAR a tile's trees are drawn as impostors, three
+// crossed cards (front, side and top) carrying a picture of that species
+// and tint rendered once at load, 12 triangles instead of a crown of
+// alpha-tested leaf cards that the GPU shades several layers deep. The real
+// trees still draw the (static) shadow map, and come back up close.
+const IMPOSTOR_NEAR = 150;
+type Trees = { real: Parts; imp: Parts | null; key: string };
+const treeTiles = new Map<string, Trees & { centre: THREE.Vector3; realGroup?: THREE.Group; impGroup?: THREE.Group; cat: keyof typeof cats }>();
+function trees(cat: keyof typeof cats, key: string, x: number, z: number): Trees {
+  const k = `${cat}:${key}:trees`;
+  let t = treeTiles.get(k);
+  if (!t) treeTiles.set(k, (t = { real: on("cull") ? new Parts() : chunk(cat, `${key}:trees`, x, z), imp: on("trees") ? new Parts() : null, key: k, centre: new THREE.Vector3(x, 0, z), cat }));
+  return t;
+}
+
+/** A tree as tree() places it (same seed, same species, size, turn and tint), plus its impostor. */
+function treeAt(t: Trees, x: number, z: number, s: number, seed: number, y = 0) {
+  tree(t.real, x, z, s, seed, y);
+  if (!t.imp) return;
+  const r = rng(seed);
+  const name = SPECIES[Math.floor(r() * SPECIES.length)];
+  const k = 0.5 + 0.55 * s;
+  const scale = new THREE.Vector3(k, k * (0.88 + r() * 0.24), k);
+  const ry = r() * Math.PI * 2;
+  const tint = Math.floor(r() * 6);
+  const { geo, mat: m } = impostor(name, tint);
+  t.imp.add(m, geo, x, y, z, 0, ry, 0, scale);
+}
+
+const impostors = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.MeshStandardMaterial }>();
+// All impostors share one 2048 x 2048 atlas (one material, so a tile's far
+// trees are one draw): 256 x 128 slots, each a 64 x 128 front view, a
+// 64 x 128 side view and a 128 x 128 top view.
+const ATLAS = 2048;
+const impostorJobs: { mats: THREE.MeshStandardMaterial[]; draw: () => void }[] = [];
+/** Draws the impostors whose textures have loaded; true once none are left. */
+const shadowTextures = new Set<THREE.Texture>();
+const loaded = (t: THREE.Texture | null) => !t || (t.image && ((t.image as HTMLImageElement).complete ?? true) && t.version > 0);
+let atlasCleared = false;
+function drawImpostors() {
+  if (!atlasCleared && atlas) {
+    // A new render target holds garbage until cleared: clear it once, before the first slot.
+    const prev = renderer.getRenderTarget();
+    const alpha = renderer.getClearAlpha();
+    const color = renderer.getClearColor(new THREE.Color());
+    renderer.setRenderTarget(atlas);
+    renderer.setClearColor(0x000000, 0);
+    renderer.clear();
+    renderer.setRenderTarget(prev);
+    renderer.setClearColor(color, alpha);
+    atlasCleared = true;
+  }
+  const ready = (t: THREE.Texture | null) => !t || (t.image && ((t.image as HTMLImageElement).complete ?? true) && t.version > 0);
+  for (let i = impostorJobs.length - 1; i >= 0; i--) {
+    const j = impostorJobs[i];
+    if (j.mats.every((m) => ready(m.map) && ready(m.aoMap) && ready(m.normalMap))) {
+      j.draw();
+      impostorJobs.splice(i, 1);
+    }
+  }
+  return impostorJobs.length === 0;
+}
+let atlas: THREE.WebGLRenderTarget | null = null;
+let atlasMat: THREE.MeshStandardMaterial | null = null;
+/** Renders a species in a tint from the front, the side and above into one texture, and the cards that show it. */
+function impostor(name: string, tint: number) {
+  const key = `${name}:${tint}`;
+  const hit = impostors.get(key);
+  if (hit) return hit;
+  const pieces = realPiece("trees", name);
+  const box = new THREE.Box3();
+  const sc = new THREE.Scene();
+  const mats: THREE.MeshStandardMaterial[] = [];
+  // Albedo only: ambient light of pi gives back the base colour (times the baked AO).
+  sc.add(new THREE.AmbientLight(0xffffff, Math.PI));
+  for (const { role, geo } of pieces) {
+    geo.computeBoundingBox();
+    box.union(geo.boundingBox!);
+    const m = realMat("trees", role, { wall: tint, accent: 0, roof: 0, signs: 0 }, 0) as THREE.MeshStandardMaterial;
+    mats.push(m);
+    sc.add(new THREE.Mesh(geo, m));
+  }
+  const { min, max } = box;
+  const sy = max.y - min.y;
+  if (!atlas) {
+    atlas = new THREE.WebGLRenderTarget(ATLAS, ATLAS, { colorSpace: THREE.SRGBColorSpace, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter });
+    atlasMat = new THREE.MeshStandardMaterial({ map: atlas.texture, alphaTest: 0.5, roughness: 0.85 });
+    // Leaf alpha averages away in the small mip levels far trees use, and a
+    // plain 0.5 cut-off then drops them entirely: cut lower, and sharpen the
+    // edge to one pixel by alpha's screen-space slope (Ben Golus's trick).
+    atlasMat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace("#include <alphatest_fragment>", "diffuseColor.a = (diffuseColor.a - 0.22) / max(fwidth(diffuseColor.a), 0.0001) + 0.5;\nif (diffuseColor.a < 0.5) discard;");
+    };
+  }
+  const rt = atlas;
+  const slot = impostors.size;
+  const ox = (slot % (ATLAS / 256)) * 256;
+  const oy = Math.floor(slot / (ATLAS / 256)) * 128;
+  // Atlas UV of a point (u, v) in this slot's 256 x 128 unit square.
+  const A = (u: number, v: number) => [(ox + u * 256) / ATLAS, (oy + v * 128) / ATLAS];
+  const cam = (x0: number, x1: number, y0: number, y1: number, pos: THREE.Vector3, up: THREE.Vector3) => {
+    const c = new THREE.OrthographicCamera(x0, x1, y1, y0, 0.1, 100);
+    c.position.copy(pos);
+    c.up.copy(up);
+    c.lookAt(pos.x === 0 && pos.z === 0 ? new THREE.Vector3(0, 0, 0) : new THREE.Vector3(0, pos.y, 0));
+    return c;
+  };
+  const views: [THREE.Camera, number, number, number][] = [
+    [cam(min.x, max.x, min.y, max.y, new THREE.Vector3(0, 0, max.z + 10), new THREE.Vector3(0, 1, 0)), 0, 64, 128],
+    [cam(-max.z, -min.z, min.y, max.y, new THREE.Vector3(max.x + 10, 0, 0), new THREE.Vector3(0, 1, 0)), 64, 64, 128],
+    [cam(min.x, max.x, -max.z, -min.z, new THREE.Vector3(0, max.y + 10, 0), new THREE.Vector3(0, 0, -1)), 128, 128, 128],
+  ];
+  // Drawn into the atlas once the leaf and bark textures have arrived (see drawImpostors).
+  impostorJobs.push({ mats, draw: () => {
+  const prevTarget = renderer.getRenderTarget();
+  const prevClear = renderer.getClearAlpha();
+  const prevShadows = renderer.shadowMap.enabled;
+  renderer.shadowMap.enabled = false;
+  const prevColor = renderer.getClearColor(new THREE.Color());
+  renderer.setClearColor(0x000000, 0);
+  rt.scissorTest = true;
+  for (const [c, x, w, h] of views) {
+    rt.viewport.set(ox + x, oy, w, h);
+    rt.scissor.set(ox + x, oy, w, h);
+    renderer.setRenderTarget(rt);
+    renderer.render(sc, c);
+  }
+  rt.scissorTest = false;
+  renderer.setRenderTarget(prevTarget);
+  renderer.setClearColor(prevColor, prevClear);
+  renderer.shadowMap.enabled = prevShadows;
+  } });
+
+  // The cards: a front (xy) and a side (zy) card, both faces each, and a top card at crown height.
+  const crown = new THREE.Vector3((min.x + max.x) / 2, min.y + sy * 0.62, (min.z + max.z) / 2);
+  // The top card shows the crown's widest outline: a conifer is widest near its foot.
+  const topY = min.y + sy * (name === "spruce" || name === "pine" ? 0.3 : 0.62);
+  const pos: number[] = [];
+  const nrm: number[] = [];
+  const uv: number[] = [];
+  const vert = (p: THREE.Vector3, u: number, v: number) => {
+    pos.push(p.x, p.y, p.z);
+    // Normals bent out from the crown's middle, so the cards shade like one rounded mass.
+    const n = p.clone().sub(crown).normalize().add(new THREE.Vector3(0, 0.35, 0)).normalize();
+    nrm.push(n.x, n.y, n.z);
+    const [au, av] = A(u, v);
+    uv.push(au, av);
+  };
+  const quad = (a: THREE.Vector3, b: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, ua: number[], ub: number[], uc: number[], ud: number[], both = true) => {
+    // a b c d counter-clockwise seen from the front.
+    for (const [p, t] of [[a, ua], [b, ub], [c, uc], [a, ua], [c, uc], [d, ud]] as const) vert(p, t[0], t[1]);
+    if (both) for (const [p, t] of [[a, ua], [c, uc], [b, ub], [a, ua], [d, ud], [c, uc]] as const) vert(p, t[0], t[1]);
+  };
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+  const cx = crown.x;
+  const cz = crown.z;
+  quad(V(min.x, min.y, cz), V(max.x, min.y, cz), V(max.x, max.y, cz), V(min.x, max.y, cz), [0, 0], [0.25, 0], [0.25, 1], [0, 1]);
+  quad(V(cx, min.y, max.z), V(cx, min.y, min.z), V(cx, max.y, min.z), V(cx, max.y, max.z), [0.25, 0], [0.5, 0], [0.5, 1], [0.25, 1]);
+  quad(V(min.x, topY, max.z), V(max.x, topY, max.z), V(max.x, topY, min.z), V(min.x, topY, min.z), [0.5, 0], [1, 0], [1, 1], [0.5, 1], false);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+  geo.setAttribute("uv", new THREE.Float32BufferAttribute(uv, 2));
+  const out = { geo, mat: atlasMat! };
+  impostors.set(key, out);
+  return out;
+}
 
 // ---- building ----
 
@@ -160,10 +492,45 @@ function place(code: string, lx: number, lz: number, rot: number, seed: number) 
     index: 0, kind: def.kind, style: def.style, grade: KIND_GRADE[def.kind], x: lx + Math.sin(rot) * yard, z: lz + Math.cos(rot) * yard, rot, yard,
     w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), wall: seed % 8, accent: (seed * 3) % 6, seed, damage: 0, rubble: false, model: id,
   };
-  scene.add(building(s).group);
+  const g = building(s).group;
+  cats.buildings.add(g);
+  solids.push(new THREE.Box3(new THREE.Vector3(s.x - def.w / 2, 0, s.z - def.d / 2), new THREE.Vector3(s.x + def.w / 2, s.height + KERB, s.z + def.d / 2)));
+  return g;
 }
 
-function streets(parts: Parts, b: { x: number; z: number }, r: () => number) {
+// merge: a building is a mesh per material (30-45 of them), so 56
+// buildings were ~2,100 draws, each with its state change. Buildings of the
+// same model share materials, so a block's buildings merge into one mesh per
+// material: a draw per material per block.
+function mergeBlock(groups: THREE.Group[]) {
+  const byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  for (const g of groups) {
+    g.updateMatrixWorld(true);
+    g.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (!m.isMesh) return;
+      const list = byMat.get(m.material as THREE.Material) ?? [];
+      list.push(m.geometry.clone().applyMatrix4(m.matrixWorld));
+      byMat.set(m.material as THREE.Material, list);
+    });
+    g.removeFromParent();
+  }
+  const out = new THREE.Group();
+  for (const [material, list] of byMat) {
+    const merged = mergeGeometries(list);
+    for (const geo of merged ? [merged] : list) {
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = !material.userData.noShadow;
+      mesh.receiveShadow = true;
+      out.add(mesh);
+    }
+    if (merged) for (const geo of list) geo.dispose();
+  }
+  cats.buildings.add(out);
+}
+
+function streets(P: StreetParts, b: { x: number; z: number }, r: () => number) {
+  const parts = P.surf;
   const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
   const walk = groundMat("pave", 3.6, { roughness: 0.88 });
   const kerbStone = mat(0xb6b2aa, { roughness: 0.8 });
@@ -191,28 +558,31 @@ function streets(parts: Parts, b: { x: number; z: number }, r: () => number) {
   const ex = BLOCK_X / 2 + pw - 0.45;
   const ez = BLOCK_Z / 2 + pw - 0.45;
   for (const lz of [-1, 1]) {
-    for (const t of [-1, -1 / 3, 1 / 3, 1]) furniture(parts, "lamp_led", b.x + t * (BLOCK_X / 2 - 1), KERB, b.z + lz * ez, lz > 0 ? 0 : Math.PI);
-    for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) tree(parts, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
+    for (const t of [-1, -1 / 3, 1 / 3, 1]) {
+      furniture(P.props, "lamp_led", b.x + t * (BLOCK_X / 2 - 1), KERB, b.z + lz * ez, lz > 0 ? 0 : Math.PI);
+      if (night) P.pools.add(poolMat(), poolGeo, b.x + t * (BLOCK_X / 2 - 1), KERB + 0.02, b.z + lz * (ez + 1.6), -Math.PI / 2);
+    }
+    for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) treeAt(P.trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
     // Parked cars along the kerb, between the trees.
     for (const t of [-2 / 3, 0, 2 / 3]) {
       if (r() < 0.3) continue;
       const x = b.x + t * (BLOCK_X / 2 - 1) + (r() - 0.5) * 3;
-      parked(parts, x, b.z + lz * (BLOCK_Z / 2 + pw + 1.1), lz > 0 ? -Math.PI / 2 : Math.PI / 2, Math.floor(r() * 1e6), 0.06);
+      parked(P.props, x, b.z + lz * (BLOCK_Z / 2 + pw + 1.1), lz > 0 ? -Math.PI / 2 : Math.PI / 2, Math.floor(r() * 1e6), 0.06);
     }
   }
-  for (const sx of [-1, 1]) tree(parts, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
+  for (const sx of [-1, 1]) treeAt(P.trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
   // Street furniture: signals, hydrant, bins, bench, bus stop.
   const cx = BLOCK_X / 2 + pw - 0.55;
   const cz = BLOCK_Z / 2 + pw - 0.55;
-  furniture(parts, "signal_mast", b.x + cx, KERB, b.z + cz, Math.PI / 2, undefined, "a");
-  furniture(parts, "signal_mast", b.x - cx, KERB, b.z - cz, -Math.PI / 2, undefined, "a");
-  furniture(parts, "signal_post", b.x - cx, KERB, b.z + cz, 0, undefined, "b");
-  furniture(parts, "signal_post", b.x + cx, KERB, b.z - cz, Math.PI, undefined, "b");
+  furniture(P.tiny, "signal_mast", b.x + cx, KERB, b.z + cz, Math.PI / 2, undefined, "a");
+  furniture(P.tiny, "signal_mast", b.x - cx, KERB, b.z - cz, -Math.PI / 2, undefined, "a");
+  furniture(P.tiny, "signal_post", b.x - cx, KERB, b.z + cz, 0, undefined, "b");
+  furniture(P.tiny, "signal_post", b.x + cx, KERB, b.z - cz, Math.PI, undefined, "b");
   const kb = BLOCK_Z / 2 + pw - 0.4;
-  furniture(parts, "hydrant", b.x, KERB, b.z + kb, 0);
-  for (const sx of [-1, 1]) furniture(parts, "bin", b.x + sx * (BLOCK_X / 2 - 3.2), KERB, b.z - sx * kb, sx > 0 ? 0 : Math.PI);
-  furniture(parts, "bench", b.x - 20.7, KERB, b.z + BLOCK_Z / 2 + pw - 1.3, 0);
-  furniture(parts, "busstop", b.x + 20.7, KERB, b.z - (BLOCK_Z / 2 + pw - 1.0), Math.PI);
+  furniture(P.tiny, "hydrant", b.x, KERB, b.z + kb, 0);
+  for (const sx of [-1, 1]) furniture(P.tiny, "bin", b.x + sx * (BLOCK_X / 2 - 3.2), KERB, b.z - sx * kb, sx > 0 ? 0 : Math.PI);
+  furniture(P.tiny, "bench", b.x - 20.7, KERB, b.z + BLOCK_Z / 2 + pw - 1.3, 0);
+  furniture(P.tiny, "busstop", b.x + 20.7, KERB, b.z - (BLOCK_Z / 2 + pw - 1.0), Math.PI);
 }
 
 function land(parts: Parts) {
@@ -245,19 +615,39 @@ function land(parts: Parts) {
     if (out < 6) continue;
     if (Math.abs(z - ROAD_Z) < 9 || Math.abs(x - RX) < RIVER + 4) continue;
     if (r() > Math.min(1, 0.15 + out / 120)) continue;
-    tree(parts, x, z, 0.8 + r() * 0.5, Math.floor(r() * 1e6), 0);
+    const cx = Math.floor(x / 64) * 64 + 32;
+    const cz = Math.floor(z / 64) * 64 + 32;
+    treeAt(trees("woods", `${cx},${cz}`, cx, cz), x, z, 0.8 + r() * 0.5, Math.floor(r() * 1e6), 0);
   }
 }
 
-const water = new THREE.Mesh(
-  new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: night ? 0x0a1420 : 0x2c4a58, roughness: 0.05, metalness: 0.2, envMapIntensity: 6 }),
-);
+// The river: the shared moving water (real.ts waterMat), at its waviest.
+const waterMat_ = waterMat({ amp: 2.4 });
+const water = new THREE.Mesh(new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2), waterMat_);
 water.position.set(RX, -1.6, 0);
 water.receiveShadow = true;
-scene.add(water);
+cats.ground.add(water);
 
 // ---- traffic: cars driving round the grid (through the junctions, it's a showcase) ----
+
+/** A soft dark ellipse under a moving car, standing in for its shadow. */
+const blobGeo = new THREE.PlaneGeometry(2.3, 5.2).rotateX(-Math.PI / 2).translate(0, 0.02, 0);
+let blob: THREE.MeshBasicMaterial | null = null;
+function blobMat() {
+  if (blob) return blob;
+  const c = document.createElement("canvas");
+  c.width = c.height = 64;
+  const x = c.getContext("2d")!;
+  const g = x.createRadialGradient(32, 32, 4, 32, 32, 32);
+  g.addColorStop(0, "rgba(0,0,0,0.75)");
+  g.addColorStop(0.6, "rgba(0,0,0,0.45)");
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = g;
+  x.fillRect(0, 0, 64, 64);
+  const t = new THREE.CanvasTexture(c);
+  blob = new THREE.MeshBasicMaterial({ map: t, transparent: true, depthWrite: false, opacity: night ? 0.35 : 0.8 });
+  return blob;
+}
 
 type Mover = { obj: THREE.Object3D; axis: "x" | "z"; dir: number; speed: number; min: number; max: number };
 const movers: Mover[] = [];
@@ -279,10 +669,11 @@ function traffic() {
         const paint = { wall: Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
         for (const { role, geo } of realPiece("cars", name)) {
           const m = new THREE.Mesh(geo, realMat("cars", role, paint, 0, "traffic"));
-          m.castShadow = true;
+          m.castShadow = !on("shadow");
           m.receiveShadow = true;
           g.add(m);
         }
+        if (on("shadow")) g.add(new THREE.Mesh(blobGeo, blobMat()));
         // Right-hand traffic: moving +x keeps to +z, moving +z keeps to -x.
         const off = 2 * dir;
         if (l.axis === "x") {
@@ -294,7 +685,7 @@ function traffic() {
         }
         const t = l.min + ((i + r() * 0.5) / n) * (l.max - l.min);
         g.position[l.axis] = t;
-        scene.add(g);
+        cats.traffic.add(g);
         movers.push({ obj: g, axis: l.axis, dir, speed: 8 + r() * 4, min: l.min, max: l.max });
       }
     }
@@ -303,47 +694,156 @@ function traffic() {
 
 // ---- go ----
 
-Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(() => {
+Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async () => {
   const missing = [...Object.keys(DEFS), ...PROPS].filter((id) => !hasReal(id));
   if (missing.length) console.warn("not built:", missing);
-  const parts = new Parts();
-  land(parts);
+  const ground = new Parts();
+  land(ground);
   const r = rng(3);
   const pole = mat(0x3c4046, { metalness: 0.6, roughness: 0.4 });
   const bulb = mat(0xfff0d0, { emissive: 0xffd9a0, emissiveIntensity: 0, night: 2.2 });
   for (const b of BLOCKS) {
     const x = b.bx * PITCH_X;
     const z = b.bz * PITCH_Z;
-    streets(parts, { x, z }, r);
+    const key = `${x},${z}`;
+    const P = { surf: chunk("streets", key, x, z), trees: trees("streets", key, x, z), props: chunk("streets", `${key}:props`, x, z, SMALL), tiny: chunk("streets", `${key}:tiny`, x, z, TINY), pools: chunk("streets", `${key}:pools`, x, z) };
+    streets(P, { x, z }, r);
     if (b.park) {
-      park(parts, { x, z, kind: b.park, seed: 5 + b.bx * 3 + b.bz }, pole, bulb);
+      park(P.props, { x, z, kind: b.park, seed: 5 + b.bx * 3 + b.bz }, pole, bulb);
+      // The plaza's fountain plays (park() draws it at 1.45x on the kerb).
+      if (b.park === "plaza") {
+        const spray = fountainSpray(x, KERB, z, 1.45);
+        if (night) (spray.material as THREE.ShaderMaterial).uniforms.uBright.value = 0.22;
+        cats.streets.add(spray);
+      }
       continue;
     }
+    const groups: THREE.Group[] = [];
     for (const [row, list] of [[1, b.south], [-1, b.north]] as const) {
-      list!.forEach((code, i) => place(code, x + (i - 1.5) * LOT, z + row * (LOT / 2), row > 0 ? 0 : Math.PI, 7 + Math.floor(r() * 400)));
+      list!.forEach((code, i) => {
+        const g = place(code, x + (i - 1.5) * LOT, z + row * (LOT / 2), row > 0 ? 0 : Math.PI, 7 + Math.floor(r() * 400));
+        if (g) groups.push(g);
+      });
+    }
+    if (on("merge")) mergeBlock(groups);
+  }
+  for (const c of chunks.values()) {
+    c.group = new THREE.Group();
+    c.parts.into(c.group);
+    cats[c.cat].add(c.group);
+  }
+  ground.into(cats.ground);
+  for (const t of treeTiles.values()) {
+    if (!on("cull")) continue; // merged with the rest of their category (chunk())
+    t.realGroup = new THREE.Group();
+    t.real.into(t.realGroup);
+    cats[t.cat].add(t.realGroup);
+    if (t.imp) {
+      t.impGroup = new THREE.Group();
+      t.imp.into(t.impGroup, false);
+      cats[t.cat].add(t.impGroup);
     }
   }
-  const g = new THREE.Group();
-  parts.into(g);
-  scene.add(g);
   traffic();
+  renderer.shadowMap.needsUpdate = true;
+  // The leaf cards cut their shapes out of their textures, which are still
+  // loading now: drawn once from this first frame, a tree's shadow would be
+  // its bare branches. Draw it again when every cut-out texture has arrived.
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if ((o as THREE.Mesh).castShadow && m?.alphaTest && m.map) shadowTextures.add(m.map);
+  });
+  // With MSAA, cut-out leaves, railings and grilles antialias their edges too (alpha to coverage).
+  if (on("res") && aa === "msaa")
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.Material | undefined;
+      if (m && m.alphaTest > 0 && !m.alphaToCoverage) {
+        m.alphaToCoverage = true;
+        m.needsUpdate = true;
+      }
+    });
+  // ibl: image-based light (the sky's prefiltered environment) costs every
+  // pixel several texture reads, yet on rough brick, render and roofs at an
+  // intensity of 0.12 it is a faint fill. Only glossy and metal surfaces
+  // (glass, steel and car paint already carry it) keep it; the hemisphere
+  // light, a little brighter, fills the rest for nearly nothing.
+  if (on("ibl")) {
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (!m?.isMeshStandardMaterial || m.envMap) return;
+      if (m.metalness >= 0.3 || m.roughness <= 0.45) {
+        m.envMap = env;
+        m.envMapIntensity = scene.environmentIntensity;
+        m.needsUpdate = true;
+      }
+    });
+    scene.environment = null;
+    hemi.intensity *= night ? 3 : 5;
+  }
+  // Water by night: darker, the (dim) night sky stronger in it.
+  if (night)
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (m?.userData?.water && !m.userData.nightDone) {
+        m.color.multiplyScalar(0.55);
+        m.envMapIntensity = 1;
+        m.userData.nightDone = true;
+      }
+    });
   // Everything that lights at night (windows, lamps, signals, neon, headlights).
   scene.traverse((o) => {
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
     if (m?.userData?.night) m.emissiveIntensity = night ? m.userData.night : 0;
   });
+  await prewarm();
   frames = 0;
 });
 
+/**
+ * Compiles every shader and uploads every texture now, with everything
+ * shown, instead of the first time it comes into view: a shader compiled
+ * mid-pan is a hitch of tens to hundreds of milliseconds, the 1% lows.
+ */
+async function prewarm() {
+  const hidden: THREE.Object3D[] = [];
+  scene.traverse((o) => {
+    if (!o.visible) {
+      hidden.push(o);
+      o.visible = true;
+    }
+  });
+  const seen = new Set<THREE.Texture>();
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material as unknown as Record<string, unknown> | undefined;
+    if (!m) return;
+    for (const v of Object.values(m)) if (v instanceof THREE.Texture && !seen.has(v) && v.image) seen.add(v);
+  });
+  for (const t of seen) renderer.initTexture(t);
+  await renderer.compileAsync(scene, camera);
+  for (const o of hidden) o.visible = false;
+}
+
 // ---- render ----
 
-const target_ = new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { samples: 4, type: THREE.HalfFloatType });
+const target_ = new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { samples: aa === "msaa" ? 4 : 0, type: THREE.HalfFloatType });
 const composer = new EffectComposer(renderer, target_);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.5, 0.75);
+// Firefly clamp: near-mirror glass catching the moon (or sun) exactly makes
+// one pixel hundreds of times brighter than anything else, which bloom
+// smears into a disc. Capping brightness before the bloom keeps glints small.
+const clamp = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uMax: { value: 8 } },
+  vertexShader: "varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform sampler2D tDiffuse;\nuniform float uMax;\nvarying vec2 vUv;\nvoid main() { vec4 c = texture2D(tDiffuse, vUv); gl_FragColor = vec4(min(c.rgb, vec3(uMax)), c.a); }",
+});
+clamp.enabled = night;
+composer.addPass(clamp);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.5, 0.95);
 bloom.enabled = night;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
+const smaa = aa === "smaa" ? new SMAAPass() : aa === "fxaa" ? new FXAAPass() : null;
+if (smaa) composer.addPass(smaa);
 addEventListener("resize", () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
@@ -353,7 +853,9 @@ addEventListener("resize", () => {
 
 let frames = -1;
 let last = performance.now();
-const still = q.has("still");
+const still = q.has("still") || q.has("bench");
+const bench = q.has("bench");
+(window as unknown as { town: object }).town = { scene, renderer, cats, camera, impostorJobs: () => impostorJobs, atlas: () => atlas, treeTiles: () => treeTiles, solids: () => solids };
 
 // ---- stats for nerds (bottom left) ----
 
@@ -450,14 +952,16 @@ function updateText() {
     ["frame", `${f.avg.toFixed(2)} ms  (min ${f.min.toFixed(1)}, max ${f.max.toFixed(1)})`],
     ["cpu", `${c.avg.toFixed(2)} ms  (max ${c.max.toFixed(1)})`],
     ["gpu", timerExt ? `${g.avg.toFixed(2)} ms  (max ${g.max.toFixed(1)})` : "n/a (no timer query)"],
+    ["gpu busy", timerExt ? `${(busy * 100).toFixed(0)}%  (${fpsCap ? `${fpsCap} fps cap` : "uncapped"}${idle ? ", idle when still" : ""})` : "n/a"],
+    ["opt", `${level}/${OPTS.length}  ${OPTS.slice(0, level).join(" ") || "none"}`],
     ["draws", fmt(i.render.calls)],
     ["tris", fmt(i.render.triangles)],
     ["geoms", fmt(i.memory.geometries)],
     ["textures", fmt(i.memory.textures)],
     ["programs", fmt(i.programs?.length ?? 0)],
     ["scene", `${fmt(objects)} objects, ${movers.length} cars`],
-    ["canvas", `${renderer.domElement.width}×${renderer.domElement.height} @${pr}x, MSAA 4x`],
-    ["shadow", `${sun.shadow.mapSize.x}² PCF${night ? " (night: bloom)" : ""}`],
+    ["canvas", `${renderer.domElement.width}×${renderer.domElement.height} @${pr}x, ${aa === "msaa" ? "MSAA 4x" : aa.toUpperCase()}`],
+    ["shadow", `${sun.shadow.mapSize.x}² PCF, ${renderer.shadowMap.autoUpdate ? "every frame" : "drawn once"}`],
     ["heap", mem ? `${(mem.usedJSHeapSize / 2 ** 20).toFixed(0)} / ${(mem.jsHeapSizeLimit / 2 ** 20).toFixed(0)} MB` : "n/a"],
     ["gpu dev", gpuName.replace(/^ANGLE \(/, "").replace(/ \(.*$/, "").replace(/^[^,]*, /, "").slice(0, 34)],
   ];
@@ -466,8 +970,44 @@ function updateText() {
 let objects = 0;
 let lastText = 0;
 
+// cap: draw at most 30 frames a second, and none at all while nothing moves
+// (traffic parked with &still, camera at rest): a focus timer's city sits
+// on screen for hours, and an idle frame costs as much as a busy one.
+let dirty = true;
+controls.addEventListener("change", () => (dirty = true));
+addEventListener("resize", () => (dirty = true));
+// idle: no frames while nothing moves (&still, camera at rest). &fps=30 caps the rate (off by default).
+const idle = on("idle") && !bench;
+const fpsCap = Number(q.get("fps") ?? 0);
+let lastTick = performance.now();
+let rendered = 0;
+let busyMs = 0;
+let busy = 0;
+let lastBusy = performance.now();
+
 renderer.setAnimationLoop(() => {
   const now = performance.now();
+  const moving = !still && movers.length > 0;
+  controls.update();
+  limit(Math.min(0.1, (now - lastTick) / 1000));
+  lastTick = now;
+  if (fpsCap && now - last < 1000 / fpsCap - 2) return;
+  if (idle && !(dirty || moving || frames < 10)) return;
+  dirty = false;
+  // (Everything stays in while the shadow map is drawn, so props that pop in keep their shadows.)
+  if (impostorJobs.length) drawImpostors();
+  if (shadowTextures.size && [...shadowTextures].every(loaded)) {
+    shadowTextures.clear();
+    renderer.shadowMap.needsUpdate = true;
+  }
+  const shadowing = renderer.shadowMap.needsUpdate;
+  if (on("cull")) for (const c of chunks.values()) if (c.group && c.far < Infinity) c.group.visible = shadowing || camera.position.distanceTo(c.centre) < c.far;
+  if (on("trees"))
+    for (const t of treeTiles.values()) {
+      const near = shadowing || camera.position.distanceTo(t.centre) < IMPOSTOR_NEAR;
+      if (t.realGroup) t.realGroup.visible = near;
+      if (t.impGroup) t.impGroup.visible = !near;
+    }
   const dt = Math.min(0.1, (now - last) / 1000);
   frameMs[head] = now - last;
   last = now;
@@ -479,8 +1019,8 @@ renderer.setAnimationLoop(() => {
       m.obj.position[m.axis] = v;
     }
   }
-  controls.update();
   setSignals(now / 1000, night ? 1 : 0);
+  setWaterTime(bench ? 0 : now / 1000);
   renderer.info.reset();
   let qy: WebGLQuery | null = null;
   if (timerExt && pending.length < 4) {
@@ -496,10 +1036,15 @@ renderer.setAnimationLoop(() => {
   cpuMs[head] = performance.now() - now;
   gpuMs[head] = lastGpu;
   head = (head + 1) % N;
+  rendered++;
+  busyMs += lastGpu;
   if (!statsEl.classList.contains("min")) {
     drawGraph();
     if (now - lastText > 250) {
       lastText = now;
+      busy = busyMs / (now - lastBusy);
+      busyMs = 0;
+      lastBusy = now;
       if (frames >= 0 && !objects) scene.traverse(() => objects++);
       updateText();
     }
@@ -508,5 +1053,10 @@ renderer.setAnimationLoop(() => {
     document.title = "ready";
     // Forget the loading and shader-compile frames.
     for (const a of [frameMs, cpuMs, gpuMs]) a.fill(0);
+  }
+  // Bench: once the history has filled with settled frames, publish its stats.
+  if (bench && frames === 5 + N + 20) {
+    const i = renderer.info;
+    (window as unknown as { bench: object }).bench = { frame: stat(frameMs), cpu: stat(cpuMs), gpu: stat(gpuMs), draws: i.render.calls, tris: i.render.triangles, geoms: i.memory.geometries, textures: i.memory.textures, canvas: [renderer.domElement.width, renderer.domElement.height], spikes: [...cpuMs].map((v, k) => [(k - head + N) % N, +v.toFixed(1)]).filter(([, v]) => v > 2 * stat(cpuMs).avg).sort((x, y) => x[0] - y[0]) };
   }
 });

@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
-import { CAR_PAINTS, DEFS, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef } from "./real";
+import { CAR_PAINTS, DEFS, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef, waterMat } from "./real";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -744,7 +744,7 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
 
 const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
 /** Realistic species, by how common they are in town. */
-const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
+export const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
 const SHRUBS = ["bush", "bush", "bush_wide", "shrub", "flowers"];
 
 /** Paint for a realistic prop: `wall` picks its tint (foliage, car paint). */
@@ -1162,7 +1162,8 @@ const PARK_ROLES: Record<string, RoleLook> = { ...ROLES, roof: { color: 0x56606e
 function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = KERB) {
   const scale = new THREE.Vector3(s, s, s);
   if (name === "bench" && hasReal("street")) return furniture(p, "bench", x, y, z, ry);
-  for (const { role, geo } of piece(name).parts) p.add(kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
+  // A fountain's water moves: calm small ripples, rings from where it lands, streaks down the jet and streams.
+  for (const { role, geo } of piece(name).parts) p.add(role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [x, z] }) : kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 
 /** A park lamp: a post with a lantern, lit by `bulb` at night. */
@@ -1224,7 +1225,7 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       const pond = { x: -12, z: 1, rx: 10, rz: 5.5 };
       const sand = new THREE.CircleGeometry(1, 28).scale(pond.rx + 0.9, pond.rz + 0.9, 1);
       flat(mat(0xb8a87c, { roughness: 1 }), sand, pond.x, pond.z, KERB + 0.025);
-      flat(mat(0x4a86a0, { roughness: 0.08, metalness: 0.3 }), new THREE.CircleGeometry(1, 28).scale(pond.rx, pond.rz, 1), pond.x, pond.z, KERB + 0.04);
+      flat(waterMat({ amp: 0.9, scale: 1.7, color: 0x1d3c3a }), new THREE.CircleGeometry(1, 28).scale(pond.rx, pond.rz, 1), pond.x, pond.z, KERB + 0.04);
       prop(p, "bandstand", X + 16, Z - 1);
       // Trees wherever the paths, the pond and the bandstand leave room.
       for (let i = 0, placed = 0; i < 400 && placed < 34; i++) {

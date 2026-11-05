@@ -14,7 +14,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { Fx } from "./fx";
 import { loadKit } from "./kit";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime } from "./real";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
@@ -794,6 +794,7 @@ export class City {
     this.land.update(dt);
     this.traffic.update(dt);
     setSignals(this.t, this.night);
+    setWaterTime(this.t);
 
     if (this.shake > 0) {
       this.shake = Math.max(0, this.shake - dt * 0.8);
