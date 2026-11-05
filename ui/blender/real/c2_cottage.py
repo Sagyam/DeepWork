@@ -17,7 +17,7 @@ import math
 
 from mathutils import Vector
 
-from lib import Model, Side, Z, lintel, new_id, pane, sash, sides, sill
+from lib import Model, Side, Z, lintel, new_id, offset, pane, sash, sides, sill
 
 ID = "c2"
 W, D = 10.4, 8.2  # main block
@@ -229,26 +229,6 @@ def body(M):
         m.box("iron", (x - 0.035, Y1 + 0.035, 0.96 if x < CX else 0.2), (x + 0.035, Y1 + 0.105, ze - 0.47))
         for z in (1.6, 2.6):
             m.box("iron", (x - 0.05, Y1, z), (x + 0.05, Y1 + 0.12, z + 0.05))
-
-
-def offset(poly, d):
-    """Offsets an open polyline of (u, w) points outward (to its left, w up) by d; the ends slide along w = 0."""
-    P = [Vector((u, w)) for u, w in poly]
-    segs = []
-    for p, q in zip(P, P[1:]):
-        t = (q - p).normalized()
-        segs.append((p + Vector((-t.y, t.x)) * d, t))
-    out = []
-    first_p, first_t = segs[0]
-    out.append(first_p - first_t * (first_p.y / first_t.y))
-    for (p0, t0), (p1, t1) in zip(segs, segs[1:]):
-        # Intersection of the two offset lines.
-        den = t0.x * t1.y - t0.y * t1.x
-        s = ((p1 - p0).x * t1.y - (p1 - p0).y * t1.x) / den
-        out.append(p0 + t0 * s)
-    last_p, last_t = segs[-1]
-    out.append(last_p - last_t * (last_p.y / last_t.y))
-    return out
 
 
 def bay(m, F):

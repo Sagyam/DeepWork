@@ -472,6 +472,35 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       else p.box(mat(0x7a4636, { roughness: 0.95 }), LOT - 0.4, 1.6, 0.25, 0, KERB, back + 0.12);
       break;
     }
+    case "a2": {
+      // Flagstone areaways in front behind iron railings, open at the
+      // stoops; bins and a shrub or two by the bays, a young tree in one;
+      // behind, three narrow lawns between board fences.
+      p.box(paving, LOT - 0.4, KERB, front - 3.3, 0, 0, (front + 3.3) / 2);
+      p.box(lawn(), LOT - 0.4, KERB, -6.8 - back, 0, 0, (-6.8 + back) / 2);
+      const fz = front - 0.35;
+      const stoops = [-3.475, -1.725, 6.925]; // the doors' x (a2_brownstone.py)
+      const gaps = stoops.map((x) => [x - 0.85, x + 0.85]);
+      const runs: [number, number][] = [];
+      let x0 = -half;
+      for (const [a, b] of gaps) {
+        if (a - x0 > 0.3) runs.push([x0, a]);
+        x0 = Math.max(x0, b);
+      }
+      if (half - x0 > 0.3) runs.push([x0, half]);
+      if (hasReal("street")) {
+        for (const [a, b] of runs) fenceRun(p, "fence_iron", a, fz, b, fz, 0.85);
+      } else for (const [a, b] of runs) p.box(mat(0x2a2c2e, { metalness: 0.5 }), b - a, 0.9, 0.06, (a + b) / 2, KERB, fz);
+      const bin = mat(0x3a3e40, { roughness: 0.55, metalness: 0.3 });
+      for (const [x, z] of [[-5.1, 4.0], [-4.6, 4.0], [0.0, 4.0], [2.6, 4.0]]) p.box(bin, 0.55, 0.95, 0.55, x, KERB, z);
+      for (const x of [-6.8, -5.5, 1.4, 4.2, 5.4]) if (r() < 0.75) shrub(p, x, fz - 0.6, s.seed * 5 + x * 3, KERB, 0.55);
+      tree(p, 4.4, fz - 1.4, 0.45, s.seed + 1, KERB, ["young", "linden", "cherry"]);
+      if (hasReal("street")) {
+        for (const x of [-2.6, 2.6]) fenceRun(p, "fence_panel", x, -6.8, x, back + 0.1);
+        fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      }
+      break;
+    }
     case "c1": {
       // Lawn, a picket fence along the street, a path to the porch steps,
       // a drive down the side with the car, trees, a hedge at the back.
