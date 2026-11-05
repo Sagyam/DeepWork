@@ -541,6 +541,13 @@ showcase town" above); they are ticked here once the app has them.
       screens, where pixel count costs more than triangles.
 - [ ] **Texture compression:** KTX2 / Basis for the shared library (~250 MB
       of VRAM uncompressed, ~40-60 MB compressed); single-channel AO maps.
+      Tested first (2026-11-05, `scripts/texshrink.js` with `bench-app.ts`
+      EVAL, which re-uploads every texture smaller in the same page): 4x and
+      16x fewer texels changed GPU time by under 1 ms (noise) in every view,
+      metropolis by day and night, city overview and street level. Texture
+      bandwidth is not what limits frames on this iGPU (dual-channel DDR5);
+      compression would be for memory and download size, not frame rate. A
+      laptop 610M on single-channel memory might differ.
 - [ ] **Geometry compression:** quantised meshes (meshopt), ~3 MB to ~1 MB a
       model; also shrinks the download.
 - [x] **Port the showcase town's optimisations to the app** (`ui/src/proto/town.ts`,

@@ -27,6 +27,18 @@ for (const qs of process.argv.slice(2)) {
   const r = (await p.evaluate(() => (window as unknown as { bench: object }).bench)) as { frame: Stat; cpu: Stat; gpu: Stat; draws: number; tris: number; canvas: number[] };
   const f = (x: Stat) => `${x.avg.toFixed(1)} (p99 ${x.p99.toFixed(1)})`.padEnd(17);
   console.log(`${qs.padEnd(40)} gpu ${f(r.gpu)} cpu ${f(r.cpu)} fps ${(1000 / r.frame.avg).toFixed(1).padStart(5)} (1% low ${(1000 / r.frame.p99).toFixed(1)})  draws ${String(r.draws).padStart(5)}  tris ${(r.tris / 1e6).toFixed(2)}M  ${r.canvas.join("x")}`);
+  if (process.env.EVAL) {
+    // A/B in the same page: run EVAL (e.g. scripts/bench-texbase.js), restart the bench, measure again.
+    await p.evaluate(process.env.EVAL);
+    await p.evaluate(() => {
+      const b = (window as unknown as { city: { bench: Record<string, unknown> } }).city.bench;
+      Object.assign(b, { frames: 0, frame: [], cpu: [], gpu: [] });
+      (window as unknown as { bench?: object }).bench = undefined;
+    });
+    await p.waitForFunction(() => (window as unknown as { bench?: object }).bench, null, { timeout: 300000, polling: 500 });
+    const r2 = (await p.evaluate(() => (window as unknown as { bench: object }).bench)) as typeof r;
+    console.log(`${"  + EVAL".padEnd(40)} gpu ${f(r2.gpu)} cpu ${f(r2.cpu)} fps ${(1000 / r2.frame.avg).toFixed(1).padStart(5)} (1% low ${(1000 / r2.frame.p99).toFixed(1)})`);
+  }
   if (process.env.LUMA) {
     // Mean brightness (0-255) of the lower middle of the view, clear of the HUD: for matching the look across changes.
     const png = (await p.screenshot({ clip: { x: 360, y: 560, width: 1200, height: 330 } })).toString("base64");
