@@ -564,7 +564,7 @@ export class City {
     parts.into(this.base);
     this.base.traverse((o) => {
       if (o instanceof THREE.Mesh) {
-        o.castShadow = o.material !== asphalt && o.material !== walk && o.material !== pool;
+        o.castShadow = o.material !== asphalt && o.material !== walk && o.material !== pool && !(o.material as THREE.Material).userData.noShadow;
         // Realistic lamps (street lights, park lanterns) light up at night too.
         const m = o.material as THREE.MeshStandardMaterial;
         if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);

@@ -22,7 +22,7 @@ import math
 
 from mathutils import Vector
 
-from lib import Model, Side, Z, french, grille, hood, new_id, offset, pane, sash, sides, sill
+from lib import Model, Side, Z, aerial, french, grille, hood, new_id, offset, pane, sash, sides, sill
 
 ID = "a2"
 N, HW = 3, 5.2  # houses, each 5.2 m (17 ft) wide
@@ -574,16 +574,3 @@ def skylight(m, x, y, z):
     for t in (0.33, 0.66):
         m.strut("iron", c[0].lerp(c[1], t), r0.lerp(r1, t), 0.02)
         m.strut("iron", c[3].lerp(c[2], t), r0.lerp(r1, t), 0.02)
-
-
-def aerial(m, x, y, z):
-    """A TV aerial on a mast clamped to a stack: a boom along x with its elements across."""
-    m.box("iron", (x, y - 0.025, z - 1.4), (x + 0.05, y + 0.025, z + 1.1))
-    for zc in (z - 1.2, z - 0.7):
-        m.box("iron", (x - 0.08, y - 0.04, zc), (x + 0.06, y + 0.04, zc + 0.04))
-    zb = z + 0.95
-    m.box("iron", (x - 0.6, y - 0.015, zb), (x + 0.6, y + 0.015, zb + 0.03))
-    for i in range(9):
-        xx = x - 0.55 + i * 0.135
-        half = 0.3 - 0.015 * i
-        m.box("iron", (xx - 0.006, y - half, zb + 0.01), (xx + 0.006, y + half, zb + 0.022))

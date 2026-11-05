@@ -1299,6 +1299,19 @@ def balcony(F, cut, u, z):
     railing(F, cut, u - 1.1, u + 1.1, z, 0.05, 0.9)
 
 
+def aerial(m, x, y, z):
+    """A TV aerial on a mast clamped to a stack: a boom along x with its elements across."""
+    m.box("iron", (x, y - 0.025, z - 1.4), (x + 0.05, y + 0.025, z + 1.1))
+    for zc in (z - 1.2, z - 0.7):
+        m.box("iron", (x - 0.08, y - 0.04, zc), (x + 0.06, y + 0.04, zc + 0.04))
+    zb = z + 0.95
+    m.box("iron", (x - 0.6, y - 0.015, zb), (x + 0.6, y + 0.015, zb + 0.03))
+    for i in range(9):
+        xx = x - 0.55 + i * 0.135
+        half = 0.3 - 0.015 * i
+        m.box("iron", (xx - 0.006, y - half, zb + 0.01), (xx + 0.006, y + half, zb + 0.022))
+
+
 def shopfront(F, a, b, c, e, sign=0, door_left=False, D_=0.3, sign_w=None):
     """A shopfront in the opening (a..b, c..e) set D_ deep: stallriser, display
     window, a door at one end, transom lights, and a fascia above e with the

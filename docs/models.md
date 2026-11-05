@@ -12,7 +12,8 @@ the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
 factory, C2, the brick cottage (sharing the classic cottages with C1), and
 S2, the corner café (sharing the classic shops with S1), and O1, the
 curtain-wall office tower, and A2, the brownstone row (the townhouse
-apartments);
+apartments), and A3, the balcony block (sharing the classic apartments with
+A1);
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -146,7 +147,9 @@ every model after this one:
   ones; tinted with the stucco); with O1, horizontal metal blades (louvre
   screens, roller shutters); with A2, brownstone (smooth ashlar slabs with
   fine joints, faint bedding, spalled patches; chocolate brown, tinted per
-  building).
+  building). With A3, `lib.aerial` (moved from A2: a TV aerial on a mast);
+  in the app, frosted rail glass (sky in it, a little see-through, casting
+  no shadow: `userData.noShadow` keeps a material out of the shadow pass).
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
@@ -221,11 +224,14 @@ every model after this one:
   paint, door paint, roof sheet and the firm's name (S4); brick tint, slate
   and ridge colours, door paint (C2); glass tint (spandrels match),
   metalwork colour and the building's name (O1); brownstone tint, cornice
-  and sash paint, and a door colour for each of the three houses (A2).
+  and sash paint, and a door colour for each of the three houses (A2);
+  render (pale 1960s colours), the panels, the aluminium and the chairs
+  (A3).
 - Sibling models (with C2): models with the same kind and style share it,
   each building picking one from its seed (`realDef`); C1 and C2 are the
   classic cottage now, as the kit had gable and hip variants of it; S1 and
-  S2 the classic shop.
+  S2 the classic shop; A1 and A3 the classic apartment (walk-up and
+  balconies).
 
 ## Decisions (2026-11-03)
 
@@ -270,7 +276,9 @@ every model after this one:
   post-and-rail fence among conifers, with a gravel drive; C2 is
   12.4 x 9.7 m with its bay, steps and coal shed, 3 m back behind a clipped
   hedge with brick gate piers and a tiled path, board fences round the back
-  garden; A2 is 15.6 x 13.6 m with its stoops, 0.8 m back behind
+  garden; A3 is 15.6 x 13 m with its roof slab over the balconies, 2.4 m
+  back behind a lawn with a paved path to the entrance and a planted gravel
+  strip along the front, a hedge and a bench behind; A2 is 15.6 x 13.6 m with its stoops, 0.8 m back behind
 iron railings with flagstone areaways, three narrow lawns between board
 fences behind; S3 is
   14.2 x 10.4 m with its vestibule steps and kitchen, 3.4 m back behind an
@@ -362,7 +370,7 @@ P2 is variety, so one kind can fill a city.
 |---|---|---|---|---|---|---|
 | A1 | Pre-war brick block | Six storeys over shops, fire escape, water tank: **the prototype** | apartment classic (walk-up) | **done, in the app** (2026-11-04): pieces ground / first / floor a, b / last / roof, 3-7 storeys | done | P1 |
 | A2 | Brownstone row | Three townhouses, stoops with iron railings, bay fronts | apartment townhouse | **done** (2026-11-05): three Italianate row houses of the 1870s, 5.2 m each, plans mirrored so two stoops pair up; rusticated garden storey, tall parlour storey; full-height canted bays of one-over-one sashes over sunk aprons, stopping under the top storey, whose French doors open onto their railed lead tops; round-arched double doors with a fanlight in a deep reveal, archivolt and keystone, a hood on consoles; ten-step stoops between cheek walls with iron railings and lamp-topped newels; a bracketed sheet-metal cornice with frieze panels, modillions and dentils; brick sides and back (gauged arches, a garden door each); flat roof behind parapets, fire walls, six stacks, hatches, hipped skylights, an aerial, a condenser; pieces ground / floor / top / roof for 3-4 storeys over the garden storey; 21.1 k triangles (4 storeys) | 12% | P1 |
-| A3 | Balcony block | Rendered mid-century block, rows of balconies with glass rails | apartment classic (balconies) | render, glass | 12% | P1 |
+| A3 | Balcony block | Rendered mid-century block, rows of balconies with glass rails | apartment classic (balconies) | **done** (2026-11-05): an early-1960s block of render, 15 x 11 m, two flats a floor either side of a stair band up the middle of the front (tall landing windows over coloured panels between white fins; the entrance at its foot in a polished granite recess with glass doors, letterboxes and the number, under a thin cantilevered canopy with downlights); a stack of 1.6 m cantilevered balconies each side, white slab edges, frosted glass in aluminium-framed rails, sliding doors and a window over a coloured panel behind each, roller shutters in some openings let down; planters, chairs, a table, an airer, a pot, a striped sun awning or two, a satellite dish; plain back and ends with aluminium windows; granite plinth; a thin roof slab oversailing the walls and the top balconies, gravel, the stair's bulkhead, six TV aerials, a boiler flue, vents and rooflights; pieces ground / floor_a / floor_b / roof for 3-8 storeys (the two typical storeys alternate); 9.1 k triangles a set (~16.7 k for 6 storeys) | 12% | P1 |
 | A4 | Art deco apartments | Buff brick, corner windows, deco spandrels and entrance | | brick, stone | 12% | P2 |
 | A5 | Parisian block | European: cream stone, wrought-iron balconies, zinc mansard with dormers | | new: zinc roof | 15% | P2 |
 | A6 | Modern apartments | Fibre-cement panels, deep loggias, timber soffits | | new: panels | 15% | P2 |
@@ -559,6 +567,7 @@ above; none of it changes how models look.
 4. Download on first run, as soon as models leave the binary: pack,
    manifest, low-poly fallback.
 5. One model per kind (C1, S1, ~~A2~~, ~~O1~~ (both done 2026-11-05), L1) so a real mixed city can be seen.
+   ~~A3~~ (done 2026-11-05) completes the kit's apartment styles.
 6. The first civic landmarks (L5-L7) on their reserved ground.
 7. The rest of P1, then building states.
 8. Surroundings: streets, trees and terrain first, as they fill the most
