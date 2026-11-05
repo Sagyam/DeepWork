@@ -8,7 +8,8 @@ git-ignored `ui/public/models/`), load in the app through
 that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
-the modern house, C4, the A-frame cabin, and S3, the diner; and the props round them (vehicles, trees, street
+the modern house, C4, the A-frame cabin, S3, the diner, and S4, the brick
+factory; and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
 through it section by section; tick or strike as decisions land.
@@ -133,10 +134,13 @@ every model after this one:
   solar cells; with C4, hand-split cedar shakes and vertical
   tongue-and-groove boards (both pale, tinted per building); with S3,
   fluted stainless steel (brushed, with a roughness map) and moulded glass
-  block (lit from behind at night).
+  block (lit from behind at night); with S4, weathered corrugated sheet
+  (galvanised, rust bleeding from the fixings and laps; tinted or painted
+  per building), also for S6's canopy and sheds.
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
-  with S3, diners' names in polished letters for the frieze.
+  with S3, diners' names in polished letters for the frieze; with S4, firms'
+  names painted on a factory's brick, weathered.
 - Lettering (with S3): `lib.letters` builds solid channel letters from
   Blender's bundled font (reproducible on any machine), `lib.neon` neon tubes
   along their outlines (`Mesh.tube`: a round tube along any path, also for
@@ -156,7 +160,12 @@ every model after this one:
   entrances with canopy, water tank, condensers, chimneys; with C3, modern
   glazing (`lib.glazing`: slim aluminium frames, fixed lights or sliding
   leaves, frameless where glass meets glass at a corner), the family for
-  A3, A6 and the offices.
+  A3, A6 and the offices; with S4 (in `s4_factory.py`, to move into `lib`
+  when a second model wants them), segmental arches with a ring of
+  voussoirs and a stone key over any opening, steel windows of small panes
+  with a hopper tilted open, ledged-and-braced doors, steel beams over wide
+  openings, bulkhead lamps, and a round brick stack (bands, staples, a
+  conductor, corbelled cap).
 - Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
   the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
@@ -168,13 +177,18 @@ every model after this one:
   reflections only, for rooflights and solar panels; with S3, a diner room
   (a booth at each window, sometimes with customers, the counter and its
   stools, the back bar, chequered floor) and polished metal that reflects the
-  same sky as the glass.
+  same sky as the glass; with S4, a works floor (whitewashed brick over a
+  green dado, painted gangways, lathes and presses, a bench under the sill,
+  truss ties and stanchions, the bands of north light overhead, lamps in
+  enamel shades, a night shift in some) and north-light glazing that glows
+  at night.
 - Per-building variation by parameters: brick tint, shopfront colour and
   sign pair (A1); siding, shutter and door, and roof colours (C1); brick
   tint, shopfront and cornice colours, sign, ghost sign, an awning or none,
   two or three storeys (S1); render, cladding timber and aluminium colours
   (C3); board stain, shake, trim, door and deck-chair colours (C4); enamel
-  colour, the two neon colours and the name (S3).
+  colour, the two neon colours and the name (S3); brick tint, steelwork
+  paint, door paint, roof sheet and the firm's name (S4).
 
 ## Decisions (2026-11-03)
 
@@ -219,7 +233,10 @@ every model after this one:
   post-and-rail fence among conifers, with a gravel drive; S3 is
   14.2 x 10.4 m with its vestibule steps and kitchen, 3.4 m back behind an
   asphalt forecourt with a car drawn up and its pylon sign at the corner,
-  a fenced service yard behind. Lots get resized with the master plan.
+  a fenced service yard behind; S4 is 13.5 x 10.4 m with its dock, boiler
+  house and stack, 3 m back behind a concrete apron (a car nosed in by the
+  stack, pallets by the dock steps, oil drums), a walled yard with a skip
+  behind. Lots get resized with the master plan.
 - **The app's lighting stays as it is** for now. It is tuned for the flat
   kit (strong hemisphere light), which makes the realistic models a little
   flatter than in the viewer; lowering their environment light changed
@@ -288,7 +305,7 @@ P2 is variety, so one kind can fill a city.
 | S1 | Main-street shop | Two-storey brick, shop under flats, cornice, awning (a smaller sibling of the prototype) | shop classic | **done** (2026-11-04): 9 x 11 m, 1 m back; pieces ground / floor / awning / roof for 2-3 storeys; pressed-metal cornice, raised name panel, party wall with a ghost sign; 5.3 k triangles | 8% | P1 |
 | S2 | Corner café | European: painted render, arched windows, oriel, umbrella tables | shop classic (café) | render | 12% | P1 |
 | S3 | Diner | Stainless-steel railcar body, neon sign, booths in the windows | shop diner | **done** (2026-11-04): 1950s factory-built diner, 13.6 x 5 m body with rounded ends, fluted stainless with two enamel stripes, a window band with glass-block corners, an enamel frieze with the name, a barrel roof curving down over the ends; vestibule with steps and pipe rails; roof sign in channel letters with neon; brick kitchen behind; roadside pylon (EAT, an arrow of bulbs, a neon star); pieces body / roof; 7.7 k triangles | 18% | P1 |
-| S4 | Brick factory | Sawtooth roof, tall smokestack, loading doors, steel windows | shop factory | brick, new: steel sash, corrugated sheet | 18% | P1 |
+| S4 | Brick factory | Sawtooth roof, tall smokestack, loading doors, steel windows | shop factory | **done** (2026-11-05): a late-Victorian machine works, 10.8 x 9 m shed under a three-bay sawtooth of corrugated sheet and north-light glazing, serrated coped gables to the street with a works clock and round vents; blue-brick plinth, pilasters, steel windows under segmental arches with stone keys, a frieze with the firm's name painted on; loading dock with buffers, steps and a canopy before ledged doors under a steel beam, an office door under a stone hood; lean-to boiler house, brick flue and a 17 m round stack; pieces body / roof; 10.7 k triangles | 18% | P1 |
 | S5 | Corner store | One storey, roller shutters, painted signage, ice chest out front | | brick, metal | 10% | P2 |
 | S6 | Filling station | Canopy on columns, pumps, small kiosk | | new: canopy, pumps | 15% | P2 |
 | S7 | Market hall shop | European: arcaded ground floor, shops under the arches, stone above | | stone, render | 12% | P2 |
@@ -472,7 +489,7 @@ above; none of it changes how models look.
 | Download on first run (pack, manifest, fallback) | ~0.5 |
 | Progression v2 in the daemon: coins, bonuses, shop, level gates, penalties, UI | ~1.5 |
 | Designing the master plan (layout, order, model per lot) and `plan.ts` | ~1 |
-| P1 buildings (15 left, incl. 3 civic) | ~3 |
+| P1 buildings (14 left, incl. 3 civic) | ~3 |
 | P2 buildings (17) | ~3 |
 | Building states | ~0.5 |
 | Surroundings | ~2 |
@@ -487,8 +504,8 @@ above; none of it changes how models look.
    the simple way for now).~~ Done 2026-11-04, with C1.
 2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
    farmhouse~~, ~~S1 main-street shop~~, ~~C3 modern house~~, ~~C4 A-frame
-   cabin~~, ~~S3 diner~~ (done 2026-11-04), then S4 brick factory, then C2
-   brick cottage and S2 corner café for variety. After
+   cabin~~, ~~S3 diner~~ (done 2026-11-04), ~~S4 brick factory~~ (done
+   2026-11-05), then C2 brick cottage and S2 corner café for variety. After
    that the hamlet has no low-poly buildings left.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are

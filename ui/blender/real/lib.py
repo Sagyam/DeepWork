@@ -535,6 +535,56 @@ def glassblock_tex(t, n=1024):
     t.save("glassblock_nrm", normals(h, 4.0))
 
 
+def corrugated_tex(t, n=1024):
+    """Corrugated sheet, the factory's roofs and canopies: 76 mm sine corrugations
+    running down the slope, two 0.76 m sheets side by side (lapped by one
+    corrugation) and a lap across every 2.4 m; tile 1.52 x 2.4 m, row 0 up the
+    slope. Weathered galvanising for the app to tint (or paint): spangle and
+    blotches, white rust, rust bleeding down from the laps and the fixings."""
+    w, hh = n, n * 2
+    y, x = np.mgrid[0:hh, 0:w].astype(np.float32)
+    u, v = x / w * 1.52, y / hh * 2.4
+    k = 20  # corrugations across the tile
+    ph = (x / w * k) % 1
+    h = 0.5 + 0.5 * np.cos(ph * math.tau)  # crowns at the corrugation lines
+    sheet = (u >= 0.76).astype(int)
+    lap_u = np.abs(((u + 0.019) % 0.76) - 0.019) < 0.004  # the side lap, along a crown
+    lap_v = v > 2.37  # the end lap: the sheet below tucks under
+    rng = np.random.default_rng(221)
+    tone = rng.random(2)[sheet]
+    big = fbm(w, 3, 5, 222)[np.arange(hh) % w]
+    spangle = fbm(w, 96, 2, 223)[(np.arange(hh) * 7) % w]
+    streak = fbm(w, 3, 5, 224, stretch=(8, 1))[(np.arange(hh) // 2) % w]  # long streaks down the slope
+    col = np.ones((hh, w, 3), np.float32) * srgb(196, 198, 196)
+    col *= (0.82 + 0.12 * tone + 0.16 * (big - 0.5) + 0.08 * spangle)[..., None]
+    # Fixings along the purlins (every 1.2 m, on alternate crowns), rust running down from them and the laps.
+    fix = (np.abs(((v + 0.6) % 1.2) - 0.6) < 0.012) & (np.abs(ph) < 0.04) & ((np.floor(x / w * k) % 2) == 0)
+    # Each fixing bleeds a narrow streak, fading as it runs down; some barely at all.
+    cu = np.floor(x / w * k + 0.5).astype(int)  # the nearest crown
+    dc = np.abs(x / w * k - cu)
+    row = np.floor((v + 0.6) / 1.2).astype(int)
+    fid = (cu % k) * 7 + row % 2
+    strength = rng.random(k * 7 + 7)[fid] * (cu % 2 == 0)
+    dv = (v - 0.01) % 1.2
+    run = np.clip(1 - dv / (0.25 + 0.6 * strength), 0, 1) ** 1.5 * np.clip(dv / 0.02, 0, 1)
+    below = run * np.exp(-((dc / (0.05 + 0.1 * run)) ** 2)) * strength
+    rust = np.clip((streak - 0.5) / 0.4, 0, 1) * 0.35 + 0.9 * below
+    rust *= 0.6 + 0.4 * h
+    rust = np.maximum(rust, np.clip((v - 2.0) / 0.37, 0, 1) * np.clip((streak - 0.3) / 0.3, 0, 1) * 0.8)
+    rc = srgb(132, 78, 46) * (0.8 + 0.3 * spangle)[..., None]
+    col = col * (1 - 0.75 * rust[..., None]) + rc * 0.75 * rust[..., None]
+    col[fix] = srgb(70, 64, 58)
+    col *= (0.86 + 0.14 * h)[..., None]  # the troughs hold dirt
+    col[lap_v] *= 0.55
+    col[lap_u] *= 0.8
+    hgt = h * 0.8 + 0.06 * spangle
+    hgt[lap_v] -= 0.4
+    rough = np.clip(0.4 + 0.35 * rust + 0.15 * big, 0, 1)
+    t.save("corrugated_col", col)
+    t.save("corrugated_nrm", normals(hgt, 9.0))
+    t.save("corrugated_rgh", rough)
+
+
 def grime_tex(t, n=512):
     """Grey noise the app samples in world space for weathering: blotches and rain streaks."""
     g = fbm(n, 4, 7, 91)
@@ -564,7 +614,8 @@ def ground_tex(t, n=1024):
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
-    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, ground_tex, grime_tex,
+    render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, ground_tex,
+    grime_tex,
 )
 
 
