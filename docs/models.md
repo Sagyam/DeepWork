@@ -543,6 +543,22 @@ showcase town" above); they are ticked here once the app has them.
       of VRAM uncompressed, ~40-60 MB compressed); single-channel AO maps.
 - [ ] **Geometry compression:** quantised meshes (meshopt), ~3 MB to ~1 MB a
       model; also shrinks the download.
+- [ ] **Port the showcase town's optimisations to the app** (`ui/src/proto/town.ts`,
+      each commented where it is made): 1x render scale with MSAA 4x and
+      alpha to coverage; a static shadow map, redrawn when the sun has moved
+      on, a building changes or cut-out textures finish loading (blob
+      shadows under moving cars); no frames while nothing moves; scenery
+      merged per tile with small props dropping out by distance; tree
+      impostors from a load-time atlas past ~150 m; the sky drawn into a
+      cube map, redrawn as the sun moves; environment light on glossy
+      materials only; shader and texture prewarm at load; a firefly clamp
+      before bloom.
+- [ ] **A cheaper shadow filter:** 5 PCF taps into an 8192² map cost 3-4 ms
+      a frame on the 610M; try fewer taps, a smaller map with cascades, or
+      a filter that is cheap for a map drawn once.
+- [ ] **Fountain spray in the app:** `fountainSpray` (`real.ts`) is only in
+      the town's plaza; the app's parks are built into merged `Parts`, which
+      cannot hold `Points`, so `park()` needs a way to hand it back.
 - [ ] **Measure in the real window:** Tauri on Linux draws through WebKitGTK,
       whose WebGL is usually slower than Chromium's. Target: 30 fps for an
       end-game city on a Radeon 610M-class iGPU.
