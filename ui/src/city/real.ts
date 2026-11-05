@@ -83,6 +83,10 @@ const O1_G = 5.4;
 const O1_FL = 3.6;
 /** Where O1 steps back: after about two thirds of its storeys, never at the top. */
 const o1Lower = (total: number) => Math.min(total - 1, Math.max(2, Math.round(total * 0.68)));
+const L1_G = 6.0;
+const L1_FL = 3.5;
+/** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
+const L1_CROWN = 12.8;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -326,6 +330,38 @@ export const DEFS: Record<string, RealDef> = {
     // The parapet, the lift overrun and plant; the mast goes 8 m higher.
     height: (floors) => O1_G + (floors - 1) * O1_FL + 4.4,
     debris: 0x5a6a70,
+  },
+  l1: {
+    id: "l1",
+    kind: "landmark",
+    style: "deco",
+    // 14.4 m square on a 1.8 m bay; the portal's step is inside the footprint.
+    w: 14.4,
+    d: 14.4,
+    front: 0.8,
+    floors: (plan) => Math.max(12, plan),
+    stack(floors, roof, _r, total) {
+      // Three tiers, stepping back at about half and four fifths of the
+      // finished height (as the kit's deco tower does), a ledge piece where
+      // each tier ends; the crown on top.
+      const n = Math.max(total, floors);
+      const e1 = Math.round(n * 0.5);
+      const e2 = Math.round(n * 0.8);
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      let tier = 1;
+      for (let f = 1; f < floors; f++) {
+        const y = L1_G + (f - 1) * L1_FL;
+        const t = f < e1 ? 1 : f < e2 ? 2 : 3;
+        if (t !== tier) out.push({ piece: `ledge${tier}`, y });
+        tier = t;
+        out.push({ piece: `floor${t}`, y });
+      }
+      if (roof) out.push({ piece: "crown", y: L1_G + (floors - 1) * L1_FL });
+      return out;
+    },
+    top: (floors) => L1_G + (floors - 1) * L1_FL,
+    height: (floors) => L1_G + (floors - 1) * L1_FL + L1_CROWN,
+    debris: 0xc8bca4,
   },
 };
 
@@ -764,6 +800,50 @@ function cafeNames(row: number): THREE.Texture {
   return t;
 }
 
+const DECOS = ["THE ORION BUILDING", "HALCYON TOWER", "CONTINENTAL LIFE", "THE ZENITH BUILDING", "STERLING TRUST", "AURORA TOWER", "MONARCH BUILDING", "THE BEACON BUILDING"];
+
+let decoCanvas: HTMLCanvasElement | null = null;
+
+/**
+ * Art deco towers' names in gilt geometric capitals over the portal, eight
+ * rows of 2048 x 128 for a 3.9 x 0.62 m panel: the letters are drawn
+ * stretched 2.5 times across, so they come out in proportion on it.
+ */
+function decoNames(row: number): THREE.Texture {
+  if (!decoCanvas) {
+    const c = (decoCanvas = document.createElement("canvas"));
+    c.width = 2048;
+    c.height = 1024;
+    const g = c.getContext("2d")!;
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.font = "600 80px Futura, 'Century Gothic', 'Avenir Next', 'DejaVu Sans', sans-serif";
+    const sx = 2.5;
+    DECOS.forEach((name, i) => {
+      const y = i * 128 + 66;
+      const text = name.split("").join(String.fromCharCode(8202, 8202));
+      g.save();
+      g.scale(sx, 1);
+      g.fillStyle = "rgba(30,20,8,0.9)";
+      g.fillText(text, 1026 / sx, y + 3, 1940 / sx);
+      const grad = g.createLinearGradient(0, y - 40, 0, y + 40);
+      grad.addColorStop(0, "#fff0b8");
+      grad.addColorStop(0.5, "#c8963a");
+      grad.addColorStop(1, "#ecc66a");
+      g.fillStyle = grad;
+      g.fillText(text, 1024 / sx, y, 1940 / sx);
+      g.restore();
+    });
+  }
+  const t = new THREE.CanvasTexture(decoCanvas);
+  t.flipY = false;
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.repeat.set(1, 0.125);
+  t.offset.set(0, row * 0.125);
+  t.anisotropy = 8;
+  return t;
+}
+
 /** Per-building choices: paint colours and the like. Indexes wrap. */
 export interface Paint {
   /** Main walls: brick tint or siding paint. */
@@ -832,6 +912,10 @@ const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
 const OFFICE_GLASS = [0x7fb2aa, 0x7f9cc4, 0xb89a74, 0x949aa0, 0x86b48e, 0xb4c4d0];
 /** O1's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
 const MULLIONS = [0xb8bcc0, 0x4a3e34, 0x1e2022, 0xc8b894, 0xe8e8e4, 0x7a8086];
+/** L1's limestone: Indiana buff, pale grey, cream, warm pink, silver-grey, ivory. */
+const LIMESTONES = [0xf4ead8, 0xdcdcd8, 0xfff4dc, 0xf0d4c4, 0xc8ccd0, 0xfffaf0];
+/** L1's metalwork, frames to spandrels: statuary bronze, aluminium, verdigris, nickel, black, light bronze. */
+const DECO_METALS = [0x8a6440, 0xc4c8cc, 0x6a8a76, 0xdcd8cc, 0x2e2e30, 0xb08a5a];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -920,7 +1004,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -1179,6 +1263,41 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 0.35;
       break;
     }
+    // The art deco tower.
+    case "cladstone":
+    case "floodstone": {
+      const stone = pbr("cladstone", [2.4, 1.2], { roughness: 0.82, normal: 0.8, color: pick(LIMESTONES, paint.wall) });
+      if (role === "floodstone") {
+        // The crown, floodlit from the terraces at night.
+        stone.emissive.setHex(0xffd8a8);
+        stone.emissiveMap = tex("cladstone_col", [2.4, 1.2]);
+        stone.emissiveIntensity = 0;
+        if (damage < 2) stone.userData.night = 0.55;
+      }
+      m = w(stone, 1.8);
+      break;
+    }
+    case "deco": m = w(pbr("chevron", [1, 1], { roughness: 0.5, metalness: 0.35, normal: 1.2, color: pick(DECO_METALS, paint.accent) }), 1.2); break;
+    case "bronze": m = w(plain(pick(DECO_METALS, paint.accent), 0.4, 0.55), 0.8); break;
+    case "jet": {
+      // Polished black granite: it shows the sky.
+      const jet = new THREE.MeshStandardMaterial({ map: tex("granite_col", [1, 1]), color: 0x3a3a3c, roughness: 0.14 });
+      if (skyEnv) jet.envMap = skyEnv;
+      glassMats.add(jet);
+      m = w(jet, 0.6);
+      break;
+    }
+    case "deconame": {
+      const t = decoNames(paint.signs);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.8, emissive: 0xffe0a0, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.3;
+      break;
+    }
+    case "crownglass":
+      // The crown's tall windows: dark glass by day, lit lanterns at night.
+      m = sheen({ color: 0x1a2026, roughness: 0.1, emissive: 0xffd49a, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.6;
+      break;
     case "beacon":
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
@@ -1186,6 +1305,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "glass": m = room("home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
+    case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;
     case "cafeglass": m = room("cafe"); break;

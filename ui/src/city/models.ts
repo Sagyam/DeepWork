@@ -692,6 +692,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
       break;
     }
+    case "l1": {
+      // Granite paving to the pavement, heritage lamps either side of the
+      // portal; behind, the bins by the service door.
+      p.box(mat(0x9c9890, { roughness: 0.6 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      if (hasReal("street")) for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 4.5, KERB, front - 0.4, 0);
+      const bin = mat(0x2a3a4a, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 1.0, 1.2, 0.5, -half + 1.0 + i * 1.1, KERB, back + 0.3);
+      break;
+    }
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.
