@@ -24,6 +24,7 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { FXAAPass } from "three/examples/jsm/postprocessing/FXAAPass.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
@@ -178,12 +179,13 @@ const sunDir = new THREE.Vector3().setFromSphericalCoords(1, THREE.MathUtils.deg
 // Night: a full moon behind the default views (so the facades they face are moonlit; turn round to see it), moonlight that casts shadows,
 // a dark blue sky with stars and a glow round the moon.
 const moonDir = new THREE.Vector3(-0.45, 0.5, 0.6).normalize();
-function nightSky(size: number, stars = true) {
+function nightSky(size: number, stars = true, disc = true) {
   const m = new THREE.ShaderMaterial({
     uniforms: { uMoon: { value: moonDir } },
     side: THREE.BackSide,
     depthWrite: false,
-    vertexShader: "varying vec3 vDir;\nvoid main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+    // Pinned to the far plane (as Sky does), so any camera sees it, the environment map's (far 100 m) included.
+    vertexShader: "varying vec3 vDir;\nvoid main() { vDir = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position.z = gl_Position.w; }",
     fragmentShader: `
       uniform vec3 uMoon;
       varying vec3 vDir;
@@ -194,7 +196,7 @@ function nightSky(size: number, stars = true) {
         vec3 col = mix(vec3(0.05, 0.075, 0.13), vec3(0.008, 0.014, 0.035), smoothstep(-0.02, 0.55, h));
         float m = max(dot(d, uMoon), 0.0);
         col += vec3(0.16, 0.2, 0.3) * pow(m, 40.0) + vec3(0.03, 0.04, 0.07) * pow(m, 5.0);
-        col += vec3(5.0, 4.8, 4.3) * smoothstep(0.99993, 0.99996, m);
+        ${disc ? "col += vec3(5.0, 4.8, 4.3) * smoothstep(0.99993, 0.99996, m);" : ""}
         ${stars ? "float s = hash(floor(d * 700.0)); col += vec3(1.0, 0.97, 0.9) * step(0.9986, s) * (0.6 + 0.8 * fract(s * 91.0)) * smoothstep(0.02, 0.25, h) * (1.0 - smoothstep(0.995, 0.9999, m));" : ""}
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
@@ -233,7 +235,8 @@ Object.assign(envSky.material.uniforms, THREE.UniformsUtils.clone(sky.material.u
 envSky.material.uniforms.sunPosition.value.copy(sunDir);
 envSky.material.uniforms.mieDirectionalG.value = 0.6;
 envSky.material.uniforms.showSunDisc.value = 0;
-envScene.add(night ? nightSky(1000, false) : envSky);
+// (Without the disc: glass would mirror it into a bloom blob.)
+envScene.add(night ? nightSky(1000, false, false) : envSky);
 const envGround = new THREE.Mesh(new THREE.CircleGeometry(900, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: night ? 0x050608 : 0x3a3c3e }));
 envGround.position.y = -2;
 envScene.add(envGround);
@@ -242,7 +245,7 @@ scene.environment = env;
 scene.environmentIntensity = night ? 0.08 : 0.12;
 setRealEnv(env);
 
-const sun = new THREE.DirectionalLight(night ? 0xa4bbe8 : 0xfff1dc, night ? 0.9 : 5);
+const sun = new THREE.DirectionalLight(night ? 0xa4bbe8 : 0xfff1dc, night ? 0.7 : 5);
 const reach = 200;
 sun.position.copy(night ? moonDir : sunDir).multiplyScalar(500);
 sun.target.position.set(20, 0, 0);
@@ -341,6 +344,8 @@ const impostors = new Map<string, { geo: THREE.BufferGeometry; mat: THREE.MeshSt
 const ATLAS = 2048;
 const impostorJobs: { mats: THREE.MeshStandardMaterial[]; draw: () => void }[] = [];
 /** Draws the impostors whose textures have loaded; true once none are left. */
+const shadowTextures = new Set<THREE.Texture>();
+const loaded = (t: THREE.Texture | null) => !t || (t.image && ((t.image as HTMLImageElement).complete ?? true) && t.version > 0);
 let atlasCleared = false;
 function drawImpostors() {
   if (!atlasCleared && atlas) {
@@ -614,10 +619,46 @@ function land(parts: Parts) {
   }
 }
 
-const water = new THREE.Mesh(
-  new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2),
-  new THREE.MeshStandardMaterial({ color: night ? 0x0a1420 : 0x2c4a58, roughness: 0.05, metalness: 0.2, envMapIntensity: 6 }),
-);
+// The river: ripples flowing downstream (+z), as normals summed from
+// directional waves in world space, so the sky and the sun or moon glint off
+// it and break up; deep green-blue below, the sky in it at grazing angles
+// (fresnel, from the environment map). Small waves fade with distance so they
+// do not shimmer. All in the shader: no extra render pass.
+const waterTime = { value: 0 };
+const waterMat = new THREE.MeshStandardMaterial({ color: night ? 0x0c1e2a : 0x173238, roughness: 0.2, metalness: 0, envMap: env, envMapIntensity: night ? 1 : 0.3 });
+waterMat.onBeforeCompile = (sh) => {
+  sh.uniforms.uTime = waterTime;
+  sh.vertexShader = sh.vertexShader
+    .replace("#include <common>", "#include <common>\nvarying vec3 vWW;")
+    .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+  sh.fragmentShader = sh.fragmentShader
+    .replace(
+      "#include <common>",
+      `#include <common>
+      uniform float uTime;
+      varying vec3 vWW;
+      // Slope (d/dx, d/dz) of a wave of direction d, wavenumber k, amplitude a, speed w.
+      vec2 wave(vec2 p, vec2 d, float k, float a, float w) { return d * (a * k * cos(dot(d, p) * k + uTime * w)); }`,
+    )
+    .replace(
+      "#include <normal_fragment_maps>",
+      `#include <normal_fragment_maps>
+      {
+        vec2 p = vWW.xz;
+        float far = smoothstep(260.0, 40.0, distance(cameraPosition, vWW));
+        vec2 g = wave(p, normalize(vec2(0.15, 1.0)), 0.47, 0.05, 1.1)
+               + wave(p, normalize(vec2(-0.45, 1.0)), 0.83, 0.03, 1.7)
+               + wave(p, normalize(vec2(0.75, 0.66)), 1.37, 0.018, 2.3) * (0.4 + 0.6 * far)
+               + wave(p, normalize(vec2(-0.9, 0.43)), 2.29, 0.011, 3.1) * far
+               + wave(p, normalize(vec2(0.31, -0.95)), 3.71, 0.007, 3.9) * far
+               + wave(p, normalize(vec2(0.98, 0.2)), 5.93, 0.004, 4.8) * far
+               + wave(p, normalize(vec2(-0.2, -0.98)), 8.77, 0.003, 6.1) * far;
+        normal = normalize((viewMatrix * vec4(normalize(vec3(-g.x, 1.0, -g.y)), 0.0)).xyz);
+      }`,
+    );
+};
+waterMat.customProgramCacheKey = () => "water";
+const water = new THREE.Mesh(new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2), waterMat);
 water.position.set(RX, -1.6, 0);
 water.receiveShadow = true;
 cats.ground.add(water);
@@ -734,6 +775,13 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async 
   }
   traffic();
   renderer.shadowMap.needsUpdate = true;
+  // The leaf cards cut their shapes out of their textures, which are still
+  // loading now: drawn once from this first frame, a tree's shadow would be
+  // its bare branches. Draw it again when every cut-out texture has arrived.
+  scene.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if ((o as THREE.Mesh).castShadow && m?.alphaTest && m.map) shadowTextures.add(m.map);
+  });
   // With MSAA, cut-out leaves, railings and grilles antialias their edges too (alpha to coverage).
   if (on("res") && aa === "msaa")
     scene.traverse((o) => {
@@ -799,7 +847,17 @@ async function prewarm() {
 const target_ = new THREE.WebGLRenderTarget(innerWidth * renderer.getPixelRatio(), innerHeight * renderer.getPixelRatio(), { samples: aa === "msaa" ? 4 : 0, type: THREE.HalfFloatType });
 const composer = new EffectComposer(renderer, target_);
 composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.5, 0.75);
+// Firefly clamp: near-mirror glass catching the moon (or sun) exactly makes
+// one pixel hundreds of times brighter than anything else, which bloom
+// smears into a disc. Capping brightness before the bloom keeps glints small.
+const clamp = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uMax: { value: 8 } },
+  vertexShader: "varying vec2 vUv;\nvoid main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: "uniform sampler2D tDiffuse;\nuniform float uMax;\nvarying vec2 vUv;\nvoid main() { vec4 c = texture2D(tDiffuse, vUv); gl_FragColor = vec4(min(c.rgb, vec3(uMax)), c.a); }",
+});
+clamp.enabled = night;
+composer.addPass(clamp);
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth / 2, innerHeight / 2), 0.55, 0.5, 0.95);
 bloom.enabled = night;
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
@@ -957,6 +1015,10 @@ renderer.setAnimationLoop(() => {
   dirty = false;
   // (Everything stays in while the shadow map is drawn, so props that pop in keep their shadows.)
   if (impostorJobs.length) drawImpostors();
+  if (shadowTextures.size && [...shadowTextures].every(loaded)) {
+    shadowTextures.clear();
+    renderer.shadowMap.needsUpdate = true;
+  }
   const shadowing = renderer.shadowMap.needsUpdate;
   if (on("cull")) for (const c of chunks.values()) if (c.group && c.far < Infinity) c.group.visible = shadowing || camera.position.distanceTo(c.centre) < c.far;
   if (on("trees"))
@@ -977,6 +1039,7 @@ renderer.setAnimationLoop(() => {
     }
   }
   setSignals(now / 1000, night ? 1 : 0);
+  waterTime.value = bench ? 0 : now / 1000;
   renderer.info.reset();
   let qy: WebGLQuery | null = null;
   if (timerExt && pending.length < 4) {

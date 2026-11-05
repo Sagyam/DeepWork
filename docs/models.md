@@ -600,6 +600,15 @@ What it taught, for the app:
   material for far buildings (0.6 ms in the overview, nothing close up),
   geometry LODs for buildings (14-36 k triangles each: their cost is pixels),
   FXAA for MSAA or a 4096 shadow map (visibly worse).
+- **A shadow map drawn once must wait for its textures**: drawn on the
+  first frame, before the leaf textures loaded, every leaf card was cut away
+  and trees cast the shadows of bare branches. It is drawn again once every
+  cut-out texture has arrived (the same trap as the impostors).
+- **Sky shaders pinned to the far plane**, or a cube camera with a short
+  far plane (the environment map's is 100 m) sees nothing: night
+  reflections were black until the night sky did what three's Sky does.
+- **Clamp brightness before bloom**: near-mirror glass catching the moon
+  exactly is one pixel hundreds of times too bright, smeared into a disc.
 - **Still open**: KTX2 textures (bandwidth, which an iGPU is short of: six
   texture reads a building pixel), the shadow filter (5 taps into 8192²,
   3-4 ms), and what a frame cap saves in energy (idle frames cost
