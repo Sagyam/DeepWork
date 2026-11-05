@@ -56,6 +56,7 @@ export interface RealDef {
 const A1_G = 4.5;
 const A1_FL = 3.1;
 const C1_PLATE = 6.1;
+const C2_PLATE = 4.0;
 const C3_G = 3.3;
 const C3_TOP = 6.3;
 const C4_TOP = 3.35;
@@ -105,6 +106,21 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 8.8,
     smoke: () => new THREE.Vector3(-4.6, 9.9, 0.2),
     debris: 0xd8d2c4,
+  },
+  c2: {
+    id: "c2",
+    kind: "cottage",
+    style: "classic",
+    w: 12.4,
+    d: 9.7,
+    front: 3.0,
+    floors: () => 2,
+    // One storey and the loft under the hip: the body to the wall plate, then the roof.
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: C2_PLATE }] : [])],
+    top: () => C2_PLATE,
+    height: () => 7.9,
+    smoke: () => new THREE.Vector3(0.45, 9.4, -0.125),
+    debris: 0x8a4e3c,
   },
   c3: {
     id: "c3",
@@ -576,6 +592,12 @@ const SHUTTERS = [0x1d2a22, 0x1f2d44, 0x222222, 0x6a2a24, 0x3e5a48, 0x4a5a6a];
 const SHINGLES = [0x5a5a5c, 0x6e5a48, 0x4e5660, 0x5c6252, 0x7a6e64, 0x3e3e40];
 /** Pressed-metal cornices: cream, stone, bottle green, oxblood, slate. */
 const CORNICES = [0xe6dcc4, 0xc8beac, 0x2e4434, 0x5a2420, 0x4a5058];
+/** Slates: Welsh blue-grey, purple, Westmorland green, dark, silver-grey. */
+const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
+/** Ridge rolls: red clay, blue-black, buff. */
+const RIDGES = [0x9a4a32, 0x2e3034, 0x9a4a32, 0xb08a60];
+/** Front doors in heritage paint: black, Brunswick green, oxblood, navy, plum, ochre, teal. */
+const HERITAGE = [0x1c1d1f, 0x1f3a2c, 0x5a1e1c, 0x1e2a44, 0x3e2638, 0xb07a2a, 0x2a5458];
 /** Render: white, warm white, pale grey, sand, anthracite, chalk. */
 const RENDERS = [0xf6f4ee, 0xeee8da, 0xd8d6d0, 0xe8dcc6, 0x55585a, 0xf2f0ea];
 /** Timber cladding: larch, silver-weathered, charred, cedar, honey. */
@@ -688,7 +710,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", ...LEAVES, "hedge"].includes(role);
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", ...LEAVES, "hedge"].includes(role);
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
@@ -745,13 +767,16 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
     case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: pick(RENDERS, paint.wall) }), 0.4); break;
     case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
     case "alu": m = w(plain(frame, 0.4, 0.5)); break;
     case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
     case "boards": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.82, color: pick(STAINS, paint.wall) }), 0.6); break;
     case "timber": m = w(plain(pick(TRIMS, paint.accent), 0.6)); break;
+    case "slate": m = w(pbr("slate", [2, 1.2], { rough: true, color: pick(SLATES, paint.roof) }), 0.7); break;
+    case "ridge": m = w(plain(pick(RIDGES, paint.roof + 1), 0.7), 0.6); break;
+    case "lead": m = w(plain(0x6e7276, 0.55, 0.3), 0.8); break;
     case "chair": m = w(plain(pick(BRIGHTS, paint.accent + paint.wall + 2), 0.55)); break;
     case "logend": m = w(plain(0xc8a478, 0.9)); break;
     case "stainless":

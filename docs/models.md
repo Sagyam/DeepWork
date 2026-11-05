@@ -8,8 +8,9 @@ git-ignored `ui/public/models/`), load in the app through
 that is missing falls back to the kit. Viewer: `/proto.html?model=c1` in the
 dev server (see `docs/DEVELOPMENT.md`). In the app so far: A1, the prototype
 brick block, C1, the clapboard farmhouse, S1, the main-street shop, C3,
-the modern house, C4, the A-frame cabin, S3, the diner, and S4, the brick
-factory; and the props round them (vehicles, trees, street
+the modern house, C4, the A-frame cabin, S3, the diner, S4, the brick
+factory, and C2, the brick cottage (sharing the classic cottages with C1);
+and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
 through it section by section; tick or strike as decisions land.
@@ -136,7 +137,8 @@ every model after this one:
   fluted stainless steel (brushed, with a roughness map) and moulded glass
   block (lit from behind at night); with S4, weathered corrugated sheet
   (galvanised, rust bleeding from the fixings and laps; tinted or painted
-  per building), also for S6's canopy and sheds.
+  per building), also for S6's canopy and sheds; with C2, natural slate
+  (riven, chipped butts, a little lichen; blue-grey, tinted per building).
 - Canvas textures drawn in the app: shop signs (eight names, a column and a
   row each) and, with S1, faded ghost-sign advertisements for party walls;
   with S3, diners' names in polished letters for the frieze; with S4, firms'
@@ -165,7 +167,9 @@ every model after this one:
   voussoirs and a stone key over any opening, steel windows of small panes
   with a hopper tilted open, ledged-and-braced doors, steel beams over wide
   openings, bulkhead lamps, and a round brick stack (bands, staples, a
-  conductor, corbelled cap).
+  conductor, corbelled cap). With C2, `Side` builds oriented boxes for a
+  facade at any angle in plan (a canted bay's faces), so every helper
+  (sashes, sills, walls) works on it.
 - Decals (`Model.decal`): paint on a wall, exported as `<piece>_decal` after
   the AO bake so the wall under it is not darkened.
 - AO baked in Cycles on lightmap UVs.
@@ -188,7 +192,11 @@ every model after this one:
   two or three storeys (S1); render, cladding timber and aluminium colours
   (C3); board stain, shake, trim, door and deck-chair colours (C4); enamel
   colour, the two neon colours and the name (S3); brick tint, steelwork
-  paint, door paint, roof sheet and the firm's name (S4).
+  paint, door paint, roof sheet and the firm's name (S4); brick tint, slate
+  and ridge colours, door paint (C2).
+- Sibling models (with C2): models with the same kind and style share it,
+  each building picking one from its seed (`realDef`); C1 and C2 are the
+  classic cottage now, as the kit had gable and hip variants of it.
 
 ## Decisions (2026-11-03)
 
@@ -230,7 +238,10 @@ every model after this one:
   with its cantilever and deck, 4 m back so the car fits on the drive in
   front of its garage, which leaves 1.7 m of garden behind the deck; C4 is
   8.6 x 12 m with its deck, steps and back landing, 1.5 m back, behind a
-  post-and-rail fence among conifers, with a gravel drive; S3 is
+  post-and-rail fence among conifers, with a gravel drive; C2 is
+  12.4 x 9.7 m with its bay, steps and coal shed, 3 m back behind a clipped
+  hedge with brick gate piers and a tiled path, board fences round the back
+  garden; S3 is
   14.2 x 10.4 m with its vestibule steps and kitchen, 3.4 m back behind an
   asphalt forecourt with a car drawn up and its pylon sign at the corner,
   a fenced service yard behind; S4 is 13.5 x 10.4 m with its dock, boiler
@@ -291,7 +302,7 @@ P2 is variety, so one kind can fill a city.
 | ID | Model | Look | Replaces | Family | Effort | Priority |
 |---|---|---|---|---|---|---|
 | C1 | Clapboard farmhouse | Gable roof, painted weatherboard, porch with posts, brick chimney, picket fence | cottage classic (gable) | **done** (2026-11-04): I-house, 3 bays, shutters, full porch, lean-to; 7.3 k triangles | 20% | P1 |
-| C2 | Brick cottage | Hip roof in slate, bay window, stone sills, hedged garden | cottage classic (hip) | brick, stone | 10% | P1 |
+| C2 | Brick cottage | Hip roof in slate, bay window, stone sills, hedged garden | cottage classic (hip) | **done** (2026-11-05): late-Victorian single-storey villa, red brick on a stone-capped plinth, stone quoins, dentil course, two-over-two sashes with stone sills and keystone lintels; canted bay with panelled aprons and its own slate roof; four-panel door with a fanlight under a slate canopy on timber brackets; 40° slate hip with clay rolls, a stack at each end of the ridge (one with a TV aerial), a rooflight; ogee cast-iron gutters; coal shed, half-glazed back door, water butt; gate piers for the hedge; pieces body / roof / gate; 7.1 k triangles | 10% | P1 |
 | C3 | Modern house | Flat roofs, timber and render, big glazing, garage | cottage modern | **done** (2026-11-04): render ground storey with corner glazing and a timber-lined entrance recess, batten-clad upper storey cantilevered 1.2 m inside a white frame, garage with a batten door and sedum roof, deck; gravel roof with solar panels, rooflight, flue; pieces ground / upper / roof; 3.3 k triangles | 15% | P1 |
 | C4 | A-frame cabin | Steep shingle roof to the ground, glazed gable, deck | cottage A-frame | **done** (2026-11-04): 60° A of cedar shakes down to 0.4 m, street gable glazed to the ridge in a timber grid with sliding doors onto a deck out from under the prow, ridge beam showing; shed dormer on the right slope, two rooflights and a stove pipe on the left; boarded back gable with door, landing and a woodpile; deck chairs; pieces body (to the loft floor) / roof; 3.5 k triangles | 10% | P1 |
 | C5 | Stone cottage | Rubble-stone walls, gambrel roof with dormers, porch | cottage classic (gambrel) | new: fieldstone | 15% | P2 |
@@ -505,7 +516,7 @@ above; none of it changes how models look.
 2. The Hamlet, one model per session (decided 2026-11-04): ~~C1
    farmhouse~~, ~~S1 main-street shop~~, ~~C3 modern house~~, ~~C4 A-frame
    cabin~~, ~~S3 diner~~ (done 2026-11-04), ~~S4 brick factory~~ (done
-   2026-11-05), then C2 brick cottage and S2 corner café for variety. After
+   2026-11-05), ~~C2 brick cottage~~ (done 2026-11-05), then S2 corner café for variety. After
    that the hamlet has no low-poly buildings left.
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
