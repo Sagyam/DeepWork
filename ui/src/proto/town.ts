@@ -2,7 +2,7 @@
 // hand-laid town, built with the app's own code (models.ts, real.ts), so
 // new models can be seen in context without earning them through focus.
 // A dev tool, not part of the app. Open /town.html in the dev server with
-//   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline &hour=15
+//   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline|fountain|pond &hour=15
 //   &still (parks the traffic) &gputimer=0 (no GPU timer queries)
 //   &opt=0-8 (the optimisations below, cumulative; default all)
 //   &aa=msaa|smaa|fxaa|none &scale=1 &shadowmap=8192 (trade-offs) &fps=30 (cap) &bench (see scripts/bench-town.ts)
@@ -31,7 +31,7 @@ import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js
 import { loadKit } from "../city/kit";
 import { building, furniture, KERB, mat, park, parked, Parts, SPECIES, tree } from "../city/models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, rng, type Spec } from "../city/plan";
-import { CAR_PAINTS, DEFS, groundMat, hasReal, interiorUniforms, loadReal, PROPS, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
+import { CAR_PAINTS, DEFS, fountainSpray, groundMat, hasReal, interiorUniforms, loadReal, PROPS, realMat, realPiece, realPieces, setRealEnv, setSignals, setWaterTime, waterMat } from "../city/real";
 
 const q = new URLSearchParams(location.search);
 const hour = Number(q.get("hour") ?? 15);
@@ -96,6 +96,8 @@ const VIEWS: Record<string, [number[], number[], number]> = {
   bridge: [[RX + 40, 6, ROAD_Z + 34], [RX - 10, 3, ROAD_Z], 50],
   plaza: [[-PITCH_X + 10, 14, PITCH_Z + 48], [-PITCH_X, 2, PITCH_Z], 50],
   skyline: [[-260, 40, 120], [0, 30, 0], 32],
+  fountain: [[-PITCH_X + 8, 2.6, PITCH_Z + 8.5], [-PITCH_X, 2.6, PITCH_Z], 50],
+  pond: [[PITCH_X - 4, 5, -PITCH_Z + 15], [PITCH_X - 12, 0.2, -PITCH_Z + 1], 50],
 };
 const view = q.get("view") ?? "overview";
 const [pos, at, fov] = VIEWS[view] ?? VIEWS.overview;
@@ -619,46 +621,9 @@ function land(parts: Parts) {
   }
 }
 
-// The river: ripples flowing downstream (+z), as normals summed from
-// directional waves in world space, so the sky and the sun or moon glint off
-// it and break up; deep green-blue below, the sky in it at grazing angles
-// (fresnel, from the environment map). Small waves fade with distance so they
-// do not shimmer. All in the shader: no extra render pass.
-const waterTime = { value: 0 };
-const waterMat = new THREE.MeshStandardMaterial({ color: night ? 0x0c1e2a : 0x173238, roughness: 0.2, metalness: 0, envMap: env, envMapIntensity: night ? 1 : 0.3 });
-waterMat.onBeforeCompile = (sh) => {
-  sh.uniforms.uTime = waterTime;
-  sh.vertexShader = sh.vertexShader
-    .replace("#include <common>", "#include <common>\nvarying vec3 vWW;")
-    .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-  sh.fragmentShader = sh.fragmentShader
-    .replace(
-      "#include <common>",
-      `#include <common>
-      uniform float uTime;
-      varying vec3 vWW;
-      // Slope (d/dx, d/dz) of a wave of direction d, wavenumber k, amplitude a, speed w.
-      vec2 wave(vec2 p, vec2 d, float k, float a, float w) { return d * (a * k * cos(dot(d, p) * k + uTime * w)); }`,
-    )
-    .replace(
-      "#include <normal_fragment_maps>",
-      `#include <normal_fragment_maps>
-      {
-        vec2 p = vWW.xz;
-        float far = smoothstep(260.0, 40.0, distance(cameraPosition, vWW));
-        vec2 g = wave(p, normalize(vec2(0.15, 1.0)), 0.47, 0.05, 1.1)
-               + wave(p, normalize(vec2(-0.45, 1.0)), 0.83, 0.03, 1.7)
-               + wave(p, normalize(vec2(0.75, 0.66)), 1.37, 0.018, 2.3) * (0.4 + 0.6 * far)
-               + wave(p, normalize(vec2(-0.9, 0.43)), 2.29, 0.011, 3.1) * far
-               + wave(p, normalize(vec2(0.31, -0.95)), 3.71, 0.007, 3.9) * far
-               + wave(p, normalize(vec2(0.98, 0.2)), 5.93, 0.004, 4.8) * far
-               + wave(p, normalize(vec2(-0.2, -0.98)), 8.77, 0.003, 6.1) * far;
-        normal = normalize((viewMatrix * vec4(normalize(vec3(-g.x, 1.0, -g.y)), 0.0)).xyz);
-      }`,
-    );
-};
-waterMat.customProgramCacheKey = () => "water";
-const water = new THREE.Mesh(new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2), waterMat);
+// The river: the shared moving water (real.ts waterMat), at its waviest.
+const waterMat_ = waterMat({ amp: 2.4 });
+const water = new THREE.Mesh(new THREE.PlaneGeometry(RIVER * 2, 2800).rotateX(-Math.PI / 2), waterMat_);
 water.position.set(RX, -1.6, 0);
 water.receiveShadow = true;
 cats.ground.add(water);
@@ -745,6 +710,12 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async 
     streets(P, { x, z }, r);
     if (b.park) {
       park(P.props, { x, z, kind: b.park, seed: 5 + b.bx * 3 + b.bz }, pole, bulb);
+      // The plaza's fountain plays (park() draws it at 1.45x on the kerb).
+      if (b.park === "plaza") {
+        const spray = fountainSpray(x, KERB, z, 1.45);
+        if (night) (spray.material as THREE.ShaderMaterial).uniforms.uBright.value = 0.22;
+        cats.streets.add(spray);
+      }
       continue;
     }
     const groups: THREE.Group[] = [];
@@ -809,6 +780,16 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS])]).then(async 
     scene.environment = null;
     hemi.intensity *= night ? 3 : 5;
   }
+  // Water by night: darker, the (dim) night sky stronger in it.
+  if (night)
+    scene.traverse((o) => {
+      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+      if (m?.userData?.water && !m.userData.nightDone) {
+        m.color.multiplyScalar(0.55);
+        m.envMapIntensity = 1;
+        m.userData.nightDone = true;
+      }
+    });
   // Everything that lights at night (windows, lamps, signals, neon, headlights).
   scene.traverse((o) => {
     const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
@@ -1039,7 +1020,7 @@ renderer.setAnimationLoop(() => {
     }
   }
   setSignals(now / 1000, night ? 1 : 0);
-  waterTime.value = bench ? 0 : now / 1000;
+  setWaterTime(bench ? 0 : now / 1000);
   renderer.info.reset();
   let qy: WebGLQuery | null = null;
   if (timerExt && pending.length < 4) {

@@ -607,6 +607,12 @@ What it taught, for the app:
 - **Sky shaders pinned to the far plane**, or a cube camera with a short
   far plane (the environment map's is 100 m) sees nothing: night
   reflections were black until the night sky did what three's Sky does.
+- **Water is one shader for every surface** (`real.ts` `waterMat`): the
+  river, the park pond and the kit fountain's basins ripple (waves summed in
+  world space; rings where a fountain's water lands), steep parts run with
+  falling streaks, and `fountainSpray` is a GPU-only particle spray (the
+  town adds it to the plaza). `setWaterTime` drives them; the app's scene
+  calls it too.
 - **Clamp brightness before bloom**: near-mirror glass catching the moon
   exactly is one pixel hundreds of times too bright, smeared into a disc.
 - **Still open**: KTX2 textures (bandwidth, which an iGPU is short of: six

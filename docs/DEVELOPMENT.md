@@ -71,7 +71,7 @@ CI builds ship without them.
 The showcase town, `http://localhost:5173/town.html`, puts every model
 together in a hand-laid 3 x 3 block town (downtown towers, main street,
 apartments, cottages, works, a park and a plaza, the river and bridge,
-moving traffic) without earning anything. `view=overview|downtown|main|homes|works|bridge|plaza|skyline`,
+moving traffic) without earning anything. `view=overview|downtown|main|homes|works|bridge|plaza|skyline|fountain|pond`,
 `hour`, `&still` parks the traffic, `&fps=30` caps the frame rate (off by
 default). Map controls: left drag pans, right drag turns, the wheel zooms,
 WASD pans; the camera stays above ground, out of buildings and in the map,

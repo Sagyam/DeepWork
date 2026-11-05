@@ -935,6 +935,179 @@ export function setRealEnv(env: THREE.Texture) {
   }
 }
 
+// ---- water ------------------------------------------------------------------------
+
+/** The clock every water surface and fountain spray runs on; see setWaterTime. */
+export const waterUniforms = { uTime: { value: 0 } };
+/** Moves the water on: call every frame with the time in seconds. */
+export function setWaterTime(t: number) {
+  waterUniforms.uTime.value = t;
+}
+
+const WATER_NOISE = /* glsl */ `
+  float wHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float wNoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(wHash(i), wHash(i + vec2(1, 0)), f.x), mix(wHash(i + vec2(0, 1)), wHash(i + vec2(1, 1)), f.x), f.y);
+  }
+  // Slope (d/dx, d/dz) of a wave of direction d, wavenumber k, amplitude a, speed w.
+  vec2 wWave(vec2 p, vec2 d, float k, float a, float w) { return d * (a * k * cos(dot(d, p) * k + uTime * w)); }
+`;
+
+const waterCache = new Map<string, THREE.MeshStandardMaterial>();
+/**
+ * Moving water, all in the shader: level surfaces ripple (waves summed in
+ * world space, flowing toward +z, small ones fading with distance so they do
+ * not shimmer; `ring` adds rings spreading from a point, where a fountain's
+ * water lands), steep ones (a fountain's jet and falling streams) run with
+ * white streaks. The sky is in it at grazing angles (fresnel, from the
+ * environment map). `amp` scales the waves, `scale` their size (2 is half
+ * as big). `userData.water` marks it for day and night tints.
+ */
+export function waterMat(o: { amp?: number; scale?: number; ring?: [number, number]; color?: number } = {}): THREE.MeshStandardMaterial {
+  const { amp = 1, scale = 1, ring, color = 0x173238 } = o;
+  const key = `${amp}:${scale}:${ring}:${color}`;
+  let m = waterCache.get(key);
+  if (m) return m;
+  m = new THREE.MeshStandardMaterial({ color, roughness: 0.2, metalness: 0, envMapIntensity: 0.3 });
+  if (skyEnv) m.envMap = skyEnv;
+  glassMats.add(m);
+  m.userData.water = true;
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uTime = waterUniforms.uTime;
+    sh.uniforms.uAmp = { value: amp };
+    sh.uniforms.uScale = { value: scale };
+    sh.uniforms.uRing = { value: new THREE.Vector3(ring?.[0] ?? 0, ring?.[1] ?? 0, ring ? 1 : 0) };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vWW;\nvarying vec3 vWN;")
+      .replace("#include <worldpos_vertex>", "#include <worldpos_vertex>\nvWW = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(modelMatrix) * objectNormal);");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", `#include <common>\nuniform float uTime;\nuniform float uAmp;\nuniform float uScale;\nuniform vec3 uRing;\nvarying vec3 vWW;\nvarying vec3 vWN;\n${WATER_NOISE}`)
+      .replace(
+        "#include <map_fragment>",
+        `#include <map_fragment>
+        float wSteep = 1.0 - smoothstep(0.55, 0.8, abs(vWN.y));
+        if (wSteep > 0.0) {
+          // Falling water: white streaks running down, broken up round the stream.
+          vec2 sp = vec2(dot(vWW.xz, vec2(7.0, 5.0)), vWW.y * 3.0 + uTime * 5.0);
+          float streak = wNoise(sp) * 0.65 + wNoise(sp * 2.7) * 0.35;
+          // Broken into falling sheets, not a solid rod.
+          if (wSteep > 0.5 && streak < 0.47) discard;
+          diffuseColor.rgb = mix(diffuseColor.rgb, mix(vec3(0.55, 0.68, 0.72), vec3(0.95), smoothstep(0.35, 0.8, streak)), wSteep);
+        }`,
+      )
+      .replace(
+        "#include <normal_fragment_maps>",
+        `#include <normal_fragment_maps>
+        if (wSteep < 1.0) {
+          vec2 p = vWW.xz * uScale;
+          float far = smoothstep(260.0 / uScale, 30.0 / uScale, distance(cameraPosition, vWW));
+          vec2 g = wWave(p, normalize(vec2(0.15, 1.0)), 0.31, 0.06, 0.8)
+                 + wWave(p, normalize(vec2(0.15, 1.0)), 0.47, 0.05, 1.1)
+                 + wWave(p, normalize(vec2(-0.45, 1.0)), 0.83, 0.03, 1.7)
+                 + wWave(p, normalize(vec2(0.75, 0.66)), 1.37, 0.018, 2.3) * (0.4 + 0.6 * far)
+                 + wWave(p, normalize(vec2(-0.9, 0.43)), 2.29, 0.011, 3.1) * far
+                 + wWave(p, normalize(vec2(0.31, -0.95)), 3.71, 0.007, 3.9) * far
+                 + wWave(p, normalize(vec2(0.98, 0.2)), 5.93, 0.004, 4.8) * far
+                 + wWave(p, normalize(vec2(-0.2, -0.98)), 8.77, 0.003, 6.1) * far;
+          g *= uAmp;
+          if (uRing.z > 0.0) {
+            // Rings spreading from where the water lands, fading outward.
+            vec2 d = vWW.xz - uRing.xy;
+            float r = max(length(d), 0.001);
+            vec2 dir = d / r;
+            g += dir * (0.09 * 7.0 * cos(r * 7.0 - uTime * 6.0) + 0.05 * 11.0 * cos(r * 11.0 - uTime * 8.5 + 1.3)) * exp(-r * 0.35);
+          }
+          vec3 wn = normalize(vec3(-g.x, 1.0, -g.y));
+          normal = normalize(mix(normal, (viewMatrix * vec4(wn, 0.0)).xyz, 1.0 - wSteep));
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => "water";
+  waterCache.set(key, m);
+  return m;
+}
+
+/**
+ * A fountain's spray, drawn by the GPU alone (no per-frame work): the jet
+ * from the top falls back into the upper basin, and eight streams arc from
+ * the upper basin's rim into the lower one, as the kit fountain shows them.
+ * `x, y, z` is the fountain's foot, `s` its scale.
+ */
+export function fountainSpray(x: number, y: number, z: number, s: number): THREE.Points {
+  const N = 1400;
+  const p0 = new Float32Array(N * 3);
+  const v = new Float32Array(N * 3);
+  const life = new Float32Array(N * 2);
+  const r = (k: number) => {
+    const t = Math.sin(k * 12.9898) * 43758.5453;
+    return t - Math.floor(t);
+  };
+  const g = 9.8;
+  for (let i = 0; i < N; i++) {
+    let px: number, py: number, pz: number, vx: number, vy: number, vz: number, T: number;
+    if (i < N * 0.45) {
+      // The jet: up from the top, falling back on the upper basin.
+      const a = r(i + 1) * Math.PI * 2;
+      const spread = 0.25 + r(i + 2) * 0.5;
+      [px, py, pz] = [0, 4.35 * s, 0];
+      [vx, vy, vz] = [Math.cos(a) * spread, 3.6 + r(i + 3) * 1.2, Math.sin(a) * spread];
+      const h = py - 2.25 * s;
+      T = (vy + Math.sqrt(vy * vy + 2 * g * h)) / g;
+    } else {
+      // The streams: from the upper basin's rim, out and down into the lower basin.
+      const k = Math.floor(r(i + 4) * 8);
+      const a = (k / 8) * Math.PI * 2 + (r(i + 5) - 0.5) * 0.12;
+      const [ra, rb] = [1.12 * s, (1.45 + r(i + 6) * 0.3) * s];
+      [px, py, pz] = [Math.cos(a) * ra, 2.24 * s, Math.sin(a) * ra];
+      T = 0.42 + r(i + 7) * 0.12;
+      const drop = 2.24 * s - 0.62 * s;
+      [vx, vy, vz] = [(Math.cos(a) * (rb - ra)) / T, (-drop + 0.5 * g * T * T) / T, (Math.sin(a) * (rb - ra)) / T];
+    }
+    p0.set([px, py, pz], i * 3);
+    v.set([vx, vy, vz], i * 3);
+    life.set([T, r(i + 8)], i * 2);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(p0, 3));
+  geo.setAttribute("aVel", new THREE.BufferAttribute(v, 3));
+  geo.setAttribute("aLife", new THREE.BufferAttribute(life, 2));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: waterUniforms.uTime, uSize: { value: 0.09 }, uBright: { value: 1 } },
+    transparent: true,
+    depthWrite: false,
+    vertexShader: /* glsl */ `
+      uniform float uTime;
+      uniform float uSize;
+      attribute vec3 aVel;
+      attribute vec2 aLife;
+      varying float vFade;
+      void main() {
+        float t = mod(uTime + aLife.y * aLife.x * 7.0, aLife.x);
+        vec3 p = position + aVel * t + vec3(0.0, -4.9 * t * t, 0.0);
+        vFade = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.8, 1.0, t / aLife.x));
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = uSize * 900.0 / -mv.z;
+      }`,
+    fragmentShader: /* glsl */ `
+      uniform float uBright;
+      varying float vFade;
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        if (d > 0.5) discard;
+        gl_FragColor = vec4(vec3(0.9, 0.95, 1.0) * uBright, (1.0 - d * 2.0) * 0.55 * vFade);
+        #include <colorspace_fragment>
+      }`,
+  });
+  const pts = new THREE.Points(geo, mat);
+  pts.position.set(x, y, z);
+  pts.frustumCulled = false;
+  pts.userData.spray = true;
+  return pts;
+}
+
 /** Signal lenses, by role and phase ("a" or "b": the two roads at a crossing); see setSignals. */
 const signals: { m: THREE.MeshStandardMaterial; role: string; phase: string }[] = [];
 const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, sig_green: 0x3aff8a, ped_red: 0xff3a1a, ped_white: 0xf4f0e6 };
