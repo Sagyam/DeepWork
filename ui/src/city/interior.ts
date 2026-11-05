@@ -8,7 +8,7 @@
 // size in metres comes from screen derivatives, so no extra attributes.
 import * as THREE from "three";
 
-export type RoomKind = "home" | "shop" | "lobby" | "diner";
+export type RoomKind = "home" | "shop" | "lobby" | "diner" | "works";
 
 export const interiorUniforms = {
   uDay: { value: 1 },
@@ -139,6 +139,100 @@ vec3 diner(vec3 ro, vec3 rd, float id, float W) {
   return room * mix(1.0, 0.1, uBurn);
 }
 
+// A works floor seen through one of its windows: a tall shed of whitewashed
+// brick over a green dado, a concrete floor with painted gangways, the roof
+// trusses' ties, steel stanchions, machine tools in a row along the window
+// side and bigger ones beyond, a bench under the sill, lamps hanging in
+// enamel shades; it runs on to either side. Some shops work a night shift.
+vec3 works(vec3 ro, vec3 rd, float id, float W) {
+  float fl = -1.1, ce = fl + 4.9, depth = 9.0;
+  float x0 = -14.0, x1 = W + 14.0;
+  float tx = rd.x > 0.0 ? (x1 - ro.x) / rd.x : (x0 - ro.x) / rd.x;
+  float ty = rd.y > 0.0 ? (ce - ro.y) / rd.y : (fl - ro.y) / rd.y;
+  float tz = depth / rd.z;
+  float t = min(tx, min(ty, tz));
+  vec3 p = ro + rd * t;
+  vec3 col, nn;
+  float sky = 0.0;
+  if (t == ty && rd.y < 0.0) {
+    col = vec3(0.5, 0.49, 0.46) * (0.85 + 0.15 * hash(floor(p.x * 0.7) + floor(p.z * 0.7) * 13.0));
+    if (abs(p.z - 1.55) < 0.05 || abs(p.z - 4.6) < 0.05) col = vec3(0.78, 0.66, 0.2);
+    nn = vec3(0.0, 1.0, 0.0);
+  } else if (t == ty) {
+    // The underside of the sawtooth: dark sheeting, bright bands of north light.
+    float f = fract((p.x + id * 1.3) / 3.6);
+    sky = step(0.78, f);
+    col = mix(vec3(0.3, 0.3, 0.3), vec3(0.95, 0.97, 1.0), sky);
+    nn = vec3(0.0, -1.0, 0.0);
+  } else {
+    float y = p.y - fl;
+    col = y < 1.4 ? vec3(0.26, 0.4, 0.32) : vec3(0.86, 0.84, 0.78);
+    if (abs(y - 1.4) < 0.03) col = vec3(0.12);
+    // Pilasters, and tall windows in the far wall.
+    float u = t == tz ? p.x : p.z;
+    if (fract(u / 3.6) < 0.12) col *= 0.82;
+    if (t == tz && y > 2.3 && y < 4.4 && abs(fract(p.x / 3.6) - 0.56) < 0.25) col = vec3(0.62, 0.68, 0.72) * (0.8 + 0.2 * step(0.08, fract(y / 0.45)));
+    nn = t == tz ? vec3(0.0, 0.0, -1.0) : vec3(1.0, 0.0, 0.0);
+  }
+  vec3 steel = vec3(0.16, 0.17, 0.18);
+  // The trusses' ties across the shed, and a stanchion at each.
+  for (int i = 0; i < 3; i++) {
+    float z = 1.8 + float(i) * 3.0;
+    hitBox(ro, rd, vec3(x0, ce - 0.25, z), vec3(x1, ce - 0.12, z + 0.12), steel, t, col, nn);
+  }
+  float tc = (4.2 - ro.z) / rd.z;
+  float cx = (floor((ro.x + rd.x * tc) / 3.6) + 0.5) * 3.6;
+  for (int i = -1; i <= 1; i++) hitBox(ro, rd, vec3(cx + float(i) * 3.6 - 0.1, fl, 4.1), vec3(cx + float(i) * 3.6 + 0.1, ce, 4.3), steel, t, col, nn);
+  // The bench under the window.
+  hitBox(ro, rd, vec3(-0.2, fl + 0.82, 0.05), vec3(W + 0.2, fl + 0.9, 0.75), vec3(0.42, 0.32, 0.22), t, col, nn);
+  hitBox(ro, rd, vec3(-0.15, fl, 0.6), vec3(W + 0.15, fl + 0.82, 0.7), vec3(0.3, 0.24, 0.18), t, col, nn);
+  if (hash(id + 23.0) < 0.6) hitBox(ro, rd, vec3(W * 0.3, fl + 0.9, 0.2), vec3(W * 0.3 + 0.35, fl + 1.15, 0.45), vec3(0.24, 0.36, 0.42), t, col, nn);
+  // Lathes in a row, and presses and mills beyond the gangway.
+  vec3 paint = vec3(0.34, 0.42, 0.38);
+  float tl = (2.6 - ro.z) / rd.z;
+  float lx = floor((ro.x + rd.x * tl) / 2.4);
+  for (int i = -1; i <= 1; i++) {
+    float k = lx + float(i);
+    if (hash(k + id * 0.1) < 0.2) continue;
+    float c0 = k * 2.4 + 0.3, len = 1.4 + 0.6 * hash(k + 3.0);
+    hitBox(ro, rd, vec3(c0, fl + 0.55, 2.2), vec3(c0 + len, fl + 1.0, 2.9), paint, t, col, nn);
+    hitBox(ro, rd, vec3(c0 + 0.1, fl, 2.35), vec3(c0 + 0.35, fl + 0.55, 2.75), paint * 0.8, t, col, nn);
+    hitBox(ro, rd, vec3(c0 + len - 0.35, fl, 2.35), vec3(c0 + len - 0.1, fl + 0.55, 2.75), paint * 0.8, t, col, nn);
+    hitBox(ro, rd, vec3(c0, fl + 1.0, 2.3), vec3(c0 + 0.45, fl + 1.4, 2.8), paint * 0.9, t, col, nn);
+  }
+  float tp = (5.6 - ro.z) / rd.z;
+  float px = floor((ro.x + rd.x * tp) / 3.0);
+  for (int i = -1; i <= 1; i++) {
+    float k = px + float(i);
+    if (hash(k * 1.7 + 9.0) < 0.3) continue;
+    float c0 = k * 3.0 + 0.5, h = 1.6 + 0.9 * hash(k + 5.0);
+    vec3 pc = hash(k + 11.0) < 0.5 ? paint : vec3(0.42, 0.44, 0.46);
+    hitBox(ro, rd, vec3(c0, fl, 5.2), vec3(c0 + 1.3, fl + h, 6.4), pc, t, col, nn);
+  }
+  // Lamps in enamel shades over the gangway.
+  float tm = (3.6 - ro.z) / rd.z;
+  float mx = (floor((ro.x + rd.x * tm) / 3.6) + 0.5) * 3.6;
+  float glow = 0.0;
+  for (int i = -1; i <= 1; i++) {
+    vec3 c = vec3(mx + float(i) * 3.6, ce - 1.6, 3.6);
+    hitBox(ro, rd, c - vec3(0.25, 0.0, 0.25), c + vec3(0.25, 0.14, 0.25), vec3(0.18, 0.3, 0.24), t, col, nn);
+    hitBox(ro, rd, c + vec3(-0.01, 0.14, -0.01), vec3(c.x + 0.01, ce, c.z + 0.01), steel, t, col, nn);
+    vec3 w = ro + rd * max(dot(c - ro, rd), 0.0) - c;
+    glow += smoothstep(0.34, 0.0, length(w)) * step(-0.05, -w.y);
+  }
+  p = ro + rd * t;
+  float shade = abs(nn.y) > 0.5 ? (nn.y > 0.0 ? 1.0 : 0.75) : abs(nn.x) > 0.5 ? 0.72 : 0.88;
+  float fall = mix(1.0, 0.6, clamp(p.z / depth, 0.0, 1.0));
+  bool lit = hash(id + 5.0) < 0.5 && hash(id + 7.0) >= uBurn;
+  vec3 lamp = vec3(1.0, 0.9, 0.72);
+  vec3 light = vec3(0.5, 0.51, 0.52) * uDay * fall + (lit ? lamp * 0.6 * uNight : vec3(0.0));
+  vec3 room = col * shade * light + sky * vec3(0.8, 0.85, 0.9) * uDay * 0.6;
+  if (lit) room += lamp * 1.8 * glow * uNight;
+  // Factory glass is never clean.
+  room = mix(room, vec3(0.32, 0.33, 0.3) * (0.3 * uDay + 0.1), 0.18);
+  return room * mix(1.0, 0.1, uBurn);
+}
+
 vec3 interior() {
   float id = floor(vPane.x + 1e-4);
   float lu = vPane.x - id;
@@ -155,6 +249,7 @@ vec3 interior() {
   vec3 rd = vec3(dot(V, T), V.y, -dot(V, N));
   rd.z = max(rd.z, 0.05);
   if (uKind == 3) return diner(ro, rd, id, W);
+  if (uKind == 4) return works(ro, rd, id, W);
 
   bool shop = uKind == 1;
   float r1 = hash(id), r2 = hash(id + 17.0), r3 = hash(id + 41.0), r4 = hash(id + 73.0);
@@ -265,7 +360,7 @@ export function glass(kind: RoomKind, burn = 0): THREE.MeshPhysicalMaterial {
   m.onBeforeCompile = (sh) => {
     sh.uniforms.uDay = interiorUniforms.uDay;
     sh.uniforms.uNight = interiorUniforms.uNight;
-    sh.uniforms.uKind = { value: ["home", "shop", "lobby", "diner"].indexOf(kind) };
+    sh.uniforms.uKind = { value: ["home", "shop", "lobby", "diner", "works"].indexOf(kind) };
     sh.uniforms.uBurn = { value: burn };
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nvarying vec3 vWP;\nvarying vec3 vWN;\nvarying vec2 vPane;")

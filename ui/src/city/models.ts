@@ -550,6 +550,34 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       if (hasReal("street")) fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
+    case "s4": {
+      // Concrete to the pavement: an apron before the dock with a vehicle
+      // drawn up and pallets by the dock steps, oil drums by the boiler
+      // house; behind, a walled yard with a skip and scrap.
+      const concrete = mat(0xa29e96, { roughness: 0.95 });
+      p.box(concrete, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const line = mat(0xd8b83a, { roughness: 0.7 });
+      p.box(line, 3.9, KERB + 0.01, 0.12, -1.25, 0, front - 0.5);
+      // Nosed in beside the stack, clear of the dock and the office door.
+      parked(p, 5.55, front - 2.9, 0, s.seed + 3);
+      const wood = mat(0x8a6a40, { roughness: 0.9 });
+      for (let i = 0; i < 5; i++) p.box(wood, 1.2, 0.15, 1.0, -5.3 + (i % 2) * 0.06, KERB + i * 0.15, 6.4, 0, (r() - 0.5) * 0.1);
+      for (let i = 0; i < 3; i++) p.box(wood, 1.2, 0.15, 1.0, -5.0, KERB + i * 0.15, front - 0.95, 0, 0.3 + (r() - 0.5) * 0.1);
+      const drum = [mat(0x2a4a7a, { roughness: 0.5, metalness: 0.3 }), mat(0x7a2a22, { roughness: 0.5, metalness: 0.3 })];
+      for (let i = 0; i < 3; i++) p.add(drum[i % 2], new THREE.CylinderGeometry(0.29, 0.29, 0.88, 14), 6.3 - (i % 2) * 0.62, KERB + 0.44, -0.35 - Math.floor(i / 2) * 0.62);
+      const yardZ = -5.2; // the back wall
+      p.box(mat(0x4a5a3e, { roughness: 0.6, metalness: 0.4 }), 3.4, 1.3, 1.7, -3.2, KERB, (yardZ + back) / 2, 0.04);
+      p.box(mat(0x5a4a3e, { roughness: 0.8, metalness: 0.5 }), 1.6, 0.4, 0.9, 2.6, KERB, (yardZ + back) / 2, 0.3);
+      if (hasReal("street")) {
+        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.8);
+        fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.8);
+      } else {
+        const wall = mat(0x7a4636, { roughness: 0.95 });
+        p.box(wall, LOT - 0.4, 1.8, 0.25, 0, KERB, back + 0.12);
+      }
+      break;
+    }
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.
