@@ -1049,7 +1049,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB);
       downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them;
       visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground;
-      civic props realistic (2026-11-06): water tower, tower crane and scaffold, rubble, park fountain / bandstand / goals / stand, people
+      civic props realistic (2026-11-06): water tower, tower crane and scaffold, rubble, park fountain / bandstand / goals / stand, people;
+      early-game gaps listed (2026-11-06, `docs/models.md` "Early-game gaps"): public buildings borrow blueprint models, built in the order there
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)

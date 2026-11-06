@@ -453,6 +453,70 @@ The automatic parks every fourth cell stay as they are (plaza, pond park,
 football ground; see "Not buildings"); earned parks and squares are larger
 and grander, so the two read differently.
 
+### Public buildings and utilities (new, 2026-11-06)
+
+The master plan's needs (`crates/daemon/src/plan.rs`) ask for kinds that
+no blueprint fills: water, power and the public buildings. Until they have
+models, `PUBLIC` in `ui/src/city/plan.ts` borrows a blueprint's model for
+them (see "Early-game gaps" below). They fit an ordinary lot (16 x 16 m)
+like the blueprints; the town builds them, so they need no blueprint and
+take no coins. Hamlet and Town power share a model, the City's power
+station is its own; `PUBLIC` picks by kind, so P1 serves all three power
+needs until P2 lands.
+
+| ID | Model | Look | Need (level, hour) | Effort | Priority |
+|---|---|---|---|---|---|
+| P1 | Electrical substation | Fenced gravel yard: a transformer on a plinth with radiator fins and bushings, a steel gantry taking the overhead line, insulator strings, a brick switch house with louvred doors and a danger sign, poles carrying the line off the lot | Electricity (Hamlet, ~10 h), More power (Town) | 12% | P1 |
+| F1 | Fire station | Two-bay brick engine house, red folding doors, hose-drying tower, a lamp over the door, the town's name in stone | A fire station (Town, ~10-50 h) | 12% | P1 |
+| E1 | School | One- or two-storey schoolhouse, tall classroom windows, a bell cupola, a fenced playground with a hopscotch court and a flagpole | A school (Town) | 15% | P1 |
+| H1 | Clinic | Low rendered building, a canopy over the entrance with a green cross, ramp and rails, a bench, an ambulance bay | A clinic (Town) | 12% | P1 |
+| P2 | Power station | Brick turbine hall with tall arched windows, a pair of stacks, a cooling tower or a switchyard behind | A power station (City) | 20% | P2 |
+| W2 | Pumping station | Victorian brick engine house with a tall chimney, a gated yard over the mains | Water mains (City) | 12% | P2 |
+| H2 | Hospital | Several storeys of wards on a podium, an emergency canopy, a helipad on the roof | A hospital (City) | 20% | P1 |
+| E2 | Police station | Stone ground storey, blue lamp over the door, flagpole, cars in the yard | A police station (City) | 12% | P1 |
+| E3 | Library | See L8 (one model: portico, steps, lions, banners), at lot size | A library (City) | 15% | P1 |
+
+City hall is L5 above; the town square L6; the City's park L12.
+
+## Early-game gaps (2026-11-06)
+
+What the first ~100 focused hours ask for, against what is drawn. The plan
+spends them as Hamlet (0-10 h), Town (10-49.5 h) and about a third of City
+(49.5-196.5 h); in the City the mayor's order decides, and the default
+order (an old ledger, no choices) spends hours 50-98 on six office towers.
+
+| # | Gap | First seen | Drawn today | Fix |
+|---|---|---|---|---|
+| 1 | Power | ~10 h (Hamlet) | S4, the brick factory with its 17 m stack, beside the hamlet's real works | P1 substation (Hamlet, Town); P2 power station (City) |
+| 2 | Fire station | Town | S4 again: by 50 h up to six S4s (3 works, 2 power, the fire station) | F1 |
+| 3 | School, clinic | Town | A3, the balcony block, the same model as the town's flats | E1, H1 |
+| 4 | Works: one design | ~8 h | S4 is the only workshop blueprint, so the mayor never chooses | a second workshop (a timber mill or a brewery) |
+| 5 | Water, three times | 10 h, ~45 h, ~100 h | the civic water tower each time | W2 pumping station for the City's mains |
+| 6 | City hall | City | L1, also the City's landmark: two identical skyscrapers | L5 |
+| 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
+| 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
+| 9 | Ruins | the first surrender | damage 3 is the rubble heap; scarred shells not drawn | ruins standing (`docs/progression.md`, "Next") |
+| 10 | Shop pictures | the first purchase | one outline per kind (`silhouette` in `desk.ts`), so C1, C2 and C4 look alike | a small render per blueprint, made from the models |
+| 11 | Square, park | Town, City | assembled in `models.ts` from the civic props | L6 (statue, market stalls), L12 |
+| 12 | Sound | always | none (no chime on completion, nothing at level-up or a fire) | a few short sounds, if wanted |
+
+Build order (decided 2026-11-06): P1 substation, F1 fire station, E1
+school, H1 clinic (every borrowed model before 50 h gone), shop pictures,
+ruins standing, L5 city hall, O2 or O3, a second workshop, then H2, E2, E3.
+The master plan's real layout in `plan.ts` decides where the public
+buildings stand, so it should come before L5.
+
+- [ ] P1 substation
+- [ ] F1 fire station
+- [ ] E1 school
+- [ ] H1 clinic
+- [ ] Blueprint pictures in the shop
+- [ ] Ruins standing
+- [ ] L5 city hall
+- [ ] O2 or O3
+- [ ] A second workshop
+- [ ] H2 hospital, E2 police station, E3 library
+
 ### States every building needs
 
 | State | Today | Realistic version | Effort |

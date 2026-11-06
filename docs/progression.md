@@ -356,6 +356,8 @@ build order. Decisions taken while building are noted inline.
 - [ ] The master plan's real layout in `plan.ts` (streets, districts,
       reserved landmark ground); a test that its lot ids match the daemon's
 - [ ] Models for water, power and the public buildings, with blueprints
+      (models listed and ordered in `docs/models.md`, "Public buildings and
+      utilities" and "Early-game gaps")
 - [ ] Metropolis and beyond: open-ended needs in expansion districts
 - [ ] Endowed progress, collection sets, staking coins, seasons and quests,
       residents' letters and move-outs
