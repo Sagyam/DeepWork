@@ -61,15 +61,9 @@ with a root shell open in another terminal for the PAM checks.
       new trees; find what to win back.
 - [ ] 1% lows dip when a building is built (geometry on the main thread,
       new shaders).
-- [ ] Pause on inactivity: stop drawing when hidden, ~5 fps unfocused,
-      freeze traffic.
 - [ ] Instancing: one InstancedMesh per piece and material instead of
       merged `Parts`.
-- [ ] Quality presets (render scale, shadow map, MSAA, bloom) for weak
-      iGPUs on 1440p+.
-- [ ] Cheaper shadow filter (5 PCF taps into 8192² cost 3-4 ms).
 - [ ] Geometry compression (meshopt) to shrink the pack.
-- [ ] Fountain spray in the app's parks (`Parts` can't hold `Points`).
 - [ ] Retune lighting: it is still tuned for the flat kit.
 
 ## Packaging

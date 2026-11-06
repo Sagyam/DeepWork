@@ -8,6 +8,7 @@ import { escapeHtml, hhmm, hm } from "./format";
 import { runsPanel, skippable } from "./panels";
 import { cleanDomain, defaultProfileName, putPath } from "./settings-model";
 import { setThemePref, themePref, type ThemePref } from "./theme";
+import { QUALITIES, qualityPref, setQualityPref, type Quality } from "./city/quality";
 import type { Config, ListMode, PendingConfig, Profile, RuleAction, Status, Throttle } from "./proto";
 
 export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup" | "appearance";
@@ -19,7 +20,7 @@ const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "inverted", label: "Inverted mode", blurb: "Throttle between sessions" },
   { key: "dns", label: "DNS", blurb: "Resolver and upstreams" },
   { key: "backup", label: "Backup", blurb: "Export and import everything" },
-  { key: "appearance", label: "Appearance", blurb: "System, light or dark" },
+  { key: "appearance", label: "Appearance", blurb: "Theme and city quality" },
 ];
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -392,6 +393,7 @@ const THEMES: { key: ThemePref; label: string; icon: string }[] = [
 /** A view preference, so it applies at once and never goes to deepworkd. */
 function appearanceSection(): string {
   const pref = themePref();
+  const quality = qualityPref();
   return `${sheetTitle("Appearance", `How this window looks. Kept in the app, not in <code>config.toml</code>, and applied at once.`)}
     ${field(
       "Theme",
@@ -401,6 +403,13 @@ function appearanceSection(): string {
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.icon}</svg>${t.label}</button>`,
       ).join("")}</div>`,
       "System follows the desktop's light or dark preference, and switches with it.",
+    )}
+    ${field(
+      "City quality",
+      `<div class="seg" role="group" aria-label="City quality">${QUALITIES.map(
+        (q) => `<button class="${quality === q.key ? "on" : ""}" data-action="quality" data-quality="${q.key}" aria-pressed="${quality === q.key}">${q.label}</button>`,
+      ).join("")}</div>`,
+      "Lower draws the city at a lower resolution, without the glow, and with simpler shadows. Try it if the city stutters on a large screen.",
     )}`;
 }
 
@@ -766,6 +775,9 @@ function start() {
         return confirmSkip(btn.dataset.routine!);
       case "theme":
         setThemePref(btn.dataset.theme as ThemePref);
+        return render();
+      case "quality":
+        setQualityPref(btn.dataset.quality as Quality);
         return render();
     }
     if (!draft) return;

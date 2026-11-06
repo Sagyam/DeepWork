@@ -15,11 +15,13 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { namesOf } from "../format";
 import { Bench } from "./bench";
+import { shadowTaps, type ShadowTaps } from "./shadow";
+import { onQuality, QUALITY, qualityPref, type QualitySpec } from "./quality";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
 import { thumbnail } from "./thumbs";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime, useModels } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
@@ -40,6 +42,8 @@ const TINY = 140;
 const SMALL = 320;
 /** Side of the tiles the trees round town are grouped in, for impostors. */
 const TREE_TILE = 64;
+/** pause: frames a second for ambient motion while the window is unfocused. */
+const DIM_FPS = 5;
 /** shadow: redraw the shadow map once the sun has moved this far (radians, ~3 minutes). */
 const SUN_STEP = 0.0125;
 /**
@@ -134,6 +138,15 @@ export class City {
   private lampMats: THREE.MeshStandardMaterial[] = [];
 
   private timer = new THREE.Timer();
+  /** The shadow filter's taps in use (0 before the first applyQuality). */
+  private taps: ShadowTaps | 0 = 0;
+  /**
+   * pause: the window is unfocused, so only ambient motion (smoke, cranes,
+   * the ghost's pulse) draws, at DIM_FPS, with traffic and auto-rotate
+   * stopped; moments still play at full rate. Hidden draws nothing.
+   */
+  private dim = false;
+  private dimAt = 0;
   private shake = 0;
   private idle = 0;
   private story: (text: string) => void;
@@ -301,8 +314,31 @@ export class City {
     r.domElement.addEventListener("pointerleave", () => this.onHover?.(null, 0, 0));
 
     new ResizeObserver(() => this.resize()).observe(el);
-    this.resize();
-    r.setAnimationLoop(() => this.frame());
+    this.applyQuality(QUALITY[qualityPref()]);
+    onQuality((q) => this.applyQuality(QUALITY[q]));
+    const activity = () => this.activity();
+    document.addEventListener("visibilitychange", activity);
+    window.addEventListener("focus", activity);
+    window.addEventListener("blur", activity);
+    this.activity();
+  }
+
+  /** Follows the window: no frames while hidden, few while unfocused (pause). */
+  private activity() {
+    const hidden = !this.bench && document.hidden;
+    this.dim = !this.bench && !document.hasFocus();
+    if (this.dim && !this.focus) this.controls.autoRotate = false;
+    this.renderer.setAnimationLoop(hidden ? null : () => this.frame());
+    // A paused clock would hand the first frame back the whole gap.
+    this.timer.reset();
+    this.dirty = true;
+  }
+
+  /** A moment (camera move, collapse, rise, queued replay) plays at full rate even unfocused. */
+  private moment(): boolean {
+    if (this.dirty || this.focus || this.queue.length || this.dying.length || this.shake > 0 || this.fx.falling) return true;
+    for (const e of this.entries.values()) if (e.rise || e.hit !== undefined) return true;
+    return false;
   }
 
   /** The shop's picture of a blueprint (thumbs.ts), or null while its model is not loaded. */
@@ -319,6 +355,46 @@ export class City {
     return city;
   }
 
+  /**
+   * quality (quality.ts): render scale, MSAA, shadow map and filter, bloom,
+   * all changeable while the city is on screen. A new shadow filter
+   * recompiles every material (one hitch, on a settings change).
+   */
+  private applyQuality(q: QualitySpec) {
+    // shadow filter (shadow.ts): a fixed 2x2 grid looks as soft as three's
+    // noisy 5-tap disc and costs less; &taps=1|4|5 compares them.
+    const url = Number(new URLSearchParams(location.search).get("taps"));
+    const taps = ([1, 4, 5].includes(url) ? url : q.taps) as ShadowTaps;
+    if (taps !== this.taps) {
+      const first = this.taps === 0;
+      this.taps = taps;
+      shadowTaps(taps);
+      if (!first) {
+        this.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material;
+          if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true;
+        });
+        this.warm = true;
+      }
+    }
+    this.renderer.setPixelRatio(q.scale);
+    this.composer.setPixelRatio(q.scale);
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (rt.samples === q.msaa) continue;
+      rt.samples = q.msaa;
+      rt.dispose();
+    }
+    const shadow = this.sunLight.shadow;
+    if (shadow.mapSize.x !== q.shadow) {
+      shadow.mapSize.set(q.shadow, q.shadow);
+      shadow.map?.dispose();
+      shadow.map = null;
+      this.shadowsDirty();
+    }
+    this.bloom.enabled = q.bloom;
+    this.resize();
+  }
+
   private resize() {
     this.dirty = true;
     const w = this.el.clientWidth || 1;
@@ -331,6 +407,7 @@ export class City {
     const px = (h * this.renderer.getPixelRatio()) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     this.fx.smoke.setScale(px);
     this.fx.glow.setScale(px);
+    setSprayScale(this.renderer.getPixelRatio());
   }
 
   /** New world or time; cheap to call on every poll. */
@@ -1108,9 +1185,15 @@ export class City {
   private frame() {
     // Nothing to draw before the first world (the models are still loading).
     if (!this.world) return;
+    if (this.dim && !this.moment()) {
+      const now = performance.now();
+      if (now - this.dimAt < 1000 / DIM_FPS) return;
+      this.dimAt = now;
+    }
     this.timer.update();
     const raw = this.timer.getDelta();
-    const dt = Math.min(0.05, raw);
+    // dim frames are far apart: a larger step keeps ambient motion at its speed.
+    const dt = Math.min(this.dim ? 0.25 : 0.05, raw);
     this.t += dt;
     if ((this.fpsT += raw) >= 1) {
       this.fps = this.fpsCount / this.fpsT;
@@ -1120,7 +1203,7 @@ export class City {
     this.queue = this.queue.filter((q) => q.at > this.t);
 
     this.idle += dt;
-    if (!this.controls.autoRotate && this.idle > 30 && !this.focus) this.controls.autoRotate = true;
+    if (!this.controls.autoRotate && this.idle > 30 && !this.focus && !this.dim) this.controls.autoRotate = true;
     if (this.focus) {
       this.focus.t += dt;
       this.controls.target.lerp(this.focus.to, Math.min(1, dt * 1.5));
@@ -1138,6 +1221,7 @@ export class City {
       if (this.focus.t > 3.5) {
         this.focus = null;
         this.pull = null;
+        if (this.dim) this.controls.autoRotate = false;
         if (this.plan) this.frameCamera(this.plan, false);
       }
     }
@@ -1206,7 +1290,7 @@ export class City {
     });
     this.fx.update(dt, wind);
     this.land.update(dt);
-    this.traffic.update(dt);
+    if (!this.dim) this.traffic.update(dt);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
 
@@ -1235,7 +1319,7 @@ export class City {
     // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
     // traffic, effects or transitions): a focus timer's city can sit on screen
     // for hours, and a still frame costs as much as a busy one.
-    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || this.traffic.active || this.impostors.pending > 0;
+    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
     if (!moving && !this.dirty && !this.bench) return;
     this.dirty = false;
     if (this.warm) {

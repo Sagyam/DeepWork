@@ -37,7 +37,9 @@ bunx tauri build --no-bundle   # binary in target/release/deepwork-ui
 
 **Mock scenarios** (`?mock=`): `empty`, `hamlet`, `city`, `metropolis`,
 `session`, `stopwatch`, `surrender`, `ruins`, `desk`, `nearmiss`,
-`levelup`, `inverted`. `&hour=16` fixes the time of day. In the console,
+`levelup`, `inverted`. `&hour=16` fixes the time of day;
+`&quality=low|medium|high` and `&taps=1|4|5` override the quality preset and
+shadow filter. In the console,
 `city.demo("collapse" | "build" | "damage" | "graduate")` plays a transition.
 
 ### Models
@@ -57,7 +59,7 @@ release builds leave it out. To run a release build on local models:
 |---|---|---|
 | `/proto.html?model=c1` | One model on its lot | `floors`, `seed`, `damage=0..3`, `view=hero\|city\|detail\|roof\|back\|street`, `hour`, `count=N` (stress) |
 | `/proto.html?props=cars` | A props model's pieces | `only=suv,hatch`, `gap`, `ry`, `view` |
-| `/town.html` | Every model in a hand-laid town, with a perf panel | `view=overview\|downtown\|...`, `opt=0..8`, `aa=msaa\|smaa\|fxaa\|none`, `shadowmap`, `scale`, `still`, `fps=30` |
+| `/town.html` | Every model in a hand-laid town, with a perf panel | `view=overview\|downtown\|...`, `opt=0..8`, `aa=msaa\|smaa\|fxaa\|none`, `shadowmap`, `taps`, `scale`, `still`, `fps=30` |
 
 All pages take `cam=x,y,z&at=x,y,z&fov=`. A new model appears in the town
 once added to `BLOCKS` in `ui/src/proto/town.ts`.

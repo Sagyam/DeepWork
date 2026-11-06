@@ -1383,6 +1383,14 @@ export function waterMat(o: { amp?: number; scale?: number; ring?: [number, numb
  * the upper basin's rim into the lower one, as the kit fountain shows them.
  * `x, y, z` is the fountain's foot, `s` its scale.
  */
+/** The spray's brightness, dimmed at night by setSignals. */
+const sprayBright = { value: 1 };
+/** Render pixels per CSS pixel, so the drops keep their size at any render scale. */
+const sprayScale = { value: 1 };
+export function setSprayScale(px: number) {
+  sprayScale.value = px;
+}
+
 export function fountainSpray(x: number, y: number, z: number, s: number): THREE.Points {
   const N = 1400;
   const p0 = new Float32Array(N * 3);
@@ -1422,12 +1430,13 @@ export function fountainSpray(x: number, y: number, z: number, s: number): THREE
   geo.setAttribute("aVel", new THREE.BufferAttribute(v, 3));
   geo.setAttribute("aLife", new THREE.BufferAttribute(life, 2));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: waterUniforms.uTime, uSize: { value: 0.09 }, uBright: { value: 1 } },
+    uniforms: { uTime: waterUniforms.uTime, uSize: { value: 0.09 }, uBright: sprayBright, uPx: sprayScale },
     transparent: true,
     depthWrite: false,
     vertexShader: /* glsl */ `
       uniform float uTime;
       uniform float uSize;
+      uniform float uPx;
       attribute vec3 aVel;
       attribute vec2 aLife;
       varying float vFade;
@@ -1437,7 +1446,7 @@ export function fountainSpray(x: number, y: number, z: number, s: number): THREE
         vFade = smoothstep(0.0, 0.08, t) * (1.0 - smoothstep(0.8, 1.0, t / aLife.x));
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = uSize * 900.0 / -mv.z;
+        gl_PointSize = uSize * uPx * 900.0 / -mv.z;
       }`,
     fragmentShader: /* glsl */ `
       uniform float uBright;
@@ -1467,6 +1476,7 @@ const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, s
  * brightens the lit lenses.
  */
 export function setSignals(t: number, night = 0) {
+  sprayBright.value = 1 - 0.78 * night;
   const T = 30;
   const c = ((t % T) + T) % T;
   const lit = (phase: string) => {
