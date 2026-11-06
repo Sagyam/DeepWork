@@ -1,17 +1,20 @@
-// City theme: the countryside meshes, from terrain.ts. Faceted terrain
+// City theme: the countryside meshes, from terrain.ts. Smooth terrain
 // coloured by height and slope (meadow, forest floor, river sand, rock,
-// snow), one water plane that fills the river and the lake, and forests and
-// boulders instanced from the kit: lush broadleaf and rainforest giants in
-// the lowlands, conifers higher up, bare rock above the tree line.
+// snow) with grass and stone detail near the eye, one water plane that
+// fills the river and the lake, forests instanced from the trees model (or
+// the kit) and boulders of their own (rocks()): lush broadleaf and
+// rainforest giants in the lowlands, conifers higher up, bare rock above the
+// tree line.
 import * as THREE from "three";
+import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { piece } from "./kit";
-import { hasReal, realMat, realPiece } from "./real";
+import { hasReal, realMat, realPiece, tex } from "./real";
 import { IMPOSTOR_NEAR, Impostors, nearOnly } from "./impostor";
 import { PITCH_X, PITCH_Z, rng, type CityPlan } from "./plan";
 import { LAKE, RADIUS, ROAD_Z, WATER, fbm, noise, smoothstep, terrain, type Land as Shape } from "./terrain";
 
-const RINGS = 170;
-const SEGMENTS = 288;
+const RINGS = 300;
+const SEGMENTS = 520;
 const SECTORS = 12;
 /** Side of the tiles the real woods are cut into, in metres. */
 const TILE = 96;
@@ -38,7 +41,10 @@ const cover = (x: number, z: number) =>
 export class Land {
   group = new THREE.Group();
   shape: Shape = terrain({ minX: 0, maxX: 0, minZ: 0, maxZ: 0 });
-  private ground = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, flatShading: true });
+  private ground = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
+  private groundDetail = false;
+  private rockMat: THREE.MeshStandardMaterial | null = null;
+  private rockGeos: [THREE.BufferGeometry, THREE.BufferGeometry][] = [];
   private waterMat: THREE.MeshStandardMaterial;
   private forestMats = new Map<string, THREE.MeshStandardMaterial>();
   /** The real woods near the camera, in tiles (see cull()). */
@@ -54,6 +60,10 @@ export class Land {
     this.group.clear();
     this.tiles = [];
     const land = (this.shape = terrain(p.bounds));
+    if (!this.groundDetail && hasReal("trees")) {
+      this.groundDetail = true;
+      detail(this.ground);
+    }
     this.group.add(this.terrainMesh(land), this.waterMesh());
     this.forest(land, p, imps);
   }
@@ -71,43 +81,39 @@ export class Land {
   }
 
   private terrainMesh(land: Shape): THREE.Mesh {
-    // One colour per facet, like the models, so the ground reads as low-poly
-    // land rather than a smooth green sheet.
+    // Rings of vertices round the middle, denser near it, each shared by the
+    // triangles round it: smooth normals and colours blended across the
+    // ground, so hills and mountains read as land, not as facets.
     const pos: number[] = [];
     const col: number[] = [];
+    const idx: number[] = [];
     const c = new THREE.Color();
-    const ring = (i: number) => {
+    for (let i = 0; i < RINGS; i++) {
       const r = RADIUS * Math.pow(i / (RINGS - 1), 1.7);
       const dr = Math.max(1.5, RADIUS * 1.7 * Math.pow(Math.max(i, 1) / (RINGS - 1), 0.7) / RINGS);
       const step = (Math.PI * 2) / SEGMENTS;
       const off = (i % 2) * (step / 2);
-      return Array.from({ length: SEGMENTS }, (_, j) => {
+      for (let j = 0; j < SEGMENTS; j++) {
         const a = j * step + off;
         const x = Math.cos(a) * r;
         const z = Math.sin(a) * r;
-        return { x, z, h: land.height(x, z), dr };
-      });
-    };
-    let prev = ring(0);
+        const h = land.height(x, z);
+        this.paint(c, land, x, z, h, dr);
+        pos.push(x, h, z);
+        col.push(c.r, c.g, c.b);
+      }
+    }
     for (let i = 0; i < RINGS - 1; i++) {
-      const next = ring(i + 1);
       for (let j = 0; j < SEGMENTS; j++) {
         const j1 = (j + 1) % SEGMENTS;
-        const A = prev[j], B = prev[j1], C = next[j], D = next[j1];
-        for (const [p, q, s] of [[A, B, C], [B, D, C]] as const) {
-          const x = (p.x + q.x + s.x) / 3;
-          const z = (p.z + q.z + s.z) / 3;
-          const h = (p.h + q.h + s.h) / 3;
-          this.paint(c, land, x, z, h, p.dr);
-          pos.push(p.x, p.h, p.z, q.x, q.h, q.z, s.x, s.h, s.z);
-          col.push(c.r, c.g, c.b, c.r, c.g, c.b, c.r, c.g, c.b);
-        }
+        const A = i * SEGMENTS + j, B = i * SEGMENTS + j1, C = (i + 1) * SEGMENTS + j, D = (i + 1) * SEGMENTS + j1;
+        idx.push(A, B, C, B, D, C);
       }
-      prev = next;
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+    g.setIndex(idx);
     g.computeVertexNormals();
     const mesh = new THREE.Mesh(g, this.ground);
     mesh.receiveShadow = true;
@@ -314,6 +320,17 @@ export class Land {
         }
         continue;
       }
+      if (model.startsWith("rock_")) {
+        // Boulders of their own (rocks()), not the kit's low-poly ones.
+        // Full detail round the town, a light one (about 500 triangles) beyond.
+        const [hi, lo] = this.rocks()[model === "rock_a" ? 0 : 1];
+        const tint = (t: Inst) => col.setHex(ROCK_TINTS[Math.floor(Math.abs(t.ry * 1000)) % ROCK_TINTS.length]);
+        const near = list.filter((t) => Math.hypot(t.x, t.z) < ROCK_NEAR);
+        const far = list.filter((t) => Math.hypot(t.x, t.z) >= ROCK_NEAR);
+        if (near.length) this.group.add(place(new THREE.InstancedMesh(hi, this.rockMat!, near.length), near, tint));
+        if (far.length) this.group.add(place(new THREE.InstancedMesh(lo, this.rockMat!, far.length), far, tint));
+        continue;
+      }
       const parts = realistic ? realPiece("trees", model) : piece(model).parts;
       for (const { role, geo } of parts) {
         const leafy = role === "woods" || role === "firs";
@@ -327,10 +344,140 @@ export class Land {
     }
   }
 
+  /**
+   * Two boulders (rock_a, rock_b at the kit's sizes, about 1 m): a dense
+   * sphere pushed about by noise and cut by a few cleavage planes, smooth
+   * shaded, darker in its hollows, with stone on it when the library has
+   * loaded (triplanar, as boulders have no UVs).
+   */
+  private rocks(): [THREE.BufferGeometry, THREE.BufferGeometry][] {
+    if (this.rockGeos.length) return this.rockGeos;
+    this.rockGeos = [
+      [rock(7, [1.2, 0.8, 1.0], 8), rock(7, [1.2, 0.8, 1.0], 4)],
+      [rock(19, [0.9, 1.1, 1.3], 8), rock(19, [0.9, 1.1, 1.3], 4)],
+    ];
+    const m = (this.rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
+    if (hasReal("trees")) {
+      const stone = tex("stone_col");
+      m.onBeforeCompile = (sh) => {
+        sh.uniforms.tStone = { value: stone };
+        sh.vertexShader = sh.vertexShader
+          .replace("#include <common>", "#include <common>\nvarying vec3 vRockP;\nvarying vec3 vRockN;")
+          .replace("#include <begin_vertex>", "#include <begin_vertex>\nvRockP = position * 0.9;\nvRockN = normal;");
+        sh.fragmentShader = sh.fragmentShader
+          .replace("#include <common>", "#include <common>\nuniform sampler2D tStone;\nvarying vec3 vRockP;\nvarying vec3 vRockN;")
+          .replace(
+            "#include <color_fragment>",
+            `#include <color_fragment>
+            vec3 rw = pow(abs(normalize(vRockN)), vec3(4.0));
+            rw /= rw.x + rw.y + rw.z;
+            vec3 st = texture2D(tStone, vRockP.zy).rgb * rw.x + texture2D(tStone, vRockP.xz).rgb * rw.y + texture2D(tStone, vRockP.xy).rgb * rw.z;
+            vec3 sm = textureLod(tStone, vec2(0.5), 12.0).rgb;
+            diffuseColor.rgb *= sm.g > 0.01 ? clamp(st / sm, 0.0, 2.0) : vec3(1.0);`,
+          );
+      };
+      m.customProgramCacheKey = () => "rock";
+    }
+    return this.rockGeos;
+  }
+
   /** Shows the real woods' tiles that hold trees within IMPOSTOR_NEAR of the eye; the rest are impostors. */
   cull(eye: THREE.Vector3) {
     for (const t of this.tiles) t.group.visible = t.box.distanceToPoint(eye) < IMPOSTOR_NEAR;
   }
+}
+
+/** Boulders closer than this to the town are drawn in full detail. */
+const ROCK_NEAR = 350;
+const ROCK_TINTS = [0x9a948a, 0x8a8478, 0xa49c90, 0x7c786e, 0x948c80];
+
+/** 3D value noise from three 2D slices: enough to rough up a boulder. */
+const noise3 = (x: number, y: number, z: number) => (noise(x, y) + noise(y + 31.7, z - 7.3) + noise(z + 57.1, x + 13.9)) / 3;
+
+/**
+ * A boulder with radii `size` (x, height, z) like the kit's, base at y = 0: an icosphere
+ * (`detail` 8 is about 1,600 triangles) pushed out by noise, flattened by a few cleavage planes and
+ * sunk at the bottom; vertex colours darken its hollows and cracks.
+ */
+function rock(seed: number, size: [number, number, number], detail: number): THREE.BufferGeometry {
+  let g: THREE.BufferGeometry = new THREE.IcosahedronGeometry(1, detail);
+  g.deleteAttribute("normal");
+  g.deleteAttribute("uv");
+  g = mergeVertices(g);
+  const r = rng(seed);
+  const planes = Array.from({ length: 6 }, () => {
+    const n = new THREE.Vector3(r() - 0.5, (r() - 0.5) * 0.6 + 0.25, r() - 0.5).normalize();
+    return { n, d: 0.62 + r() * 0.22 };
+  });
+  const pos = g.getAttribute("position") as THREE.BufferAttribute;
+  const col: number[] = [];
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    v.fromBufferAttribute(pos, i).normalize();
+    const big = noise3(v.x * 1.6 + seed, v.y * 1.6, v.z * 1.6) - 0.5;
+    const fine = noise3(v.x * 7 + seed, v.y * 7, v.z * 7) - 0.5;
+    let k = 1 + big * 0.5 + fine * 0.1;
+    // Cleavage: a face of the rock where a plane cuts it, softened.
+    for (const p of planes) {
+      const along = v.dot(p.n) * k;
+      if (along > p.d) k -= (along - p.d) * 0.85;
+    }
+    v.multiplyScalar(k);
+    // Sunk in the ground: the bottom flattened.
+    if (v.y < -0.35) v.y = -0.35 + (v.y + 0.35) * 0.25;
+    pos.setXYZ(i, v.x * size[0], (v.y + 0.35) * size[1], v.z * size[2]);
+    // Hollows and cracks darker, lichen-pale on the crown.
+    const shade = THREE.MathUtils.clamp(0.78 + big * 0.5 + fine * 0.6 + Math.max(0, v.y) * 0.12, 0.45, 1.1);
+    col.push(shade, shade, shade * 0.97);
+  }
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+/**
+ * Grass and stone on the terrain near the eye: library textures mapped by
+ * world position (stone triplanar, on steep or grey ground), divided by
+ * their own mean colour so the terrain's painted colours stay in charge,
+ * and faded out with distance before their tiling shows.
+ */
+function detail(m: THREE.MeshStandardMaterial) {
+  const grass = tex("grass_col");
+  const stone = tex("stone_col");
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.tGrass = { value: grass };
+    sh.uniforms.tStone = { value: stone };
+    sh.vertexShader = sh.vertexShader
+      .replace("#include <common>", "#include <common>\nvarying vec3 vGroundP;\nvarying vec3 vGroundN;")
+      .replace("#include <project_vertex>", "#include <project_vertex>\nvGroundP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvGroundN = normalize(mat3(modelMatrix) * objectNormal);");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform sampler2D tGrass;\nuniform sampler2D tStone;\nvarying vec3 vGroundP;\nvarying vec3 vGroundN;")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        float gNear = 1.0 - smoothstep(120.0, 900.0, length(vGroundP - cameraPosition));
+        if (gNear > 0.0) {
+          vec3 gn = normalize(vGroundN);
+          vec3 gm = textureLod(tGrass, vec2(0.5), 12.0).rgb;
+          vec2 guv = vGroundP.xz / 2.6;
+          // A second, larger scale breaks up the tiling.
+          vec3 gr = texture2D(tGrass, guv).rgb * mix(0.8, 1.2, texture2D(tGrass, vGroundP.xz / 37.0 + 0.3).g / max(gm.g, 0.01) * 0.5);
+          vec3 gd = gm.g > 0.01 ? gr / gm : vec3(1.0);
+          vec3 gw = pow(abs(gn), vec3(4.0));
+          gw /= gw.x + gw.y + gw.z;
+          vec3 sp = vGroundP / 7.0;
+          vec3 st = texture2D(tStone, sp.zy).rgb * gw.x + texture2D(tStone, sp.xz).rgb * gw.y + texture2D(tStone, sp.xy).rgb * gw.z;
+          vec3 sm = textureLod(tStone, vec2(0.5), 12.0).rgb;
+          vec3 sd = sm.g > 0.01 ? st / sm : vec3(1.0);
+          vec3 vc = diffuseColor.rgb;
+          float hi = max(vc.r, max(vc.g, vc.b));
+          float sat = (hi - min(vc.r, min(vc.g, vc.b))) / max(hi, 0.01);
+          float rocky = max(1.0 - smoothstep(0.72, 0.9, gn.y), 1.0 - smoothstep(0.12, 0.3, sat));
+          diffuseColor.rgb *= mix(vec3(1.0), clamp(mix(gd, sd, rocky), 0.0, 2.5), gNear);
+        }`,
+      );
+  };
+  m.customProgramCacheKey = () => "ground-detail";
 }
 
 /** A tiling normal map of soft ripples for the water. */

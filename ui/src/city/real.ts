@@ -538,7 +538,7 @@ const texLoader = new THREE.TextureLoader();
 const library = new Map<string, THREE.Texture>();
 
 /** A library texture; `tile` is its size in metres (UV0 is in metres). */
-function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE.Texture {
+export function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE.Texture {
   const key = `${name}:${tile}`;
   let t = library.get(key);
   if (!t) {
@@ -1248,7 +1248,15 @@ export function setSignals(t: number, night = 0) {
 function foliage(name: string, color: number, ao: THREE.Texture): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map: tex(`${name}_col`), color, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.78, aoMap: ao, aoMapIntensity: 0.55 });
   m.onBeforeCompile = (sh) => {
-    sh.fragmentShader = sh.fragmentShader.replace("#include <normal_fragment_begin>", THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", ""));
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <normal_fragment_begin>", THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", ""))
+      // A card seen edge-on smears its leaves into streaks and gives the
+      // crown away as flat sheets: thin it out as it turns edge-on (its true
+      // face, from the screen-space derivatives; the normals are bent).
+      .replace(
+        "#include <alphatest_fragment>",
+        "vec3 cardN = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));\ndiffuseColor.a *= smoothstep(0.05, 0.25, abs(dot(cardN, normalize(vViewPosition))));\n#include <alphatest_fragment>",
+      );
   };
   m.customProgramCacheKey = () => "foliage";
   return m;

@@ -952,7 +952,12 @@ export class City {
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.clamp.enabled = d.night > 0.05;
-    this.bloom.threshold = 0.9 - d.night * 0.1;
+    // threshold: a white wall in full sun reaches about 1.3 before tone
+    // mapping, so a threshold under that made every white car, sign and
+    // painted wall glow. By day only the sun disc (thousands) and real lights
+    // clear it; by night the moonlit city sits far below 1 and lit windows,
+    // lamps and neon (2 and up) still bloom.
+    this.bloom.threshold = THREE.MathUtils.lerp(1.5, 6, d.day);
     for (const e of this.entries.values()) this.applyNight(e.info);
     for (const m of this.lampMats) m.emissiveIntensity = d.night * (m.userData.night ?? 1);
     interiorUniforms.uDay.value = d.day;
@@ -1025,6 +1030,26 @@ export class City {
     const done = this.renderer.compileAsync(this.scene, this.camera);
     for (const o of hidden) o.visible = false;
     void done.then(() => (this.dirty = true));
+  }
+
+  /**
+   * The orbit's polar limit keeps the camera above the target's level, not
+   * above the land: on the hills round town, or looking along the ground,
+   * it could sink into the terrain. So the eye is held a little above the
+   * ground (or the water) under it, and the target never below it. The
+   * margin grows away from town, where the terrain's triangles are larger
+   * than its height function's bumps.
+   */
+  private keepAboveGround() {
+    const g = this.land.shape;
+    const t = this.controls.target;
+    t.y = Math.max(t.y, g.height(t.x, t.z), WATER);
+    const p = this.camera.position;
+    const floor = Math.max(g.height(p.x, p.z), WATER) + 2.5 + Math.hypot(p.x, p.z) * 0.004;
+    if (p.y < floor) {
+      p.y = floor;
+      this.camera.lookAt(t);
+    }
   }
 
   /** Bench (`?bench&cam=x,y,z,tx,ty,tz`): a fixed camera, no auto-rotate. */
@@ -1111,6 +1136,7 @@ export class City {
       }
     }
     this.controls.update(dt);
+    this.keepAboveGround();
 
     const blink = Math.sin(this.t * 2.6) > 0.55;
     this.beaconMat.emissiveIntensity = blink ? 3 + this.night * 3 : 0;
