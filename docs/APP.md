@@ -128,6 +128,9 @@ behind `&opt=N` before they move to `scene.ts`. What was learned:
   shadow map (redrawn when the sun moves ~0.7° or a building changes), tree
   impostors past 150 m, the sky drawn once into a cube map, environment
   light on glossy materials only.
+- **Draw only when something changes.** A still city draws no frames; a
+  hidden window none at all; an unfocused one ambient motion at `DIM_FPS`
+  with traffic and auto-rotate stopped, moments still at full rate.
 - **Instance, don't merge** detailed models: merged geometry costs gigabytes.
 - Texture bandwidth is not the limit here; BC7 compression (`scripts/textures.ts`)
   is for memory and download size. Share canvas sheets (`sheet()`), never

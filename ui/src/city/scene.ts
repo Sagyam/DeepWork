@@ -40,6 +40,8 @@ const TINY = 140;
 const SMALL = 320;
 /** Side of the tiles the trees round town are grouped in, for impostors. */
 const TREE_TILE = 64;
+/** pause: frames a second for ambient motion while the window is unfocused. */
+const DIM_FPS = 5;
 /** shadow: redraw the shadow map once the sun has moved this far (radians, ~3 minutes). */
 const SUN_STEP = 0.0125;
 /**
@@ -134,6 +136,13 @@ export class City {
   private lampMats: THREE.MeshStandardMaterial[] = [];
 
   private timer = new THREE.Timer();
+  /**
+   * pause: the window is unfocused, so only ambient motion (smoke, cranes,
+   * the ghost's pulse) draws, at DIM_FPS, with traffic and auto-rotate
+   * stopped; moments still play at full rate. Hidden draws nothing.
+   */
+  private dim = false;
+  private dimAt = 0;
   private shake = 0;
   private idle = 0;
   private story: (text: string) => void;
@@ -302,7 +311,29 @@ export class City {
 
     new ResizeObserver(() => this.resize()).observe(el);
     this.resize();
-    r.setAnimationLoop(() => this.frame());
+    const activity = () => this.activity();
+    document.addEventListener("visibilitychange", activity);
+    window.addEventListener("focus", activity);
+    window.addEventListener("blur", activity);
+    this.activity();
+  }
+
+  /** Follows the window: no frames while hidden, few while unfocused (pause). */
+  private activity() {
+    const hidden = !this.bench && document.hidden;
+    this.dim = !this.bench && !document.hasFocus();
+    if (this.dim && !this.focus) this.controls.autoRotate = false;
+    this.renderer.setAnimationLoop(hidden ? null : () => this.frame());
+    // A paused clock would hand the first frame back the whole gap.
+    this.timer.reset();
+    this.dirty = true;
+  }
+
+  /** A moment (camera move, collapse, rise, queued replay) plays at full rate even unfocused. */
+  private moment(): boolean {
+    if (this.dirty || this.focus || this.queue.length || this.dying.length || this.shake > 0 || this.fx.falling) return true;
+    for (const e of this.entries.values()) if (e.rise || e.hit !== undefined) return true;
+    return false;
   }
 
   /** The shop's picture of a blueprint (thumbs.ts), or null while its model is not loaded. */
@@ -1108,9 +1139,15 @@ export class City {
   private frame() {
     // Nothing to draw before the first world (the models are still loading).
     if (!this.world) return;
+    if (this.dim && !this.moment()) {
+      const now = performance.now();
+      if (now - this.dimAt < 1000 / DIM_FPS) return;
+      this.dimAt = now;
+    }
     this.timer.update();
     const raw = this.timer.getDelta();
-    const dt = Math.min(0.05, raw);
+    // dim frames are far apart: a larger step keeps ambient motion at its speed.
+    const dt = Math.min(this.dim ? 0.25 : 0.05, raw);
     this.t += dt;
     if ((this.fpsT += raw) >= 1) {
       this.fps = this.fpsCount / this.fpsT;
@@ -1120,7 +1157,7 @@ export class City {
     this.queue = this.queue.filter((q) => q.at > this.t);
 
     this.idle += dt;
-    if (!this.controls.autoRotate && this.idle > 30 && !this.focus) this.controls.autoRotate = true;
+    if (!this.controls.autoRotate && this.idle > 30 && !this.focus && !this.dim) this.controls.autoRotate = true;
     if (this.focus) {
       this.focus.t += dt;
       this.controls.target.lerp(this.focus.to, Math.min(1, dt * 1.5));
@@ -1138,6 +1175,7 @@ export class City {
       if (this.focus.t > 3.5) {
         this.focus = null;
         this.pull = null;
+        if (this.dim) this.controls.autoRotate = false;
         if (this.plan) this.frameCamera(this.plan, false);
       }
     }
@@ -1206,7 +1244,7 @@ export class City {
     });
     this.fx.update(dt, wind);
     this.land.update(dt);
-    this.traffic.update(dt);
+    if (!this.dim) this.traffic.update(dt);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
 
@@ -1235,7 +1273,7 @@ export class City {
     // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
     // traffic, effects or transitions): a focus timer's city can sit on screen
     // for hours, and a still frame costs as much as a busy one.
-    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || this.traffic.active || this.impostors.pending > 0;
+    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
     if (!moving && !this.dirty && !this.bench) return;
     this.dirty = false;
     if (this.warm) {

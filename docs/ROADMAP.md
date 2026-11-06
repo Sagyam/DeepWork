@@ -61,8 +61,6 @@ with a root shell open in another terminal for the PAM checks.
       new trees; find what to win back.
 - [ ] 1% lows dip when a building is built (geometry on the main thread,
       new shaders).
-- [ ] Pause on inactivity: stop drawing when hidden, ~5 fps unfocused,
-      freeze traffic.
 - [ ] Instancing: one InstancedMesh per piece and material instead of
       merged `Parts`.
 - [ ] Quality presets (render scale, shadow map, MSAA, bloom) for weak
