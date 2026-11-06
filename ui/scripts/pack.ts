@@ -1,5 +1,5 @@
 // Packs the realistic models (public/models, from `bun run models`) for
-// download on first run (docs/models.md, "Downloading the models"). Releases
+// download on first run (docs/APP.md, "Model packs"). Releases
 // do not carry them in the binary: the app fetches them from a GitHub release
 // of their own, checks every file against the manifest compiled into it, and
 // keeps them in ~/.local/share/deepwork/assets/<id>/.

@@ -405,7 +405,7 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
 
 /**
  * The realistic model that draws a spec, if it is loaded. A model takes over
- * the kit style it replaces (docs/models.md) as a whole, until its siblings
+ * the kit style it replaces (docs/APP.md) as a whole, until its siblings
  * exist to take their own variants of it; siblings (C1 and C2 for the
  * classic cottage) share the style, picked per building from its seed.
  */
@@ -1240,7 +1240,7 @@ const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,
  * about half its storeys with a broken top and no roof, scorched and
  * blackened, broken masonry heaped against its walls; thin smoke, no fire.
- * It stands until repairs bring it back (docs/progression.md).
+ * It stands until repairs bring it back (docs/GAME.md).
  */
 function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
   const g = new THREE.Group();

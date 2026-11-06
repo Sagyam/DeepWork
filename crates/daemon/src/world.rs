@@ -1,4 +1,4 @@
-//! The progression world, folded from the ledger (`docs/progression.md`).
+//! The progression world, folded from the ledger (`docs/GAME.md`).
 //! Pure: the same facts always give the same world, so it is rebuilt on every
 //! request and never stored, and no client can edit it.
 //!

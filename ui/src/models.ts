@@ -1,5 +1,5 @@
-// Where the realistic city's models come from (docs/models.md, "Downloading
-// the models"). A release build downloads them on first run (the app's
+// Where the realistic city's models come from (docs/APP.md, "Model
+// packs"). A release build downloads them on first run (the app's
 // src-tauri/src/models.rs) and reads them through models://; until then the
 // city is drawn with the low-poly kit. The dev server and the browser mock
 // serve public/models as it is.

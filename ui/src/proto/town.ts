@@ -11,12 +11,12 @@
 // A new model shows up once it is added to BLOCKS below.
 //
 // It is also where the realistic city's rendering optimisations are tried
-// out before the app gets them (docs/models.md, "Performance"); each is
+// out before the app gets them (docs/APP.md, "Performance"); each is
 // commented where it is made. Measured on a Radeon 610M iGPU, GPU ms per
 // frame at 1600 x 900 (1.5x), overview / street level: as first built
 // 88 / 95; 1 res 61 / 64; 2 shadow 36 / 39; 3 idle (energy, not frame time);
 // 4 cull 33 / 36; 5 trees 24 / 32; 6 sky 23 / 29; 7 merge 23 / 29 (CPU);
-// 8 ibl 20 / 24 (table in docs/models.md).
+// 8 ibl 20 / 24 (bench-town.ts measures these).
 import * as THREE from "three";
 import { MapControls } from "three/examples/jsm/controls/MapControls.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";

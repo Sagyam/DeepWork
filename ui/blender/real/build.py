@@ -1,4 +1,4 @@
-# Builds the realistic city's models (docs/models.md) into one directory:
+# Builds the realistic city's models (docs/APP.md) into one directory:
 #
 #   bun run models [-- ids...] [--no-bake] [--no-tex]
 #   (blender -b --factory-startup -P blender/real/build.py -- public/models a1 s1)

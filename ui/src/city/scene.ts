@@ -31,7 +31,7 @@ import { BLOCK_X, BLOCK_Z, LOT, lot, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng
 const SEEN_KEY = "deepwork.seen";
 
 // The rendering optimisations tried first in the showcase town (proto/town.ts,
-// measured in docs/models.md "Tried in the showcase town"), each commented
+// measured in docs/APP.md "Performance"), each commented
 // where it is made: res, shadow, idle, cull, trees, sky, ibl, prewarm, clamp.
 
 /** cull: tiny props (signals, hydrants, bins, benches) drop out past this many metres, */

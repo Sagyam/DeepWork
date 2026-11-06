@@ -1,5 +1,5 @@
 //! The master plan as data: levels, the residents' needs, the lots that answer
-//! them and the blueprints that fill those lots (`docs/progression.md`).
+//! them and the blueprints that fill those lots (`docs/GAME.md`).
 //!
 //! Lots are generated from the needs in order, and a lot's place in that list
 //! is its index in the world for good, so the plan only ever grows at the

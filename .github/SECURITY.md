@@ -33,6 +33,6 @@ is published and you are credited unless you'd rather not be.
 ## Out of scope
 
 - Bypassing the throttle as the user who owns the machine. The threat model in
-  [docs/PLAN.md](../docs/PLAN.md#threat-model) accepts that someone with the
+  [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md#threat-model) accepts that someone with the
   sudo password can always get around it. Report bypasses as regular issues.
 - Attacks that need physical access, a live USB or a modified kernel

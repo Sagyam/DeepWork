@@ -49,7 +49,7 @@ sudo install -Dm755 target/release/deepwork-agent /usr/local/bin/deepwork-agent
 sudo install -Dm755 target/release/deepwork-pam-gate /usr/local/lib/deepwork/deepwork-pam-gate
 sudo install -Dm644 dist/deepwork-agent.service /etc/systemd/user/deepwork-agent.service
 sudo install -Dm644 dist/deepworkd.service /etc/systemd/system/deepworkd.service
-sudo install -Dm644 docs/PLAN.md /usr/local/share/doc/deepwork/PLAN.md
+sudo install -Dm644 docs/ARCHITECTURE.md /usr/local/share/doc/deepwork/ARCHITECTURE.md
 # The app owns this file once installed: never overwrite settings the user
 # changed there. A first install seeds it from config.local.toml if present,
 # else from the example.

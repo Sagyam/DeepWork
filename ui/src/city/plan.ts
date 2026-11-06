@@ -54,7 +54,7 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
 
 /**
  * Buildings the town provides have no models yet: stand-ins until they do
- * (docs/progression.md, "Build checklist"). `water`, `square` and `park` are
+ * (docs/GAME.md). `water`, `square` and `park` are
  * drawn by models.ts itself.
  */
 export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string }> = {
