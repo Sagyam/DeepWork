@@ -618,6 +618,30 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-5.5, -2.5]) shrub(p, x, front - 0.6, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "e1": {
+      // Lawns either side of a paved path to the steps, an iron railing
+      // along the street open at the path, the flagpole on the lawn; the
+      // asphalt playground round the sides and back, hopscotch on it.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(paving, 2.6, KERB + 0.01, front - 5.0, 0, 0, (front + 5.0) / 2);
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, LOT - 0.4, KERB + 0.005, 5.5 - back, 0, 0, (5.5 + back) / 2);
+      const chalk = mat(0xe8e4d8, { roughness: 0.8 });
+      for (let i = 0; i < 6; i++) {
+        const z = 2.0 - i * 0.62;
+        if (i % 3 === 1) for (const dx of [-0.31, 0.31]) p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25 + dx, 0, z);
+        else p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25, 0, z);
+      }
+      if (hasReal("street")) {
+        fenceRun(p, "fence_iron", -half, front - 0.3, -1.4, front - 0.3, 1.1);
+        fenceRun(p, "fence_iron", 1.4, front - 0.3, half, front - 0.3, 1.1);
+      }
+      const pole = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.4 });
+      p.add(pole, new THREE.CylinderGeometry(0.04, 0.07, 9, 10), 4.6, KERB + 4.5, front - 1.2);
+      p.add(mat(0xc9a24e, { roughness: 0.3, metalness: 1 }), new THREE.SphereGeometry(0.1, 10, 8), 4.6, KERB + 9.05, front - 1.2);
+      for (const x of [-3.0, 3.0]) shrub(p, x, 5.9, s.seed * 5 + x * 3, KERB, 0.7);
+      break;
+    }
     case "f1": {
       // A concrete apron from the bays to the kerb, KEEP CLEAR hatched in
       // yellow before each door; a paved yard behind, walled.

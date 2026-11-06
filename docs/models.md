@@ -13,7 +13,7 @@ factory, C2, the brick cottage (sharing the classic cottages with C1), and
 S2, the corner café (sharing the classic shops with S1), O1, the
 curtain-wall office tower, A2, the brownstone row (the townhouse
 apartments), L1, the art deco skyscraper, and A3, the balcony block
-(sharing the classic apartments with A1), P1, the substation (for power), and F1, the fire station;
+(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, and E1, the school;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -468,7 +468,7 @@ needs until P2 lands.
 |---|---|---|---|---|---|
 | P1 | Electrical substation | Fenced gravel yard: a transformer on a plinth with radiator fins and bushings, a steel gantry taking the overhead line, insulator strings, a brick switch house with louvred doors and a danger sign, poles carrying the line off the lot | Electricity (Hamlet, ~10 h), More power (Town) | **done** (2026-11-06, `p1_substation.py`): 14 x 12 m compound behind 2.2 m galvanised palisade on a concrete kerb, shut double gates with danger signs; gravel, cable trench covers; a transformer in an oil bund (plinth, skids, tank with ribs and lugs, two radiator banks of 16 fins, conservator with breather, three HV and four LV porcelain bushings, cable box, rating plate, earth tape); a lattice gantry with strain and suspension disc strings, the line from a wooden H-pole with cross brace and stays; a brick switch house with louvred green doors, barred vents, a bulkhead lamp and a precast roof slab; an LV pole by the gate with a riser and crossarm; a floodlight; pieces body / roof; 14.9 k triangles | 12% | P1 |
 | F1 | Fire station | Two-bay brick engine house, red folding doors, hose-drying tower, a lamp over the door, the town's name in stone | A fire station (Town, ~10-50 h) | **done** (2026-11-06, `f1_fire.py`): a 1915 engine house, 11 x 13 m, red brick on granite with rubbed-brick quoins; two engine bays of four folding red leaves each (raised panels, six-light tops, strap hinges) under steel beams and a stone band lettered FIRE STATION in gilt, rubbing posts, the number on the pier, red globe lamps on brackets (lit at night); crew storey of five sashes with keyed lintels; corbelled cornice, parapet with a dated panel, chimney, flagpole; the hose tower proud of the back right corner rising to an open belfry with the bell, a slate pyramid and copper finial; personnel door, yard door; pieces ground / floor / roof; 11.1 k triangles | 12% | P1 |
-| E1 | School | One- or two-storey schoolhouse, tall classroom windows, a bell cupola, a fenced playground with a hopscotch court and a flagpole | A school (Town) | 15% | P1 |
+| E1 | School | One- or two-storey schoolhouse, tall classroom windows, a bell cupola, a fenced playground with a hopscotch court and a flagpole | A school (Town) | **done** (2026-11-06, `e1_school.py`): a 1924 two-storey schoolhouse, 14 x 10 m, red brick on a raised ashlar basement with vents; an entrance pavilion with quoins, steps with iron rails, double six-panel doors under a radiating fanlight in an arched stone surround, SCHOOL on the frieze, lamps; banks of four tall six-over-six sashes per classroom under continuous lintel bands, a belt course; a hipped slate roof with a cross-gabled pediment and the year in a roundel, two chimneys, a white louvred bell cupola with a copper ogee roof and a weathervane; classroom interiors in the glass; the yard has lawns, railings, a flagpole and hopscotch on the playground; pieces ground / floor / roof; 12.1 k triangles | 15% | P1 |
 | H1 | Clinic | Low rendered building, a canopy over the entrance with a green cross, ramp and rails, a bench, an ambulance bay | A clinic (Town) | 12% | P1 |
 | P2 | Power station | Brick turbine hall with tall arched windows, a pair of stacks, a cooling tower or a switchyard behind | A power station (City) | 20% | P2 |
 | W2 | Pumping station | Victorian brick engine house with a tall chimney, a gated yard over the mains | Water mains (City) | 12% | P2 |
@@ -508,7 +508,7 @@ buildings stand, so it should come before L5.
 
 - [x] P1 substation (2026-11-06)
 - [x] F1 fire station (2026-11-06)
-- [ ] E1 school
+- [x] E1 school (2026-11-06)
 - [ ] H1 clinic
 - [ ] Blueprint pictures in the shop
 - [ ] Ruins standing

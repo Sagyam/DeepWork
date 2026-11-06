@@ -90,6 +90,8 @@ const S4_TOP = 5.3;
 const P1_EAVES = 3.0;
 const F1_G = 5.0;
 const F1_FL = 3.4;
+const E1_G = 4.6;
+const E1_FL = 3.9;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -351,6 +353,26 @@ export const DEFS: Record<string, RealDef> = {
     // The parapet; the hose tower's finial is at 20.5 m.
     height: () => F1_G + F1_FL + 1.3,
     smoke: () => new THREE.Vector3(-5.12, F1_G + F1_FL + 3.0, -1.0),
+    debris: 0x8a4e3c,
+  },
+  e1: {
+    id: "e1",
+    kind: "apartment",
+    style: "school",
+    // The schoolhouse with its eaves; the entrance steps reach 1.8 m out in front.
+    w: 15.1,
+    d: 13.6,
+    front: 1.0,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: E1_G }] : []),
+      ...(roof ? [{ piece: "roof", y: E1_G + E1_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? E1_G + E1_FL : E1_G),
+    // The ridge; the cupola's weathervane is at 16 m.
+    height: () => E1_G + E1_FL + 3.9,
+    smoke: () => new THREE.Vector3(2.4, E1_G + E1_FL + 5.55, 0),
     debris: 0x8a4e3c,
   },
   o1: {
@@ -1661,7 +1683,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room("home"); break;
+    case "glass": m = room(id === "e1" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
@@ -1681,6 +1703,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // The school's cupola (e1_school.py): white louvres.
+    case "cupola": m = w(pbr("louvre", [1, 1], { roughness: 0.6, color: 0xeeebe2 }), 0.8); break;
     // The fire station (f1_fire.py): engine-house red, gilt letters, red lamps lit at night.
     case "firedoor": m = w(plain(0x9c1c16, 0.42), 1.2); break;
     case "fireletter": m = w(plain(0xd8b45a, 0.3, 0.8), 0.4); break;
