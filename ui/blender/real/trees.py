@@ -1,11 +1,13 @@
 # Trees, bushes and hedges for the realistic city, replacing the kit's
 # low-poly blobs. Real sizes: street and garden trees are 5-12 m tall.
 #
-# Trunks and branches are tapered tubes grown recursively from a seed; the
-# crown is leaf cards (alpha-tested quads with a cluster of leaves drawn on
-# them) scattered through the crown's volume, denser at its surface. The app
-# bends the cards' normals out from the crown's middle (real.ts), so a crown
-# shades like one soft mass instead of a heap of flat cards.
+# Trunks and branches are tapered tubes grown recursively from a seed, down
+# to a level of twigs and cut short at the crown's surface; the leaves are
+# sprays (alpha-tested quads with a twig of leaves drawn on them) hung from
+# the twig tips and the outer branches by their stems, so every cluster is
+# carried by wood. The app bends the cards' normals out from the crown's
+# middle and thins cards seen edge-on (real.ts), so a crown shades like one
+# soft mass instead of a heap of flat cards.
 #
 # Pieces (base at the origin):
 #   oak, maple, linden, birch, cherry, spruce, pine, poplar, young   trees
@@ -305,10 +307,27 @@ def _turn(d, rng, spread, up=0.0):
     return out
 
 
-def grow(m, role, rng, p, d, L, r, depth, tips, spread=0.6, up=0.25, kids=(2, 3), seg=6, v0=0.0, segs=None):
-    """A branch from p along d, and its children; branch ends go in `tips`, the outer branches in `segs`."""
+def _inside(env, q, margin=1.0):
+    """How far point q is out along the crown's ellipsoid `env` (centre, rx, rz): 1 on its surface."""
+    c, rx, rz = env
+    q = q - c
+    return math.sqrt((q.x / rx) ** 2 + (q.y / rx) ** 2 + (q.z / rz) ** 2) / margin
+
+
+def grow(m, role, rng, p, d, L, r, depth, tips, spread=0.6, up=0.25, kids=(2, 3), seg=6, v0=0.0, segs=None, env=None):
+    """A branch from p along d, and its children; branch ends go in `tips`, the outer branches in `segs`.
+
+    With `env` (the crown's ellipsoid) a branch that would end outside the
+    crown is cut short at its surface, so no bare stick pokes out of the leaves."""
     p = Vector(p)
     end = p + d * L
+    if env is not None and _inside(env, end, 0.92) > 1:
+        lo, hi = 0.0, 1.0
+        for _ in range(8):
+            mid = (lo + hi) / 2
+            lo, hi = (mid, hi) if _inside(env, p + d * L * mid, 0.92) <= 1 else (lo, mid)
+        L = max(L * lo, min(L, 0.25))
+        end = p + d * L
     tube(m, role, p, end, r, r * 0.68, seg=max(3, seg), v0=v0)
     if segs is not None and depth <= 1:
         segs.append((p, end))
@@ -320,9 +339,9 @@ def grow(m, role, rng, p, d, L, r, depth, tips, spread=0.6, up=0.25, kids=(2, 3)
         t = 0.55 + 0.45 * (k + rng.random()) / n
         start = p + d * L * t
         dd = _turn(d, rng, spread * (0.7 + 0.6 * rng.random()), up)
-        grow(m, role, rng, start, dd, L * (0.62 + 0.15 * rng.random()), r * 0.62 * (1.1 - 0.3 * t), depth - 1, tips, spread, up, kids, seg - 1, v0 + L * t, segs)
+        grow(m, role, rng, start, dd, L * (0.62 + 0.15 * rng.random()), r * 0.62 * (1.1 - 0.3 * t), depth - 1, tips, spread, up, kids, seg - 1, v0 + L * t, segs, env)
     # The leader carries on.
-    grow(m, role, rng, end, _turn(d, rng, spread * 0.35, up * 0.5), L * 0.7, r * 0.66, depth - 1, tips, spread, up, kids, seg - 1, v0 + L, segs)
+    grow(m, role, rng, end, _turn(d, rng, spread * 0.35, up * 0.5), L * 0.7, r * 0.66, depth - 1, tips, spread, up, kids, seg - 1, v0 + L, segs, env)
 
 
 def crown(m, role, rng, centre, rx, rz, count, size, tips=(), shell=0.65, droop=0.0, flat_top=False):
@@ -349,28 +368,45 @@ def crown(m, role, rng, centre, rx, rz, count, size, tips=(), shell=0.65, droop=
         placed += 1
 
 
-def foliage(m, role, rng, tips, count, size, reach, centre, rx, rz, up=0.25, segs=()):
-    """Leaf cards clustered round the branch tips and along the outer branches, inside the crown's envelope (an ellipsoid)."""
+def spray(m, role, base, a, size, face, rng, width=1.0):
+    """A leaf card whose stem end (the texture's bottom middle, where its
+    twigs start) sits on a twig at `base`, reaching out along `a`, its face
+    turned toward `face` as far as it can be while containing `a`."""
+    a = Vector(a).normalized()
+    f = Vector(face) - a * Vector(face).dot(a)
+    if f.length < 1e-3:
+        f = a.orthogonal()
+    f.normalize()
+    side = a.cross(f).normalized()
+    hx = size / 2 * width
+    b = Vector(base) - a * size * 0.06
+    top = b + a * size
+    m.poly(role, [b - side * hx, b + side * hx, top + side * hx, top - side * hx], out=f, uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
+
+
+def sprays(m, role, rng, tips, segs, per_tip, size, centre, droop=0.25, along=0.35, up=0.6):
+    """Leaves on the twigs: sprays fanned out from every twig tip, and some
+    along the outer branches, each held at its stem by the wood. Sprays face
+    out of the crown and up a little, turned at random about their stems,
+    so the crown reads as a mass of leafy twigs, not cards in mid-air."""
     centre = Vector(centre)
-    for _ in range(count):
-        if segs and rng.random() < 0.45:
-            a0, a1 = segs[rng.randrange(len(segs))]
-            tip, d = a0 + (a1 - a0) * rng.uniform(0.25, 1.0), (a1 - a0).normalized()
-        else:
-            tip, d = tips[rng.randrange(len(tips))]
-        z = rng.uniform(-1, 1)
-        a = rng.random() * math.tau
-        s = math.sqrt(1 - z * z)
-        u = Vector((s * math.cos(a), s * math.sin(a), z))
-        p = tip + (u + d * 0.3) * reach * rng.random() ** 0.6
-        q = p - centre
-        k = math.sqrt((q.x / rx) ** 2 + (q.y / rx) ** 2 + (q.z / rz) ** 2)
-        if k > 1:
-            p = centre + q / k
-            q = p - centre
-        out = Vector((q.x / rx, q.y / rx, q.z / rz))
-        nrm = (u * 0.5 + (out.normalized() if out.length > 1e-3 else Vector((0, 0, 1))) * 0.5 + Vector((0, 0, up)))
-        card(m, role, p, size * (0.75 + 0.5 * rng.random()), nrm, rng)
+
+    def put(p, d):
+        out = p - centre
+        out = out.normalized() if out.length > 1e-3 else Vector((0, 0, 1))
+        a = (d * 0.8 + out * 0.5 + _turn(d, rng, 1.0) * 0.5 + Vector((0, 0, -droop))).normalized()
+        face = (out + Vector((0, 0, up))).normalized()
+        face.rotate(_rot(a, rng.uniform(-1.0, 1.0)))
+        spray(m, role, p, a, size * (0.75 + 0.5 * rng.random()), face, rng)
+
+    for tip, d in tips:
+        for _ in range(per_tip):
+            put(tip - d * size * 0.35 * rng.random(), d)
+    for _ in range(int(len(tips) * per_tip * along)):
+        if not segs:
+            break
+        a0, a1 = segs[rng.randrange(len(segs))]
+        put(a0 + (a1 - a0) * rng.uniform(0.35, 1.0), (a1 - a0).normalized())
 
 
 def ellipsoid(m, role, centre, rx, rz, seg=10, rings=6, rough=0.0, rng=None):
@@ -402,21 +438,30 @@ def ellipsoid(m, role, centre, rx, rz, seg=10, rings=6, rough=0.0, rng=None):
 
 
 def broadleaf(m, rng, height, clear, crown_r, limbs, depth, cards, size, role="leaf", bark="bark", trunk_r=0.2, spread=0.65, up=0.3, lean=0.0, reach=None, flat_top=False):
-    """A deciduous tree: a trunk to `clear`, limbs fanning up and out, leaves clustered on the twigs."""
+    """A deciduous tree: a trunk to `clear`, limbs fanning up and out to a
+    level of twigs inside the crown, and leaf sprays hung from the twigs
+    (about `cards` of them, each about `size` m long)."""
     tips, segs = [], []
     top = Vector((lean, 0, clear))
-    tube(m, bark, (0, 0, 0), top, trunk_r, trunk_r * 0.85, seg=8)
     rz = (height - clear) / 2
     cz = clear + rz
+    centre = Vector((lean, 0, cz + (rz * 0.05 if flat_top else 0)))
+    env = (centre, crown_r, rz * (0.9 if flat_top else 1.05))
+    # A root flare, then the trunk.
+    tube(m, bark, (0, 0, 0), (lean * 0.05, 0, 0.35), trunk_r * 1.35, trunk_r, seg=9)
+    tube(m, bark, (lean * 0.05, 0, 0.35), top, trunk_r, trunk_r * 0.85, seg=9)
     for k in range(limbs):
         a = k / limbs * math.tau + rng.random() * 0.6
         out = (0.75 if flat_top else 0.55) + 0.25 * rng.random()
         d = Vector((math.cos(a) * out, math.sin(a) * out, 1.0)).normalized()
         L = rz * (0.62 + 0.2 * rng.random()) * (crown_r / rz) ** 0.35
-        grow(m, bark, rng, top - Vector((0, 0, 0.12 * k)), d, L, trunk_r * 0.6, depth, tips, spread, up, seg=6, segs=segs)
-    grow(m, bark, rng, top, Vector((0, 0, 1)), rz * 0.75, trunk_r * 0.6, depth, tips, spread * 0.8, up, seg=6, segs=segs)
-    rzz = rz * (0.9 if flat_top else 1.05)
-    foliage(m, role, rng, tips, cards, size, reach or crown_r * 0.5, (lean, 0, cz + (rz * 0.05 if flat_top else 0)), crown_r, rzz, segs=segs)
+        grow(m, bark, rng, top - Vector((0, 0, 0.12 * k)), d, L, trunk_r * 0.6, depth + 1, tips, spread, up, kids=(2, 3), seg=6, segs=segs, env=env)
+    grow(m, bark, rng, top, Vector((0, 0, 1)), rz * 0.6, trunk_r * 0.6, depth + 1, tips, spread * 0.8, up, kids=(2, 3), seg=6, segs=segs, env=env)
+    # Smaller sprays than the old scattered cards, so about twice as many,
+    # three in five on the twig tips and the rest along the outer branches.
+    total = cards * 1.9
+    per_tip = max(2, round(total * 0.6 / max(1, len(tips))))
+    sprays(m, role, rng, tips, segs, per_tip, size * 0.72, centre, along=total * 0.4 / max(1, len(tips) * per_tip))
 
 
 def spruce(m, rng, height, radius, whorls, role="needles"):
@@ -434,12 +479,28 @@ def spruce(m, rng, height, radius, whorls, role="needles"):
             p = Vector((0, 0, z))
             end = p + d * R
             tube(m, "bark", p, end, 0.05 * (1 - f) + 0.015, 0.012, seg=3)
-            # Needle sprays along the branch, flattish, drooping at the tips.
-            for j in range(2 if R > 1 else 1):
-                t = 0.45 + 0.5 * j
-                c = p + d * R * t + Vector((0, 0, -0.08 * t))
-                nrm = Vector((d.x * 0.4, d.y * 0.4, 1.0))
-                card(m, role, c, R * 0.75 + 0.35, nrm, rng, stretch=0.8)
+            # Side shoots in a herringbone along the branch, each a small
+            # needle spray drooping from it, and one on its tip: the branch
+            # holds every spray, so the whorls read as boughs, not sheets.
+            side = d.cross(Vector((0, 0, 1))).normalized()
+            step = 0.38
+            j = 0
+            t = 0.3
+            while t * R < R - 0.15:
+                q = p + d * R * t
+                s_ = 1 if j % 2 == 0 else -1
+                a_ = (d * 0.75 + side * s_ * 0.65 + Vector((0, 0, -0.25 - 0.2 * t))).normalized()
+                L = (0.35 + 0.55 * (1 - t)) * min(1.0, R / 1.6) + 0.2
+                # Faces up and out, so the bough is seen as a mass of
+                # needles from the side as well as from above.
+                face = Vector((0, 0, 0.7)) + d * 0.6 - side * s_ * 0.2
+                spray(m, role, q, a_, L, face, rng, width=0.95)
+                if j % 2 == 0:
+                    hang = (a_ + Vector((0, 0, -0.6))).normalized()
+                    spray(m, role, q + Vector((0, 0, -0.04)), hang, L * 0.8, d + Vector((0, 0, 0.3)), rng, width=0.85)
+                t += step / max(R, 0.5)
+                j += 1
+            spray(m, role, end - d * 0.1, (d + Vector((0, 0, -0.25))).normalized(), 0.55 + 0.2 * min(1.0, R / 2), Vector((0, 0, 1)), rng, width=0.85)
     # The leader.
     card(m, role, (0, 0, height * 0.97), 0.7, (0.6, 0.2, 0.2), rng)
     card(m, role, (0, 0, height * 0.97), 0.7, (-0.2, 0.6, 0.2), rng)
@@ -453,22 +514,24 @@ def pine(m, rng, height):
     for k in range(6):
         a = k / 6 * math.tau + rng.random()
         d = Vector((math.cos(a) * 0.8, math.sin(a) * 0.8, 0.8)).normalized()
-        grow(m, "bark", rng, top - Vector((0, 0, 0.8 * k / 6)), d, 1.5 + rng.random() * 0.8, 0.1, 2, tips, 0.55, 0.45, kids=(1, 2), seg=4, segs=segs)
-    grow(m, "bark", rng, top, Vector((0, 0, 1)), 1.8, 0.12, 2, tips, 0.5, 0.3, kids=(1, 2), seg=4, segs=segs)
-    foliage(m, "needles", rng, tips, 320, 0.95, 0.8, (0.4, 0.1, height * 0.79), 3.2, height * 0.25, up=0.9, segs=segs)
+        grow(m, "bark", rng, top - Vector((0, 0, 0.8 * k / 6)), d, 1.5 + rng.random() * 0.8, 0.1, 3, tips, 0.55, 0.45, kids=(1, 2), seg=4, segs=segs)
+    grow(m, "bark", rng, top, Vector((0, 0, 1)), 1.8, 0.12, 3, tips, 0.5, 0.3, kids=(1, 2), seg=4, segs=segs)
+    # Pine needles stand up in tufts at the shoot ends.
+    sprays(m, "needles", rng, tips, segs, 6, 0.8, (0.4, 0.1, height * 0.79), droop=-0.4, along=0.6, up=0.7)
 
 
 def poplar(m, rng, height):
     """A Lombardy poplar: many near-upright limbs, a narrow column of leaves."""
     tips, segs = [], []
+    env = (Vector((0, 0, height * 0.56)), 1.6, height * 0.45)
     tube(m, "bark", (0, 0, 0), (0, 0, 2.0), 0.2, 0.17, seg=7)
     for k in range(8):
         a = k / 8 * math.tau
         d = Vector((math.cos(a) * 0.18, math.sin(a) * 0.18, 1)).normalized()
         start = Vector((0, 0, 1.6 + k * 0.3))
-        grow(m, "bark", rng, start, d, height * 0.32, 0.08, 2, tips, 0.25, 0.5, kids=(1, 2), seg=4, segs=segs)
+        grow(m, "bark", rng, start, d, height * 0.26, 0.08, 3, tips, 0.3, 0.6, kids=(1, 2), seg=4, segs=segs, env=env)
         segs.append((start + d * 1.2, start + d * height * 0.6))
-    foliage(m, "leaf", rng, tips, 360, 0.95, 0.75, (0, 0, height * 0.56), 1.6, height * 0.45, segs=segs)
+    sprays(m, "leaf", rng, tips, segs, 5, 0.62, env[0], droop=0.0, along=1.0, up=0.3)
 
 
 def bush(m, rng, rx, rz, cards, size, role="leaf", flowers=False):
@@ -507,27 +570,37 @@ def light_tree(m, rng, height, clear, crown_r, cards, size, limbs=3, rz_f=1.0, r
         tube(m, "bark", (0, 0, 0), top, trunk_r, trunk_r * 0.7, seg=5)
     rz = (height - clear) / 2 * rz_f
     centre = Vector((0, 0, height - rz))
-    tips = []
+    env = (centre, crown_r, rz)
+    tips, segs = [], []
     for k in range(limbs):
         a = k / limbs * math.tau + rng.random()
-        end = centre + Vector((math.cos(a) * crown_r * 0.5, math.sin(a) * crown_r * 0.5, rz * 0.2))
-        if clear > 0:
-            tube(m, "bark", top, end, trunk_r * 0.5, trunk_r * 0.25, seg=4)
-        tips.append((end, (end - top).normalized()))
-    foliage(m, role, rng, tips + [(centre + Vector((0, 0, rz * 0.4)), Vector((0, 0, 1)))], cards, size, crown_r * 0.75, centre, crown_r, rz)
+        end = centre + Vector((math.cos(a) * crown_r * 0.55, math.sin(a) * crown_r * 0.55, rz * 0.1))
+        d = (end - top).normalized()
+        # A limb and one fork of twigs, three-sided: cheap, but the leaves hang on wood.
+        grow(m, "bark", rng, top, d, (end - top).length, trunk_r * 0.5, 1, tips, 0.6, 0.3, kids=(1, 2), seg=4, segs=segs, env=env)
+    grow(m, "bark", rng, top, Vector((0, 0, 1)), rz * 1.3, trunk_r * 0.5, 1, tips, 0.5, 0.3, kids=(1, 2), seg=4, segs=segs, env=env)
+    total = cards * 1.6
+    per_tip = max(2, round(total * 0.65 / max(1, len(tips))))
+    sprays(m, role, rng, tips, segs, per_tip, size * 0.85, centre, along=total * 0.35 / max(1, len(tips) * per_tip))
 
 
-def light_conifer(m, rng, height, radius, whorls=6):
+def light_conifer(m, rng, height, radius, whorls=8):
+    """A cheap conifer for the woods: whorls of narrow drooping boughs, a cone."""
     tube(m, "bark", (0, 0, 0), (0, 0, height * 0.9), 0.17, 0.04, seg=4)
     for w in range(whorls):
         f = w / whorls
-        z = height * (0.18 + 0.75 * f)
-        R = radius * (1 - f) + 0.2
-        for k in range(3):
-            a = k / 3 * math.tau + w * 1.1
-            c = Vector((math.cos(a) * R * 0.45, math.sin(a) * R * 0.45, z))
-            card(m, "firs", c, R * 1.25, (math.cos(a) * 0.35, math.sin(a) * 0.35, 1), rng)
-    card(m, "firs", (0, 0, height * 0.95), 0.9, (0.7, 0.1, 0.4), rng)
+        z = height * (0.16 + 0.78 * f)
+        R = radius * (1 - f) ** 0.9 + 0.25
+        n = 5 if f < 0.6 else 4
+        for k in range(n):
+            a = k / n * math.tau + w * 0.7 + rng.random() * 0.3
+            d = Vector((math.cos(a), math.sin(a), -0.3 - 0.2 * (1 - f))).normalized()
+            # A narrow drooping bough from the trunk, rolled a little about
+            # itself so the side view sees needles, not edges.
+            roll = d.cross(Vector((0, 0, 1))).normalized() * rng.uniform(-0.45, 0.45)
+            spray(m, "firs", (0, 0, z), d, R * 1.1, Vector((0, 0, 1)) + d * 0.3 + roll, rng, width=0.6)
+    spray(m, "firs", (0, 0, height * 0.86), (0.1, 0, 1), height * 0.16, (1, 0, 0.1), rng, width=0.45)
+    spray(m, "firs", (0, 0, height * 0.86), (0, 0.1, 1), height * 0.16, (0, 1, 0.1), rng, width=0.45)
 
 
 # Species: (piece, builder). Each draws at the origin; build() lays them out for the bake.
