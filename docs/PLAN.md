@@ -698,6 +698,21 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Cartoonish ground (2026-11-06), the user's complaint after the visual fixes
+and the civic props: the smooth terrain (land.ts) kept the greens picked for
+facets, and without facets catching the sun differently they spread into one
+even lime sheet, like a toy's felt lawn. The ground shader now tones grass
+to an olive green and breaks it up at a field's scales (3-140 m: trampled,
+sun-dried, lush), and steepens the soft grass texture; lot lawns and empty
+lots take an olive tint; the water tower's paint and the crane's yellow are
+dulled and weathered. No model rebuild or new pack is needed, only an app
+build. Checked headless against the build before #19 (old pack), hamlet and
+city, day and night, and in the installed app (models loaded fine; the
+user's hamlet shows few civic props, so the ground was the culprit). Still
+open: the hamlet's GPU time went from ~16 to ~26 ms in #19-#20 (0.45 M to
+1.16 M triangles: denser terrain, new trees), not "unchanged" as noted; the
+civic props still use flat `plain()` colours where textures would help.
+
 Civic props (2026-11-06): the last low-poly things round the buildings went
 realistic in one new props model, `civic` (`ui/blender/real/civic.py`):
 the water tower (an elevated steel tank, leaning when broken), the tower

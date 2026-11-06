@@ -451,18 +451,56 @@ function detail(m: THREE.MeshStandardMaterial) {
       .replace("#include <common>", "#include <common>\nvarying vec3 vGroundP;\nvarying vec3 vGroundN;")
       .replace("#include <project_vertex>", "#include <project_vertex>\nvGroundP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvGroundN = normalize(mat3(modelMatrix) * objectNormal);");
     sh.fragmentShader = sh.fragmentShader
-      .replace("#include <common>", "#include <common>\nuniform sampler2D tGrass;\nuniform sampler2D tStone;\nvarying vec3 vGroundP;\nvarying vec3 vGroundN;")
+      .replace(
+        "#include <common>",
+        `#include <common>
+        uniform sampler2D tGrass;
+        uniform sampler2D tStone;
+        varying vec3 vGroundP;
+        varying vec3 vGroundN;
+        float gHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float gNoise(vec2 p) {
+          vec2 i = floor(p), f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(gHash(i), gHash(i + vec2(1.0, 0.0)), f.x), mix(gHash(i + vec2(0.0, 1.0)), gHash(i + vec2(1.0, 1.0)), f.x), f.y);
+        }`,
+      )
       .replace(
         "#include <color_fragment>",
         `#include <color_fragment>
-        float gNear = 1.0 - smoothstep(120.0, 900.0, length(vGroundP - cameraPosition));
+        float gDist = length(vGroundP - cameraPosition);
+        float gNear = 1.0 - smoothstep(120.0, 900.0, gDist);
+        vec3 gn = normalize(vGroundN);
+        {
+          // Smooth shading spreads the painted meadow into one even sheet
+          // (the facets used to break it up), and its greens were picked
+          // for facets: tone them to real grass, then break the sheet up
+          // at the scales a field varies at, trampled, sun-dried, lush.
+          vec3 vc = diffuseColor.rgb;
+          float lum = dot(vc, vec3(0.2126, 0.7152, 0.0722));
+          float hi = max(vc.r, max(vc.g, vc.b));
+          float green = smoothstep(0.15, 0.4, (vc.g - max(vc.r, vc.b)) / max(hi, 0.01)) * smoothstep(0.75, 0.9, gn.y);
+          vc = mix(vc, mix(vec3(lum), vc, 0.72) * vec3(1.0, 0.94, 0.86), green);
+          vec2 wp = vGroundP.xz;
+          float n1 = gNoise(wp / 3.1);
+          float n2 = gNoise(wp / 11.0 + 7.3);
+          float n3 = gNoise(wp / 38.0 - 3.1);
+          float n4 = gNoise(wp / 140.0 + 1.7);
+          float fadeS = 1.0 - smoothstep(150.0, 600.0, gDist);
+          float fadeL = 1.0 - smoothstep(600.0, 2400.0, gDist);
+          float shade = 1.0 + ((n1 - 0.5) * 0.22 * fadeS + (n2 - 0.5) * 0.3) * fadeL + (n3 - 0.5) * 0.28;
+          float dry = smoothstep(0.5, 0.85, n3 * 0.6 + n4 * 0.4 + (n2 - 0.5) * 0.25);
+          float lush = smoothstep(0.55, 0.85, (1.0 - n4) * 0.6 + n2 * 0.4);
+          vec3 tint = mix(vec3(1.0), vec3(1.22, 1.08, 0.72), dry * 0.75) * mix(vec3(1.0), vec3(0.78, 0.9, 0.8), lush * 0.6);
+          diffuseColor.rgb = mix(diffuseColor.rgb, vc * shade * tint, green);
+        }
         if (gNear > 0.0) {
-          vec3 gn = normalize(vGroundN);
           vec3 gm = textureLod(tGrass, vec2(0.5), 12.0).rgb;
           vec2 guv = vGroundP.xz / 2.6;
           // A second, larger scale breaks up the tiling.
           vec3 gr = texture2D(tGrass, guv).rgb * mix(0.8, 1.2, texture2D(tGrass, vGroundP.xz / 37.0 + 0.3).g / max(gm.g, 0.01) * 0.5);
-          vec3 gd = gm.g > 0.01 ? gr / gm : vec3(1.0);
+          // The texture is soft: steepen it so blades and bare patches show.
+          vec3 gd = gm.g > 0.01 ? pow(gr / gm, vec3(2.2)) : vec3(1.0);
           vec3 gw = pow(abs(gn), vec3(4.0));
           gw /= gw.x + gw.y + gw.z;
           vec3 sp = vGroundP / 7.0;

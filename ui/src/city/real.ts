@@ -1600,9 +1600,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "worksglass": m = room("works"); break;
     case "cafeglass": m = room("cafe"); break;
     // Civic props (civic.py): water tower, crane, scaffold, rubble, parks.
-    case "tankpaint": m = w(plain(0xd4d8d6, 0.5, 0.35), 1.2); break;
-    case "tankband": m = w(plain(0x2f5a8a, 0.5, 0.3), 1.2); break;
-    case "crane": m = w(plain(0xe8b020, 0.5, 0.3), 1); break;
+    // Years of sun and rain: a dulled silver-grey tank, its band faded and
+    // streaked, and crane yellow gone ochre (clean paint read as a toy).
+    case "tankpaint": m = w(plain(0xaeb0aa, 0.62, 0.25), 2.4); break;
+    case "tankband": m = w(plain(0x4a5c6c, 0.7, 0.15), 2.4); break;
+    case "crane": m = w(plain(0xd0a030, 0.6, 0.25), 1.8); break;
     case "rubble": m = w(pbr("rubble", [3, 3], { roughness: 0.97 }), 0.6); break;
     case "char": m = w(plain(0x1d1a18, 0.95), 0.4); break;
     case "scaffboard": m = w(plain(0xa08458, 0.85), 1.2); break;
