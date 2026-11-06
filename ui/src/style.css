@@ -354,3 +354,62 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition-duration: 0.01ms !important; }
 }
+
+/* The mayor's desk (desk.ts): residents' needs, sites, the shop, deeds. */
+#desk { max-height: calc(100vh - 240px); overflow-y: auto; width: 340px; }
+#desk .eyebrow { margin: 0; }
+.desk-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.coins { font: 600 13px/1 var(--font-display); color: var(--brand); }
+.what-next { padding: 8px 10px; margin-bottom: 8px; border-radius: 8px; background: color-mix(in oklab, var(--primary) 10%, transparent); font-size: 13px; }
+.site { padding: 8px 10px; margin-bottom: 8px; border-radius: 8px; background: var(--background); border: 1px solid var(--border); }
+.site-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.site .bar { margin: 6px 0 3px; }
+.paused { margin-bottom: 8px; }
+.needs { display: flex; flex-direction: column; gap: 6px; }
+.need { padding: 8px 10px; border-radius: 8px; background: var(--background); border: 1px solid var(--border); }
+.need.building { border-color: color-mix(in oklab, var(--primary) 50%, var(--border)); }
+.need.done { padding: 4px 10px; background: none; border-style: dashed; color: var(--muted-foreground); font-size: 12.5px; }
+.need-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.need .words { font-size: 12.5px; font-style: italic; color: var(--muted-foreground); margin: 2px 0 6px; }
+.need-act { display: flex; gap: 6px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.need-act select { max-width: 170px; }
+.need-act .small { margin-right: auto; }
+.tag.on { background: color-mix(in oklab, var(--primary) 14%, transparent); color: var(--primary); }
+.tag.pass { background: var(--pass-soft); color: var(--pass); }
+.desk-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+.near-miss { margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--brand-soft); font-size: 13px; display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+
+/* Hover tag over a building. */
+#tag { position: fixed; z-index: 5; pointer-events: none; max-width: 250px; padding: 6px 10px; border-radius: 8px; font-size: 12px; background: var(--hud); border: 1px solid var(--border); box-shadow: var(--shadow); backdrop-filter: blur(10px); }
+#tag strong { font-family: var(--font-display); font-size: 13px; }
+#tag div { color: var(--muted-foreground); }
+
+/* Shop and deed: one-column panels. */
+dialog.panel { width: min(720px, calc(100vw - 32px)); max-height: calc(100vh - 64px); padding: 0; flex-direction: column; }
+dialog.panel[open] { display: flex; }
+dialog.panel.narrow { width: min(440px, calc(100vw - 32px)); }
+.panel-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; padding: 16px 20px 10px; }
+.panel-head h2 { margin: 0; font-size: 18px; }
+.panel-head p { margin: 4px 0 0; }
+.panel-head .close { font-size: 24px; line-height: 1; padding: 0 4px; background: none; border: none; box-shadow: none; color: var(--muted-foreground); }
+.panel-main { overflow-y: auto; padding: 0 20px 16px; }
+dialog.panel > .error { margin: 0 20px 14px; }
+.bp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.bp { display: flex; gap: 10px; padding: 10px; border-radius: 10px; background: var(--background); border: 1px solid var(--border); }
+.bp .sil { flex: none; fill: color-mix(in oklab, var(--brand) 25%, transparent); stroke: var(--brand); stroke-width: 1.2; }
+.bp.locked { opacity: 0.6; }
+.bp.locked .sil { fill: var(--muted); stroke: var(--muted-foreground); }
+.bp.locked strong { color: var(--muted-foreground); }
+.bp-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.bp-state { margin-top: 6px; }
+.deed-name { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
+.deed-name h2 { margin: 0; font-size: 20px; }
+.deed-name .link { margin-left: auto; }
+.rename { display: flex; gap: 6px; margin: 6px 0; }
+.rename[hidden] { display: none; }
+.rename input { flex: 1; }
+.deed-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; margin: 12px 0; font-size: 13px; }
+.deed-stats .label { display: block; font: 600 11px/1.4 var(--font-display); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted-foreground); }
+.strip { display: flex; align-items: flex-end; gap: 3px; height: 40px; padding: 4px; border-radius: 8px; background: var(--background); border: 1px solid var(--border); }
+.strip div { flex: 1; max-width: 22px; background: var(--brand); border-radius: 2px; }
+.firsts, .scars { margin: 10px 0 0; padding-left: 18px; font-size: 13px; }

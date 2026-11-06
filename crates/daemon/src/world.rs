@@ -1,30 +1,57 @@
-//! The progression world, folded from the ledger. Pure: the same facts always
-//! give the same world, so it is rebuilt on every request and never stored,
-//! and no client can edit it.
+//! The progression world, folded from the ledger (`docs/progression.md`).
+//! Pure: the same facts always give the same world, so it is rebuilt on every
+//! request and never stored, and no client can edit it.
+//!
+//! Focused time of completed sessions pays twice: coins (with bonuses) that
+//! buy blueprints, and build time (at face value) that goes into the active
+//! construction site. The mayor picks a residents' need; the fold takes that
+//! need's next lot of the plan (`plan.rs`), so the city always ends up laid
+//! out as planned. Until the mayor first chooses anything, the plan builds
+//! itself in its default order, so old ledgers convert by themselves.
 //!
 //! Penalty tiers, mildest first:
-//! - minor (refused sudo / polkit, wall-clock jump): the newest building
-//!   takes 1 damage;
+//! - minor (refused sudo / polkit, wall-clock jump, tunnel): the newest
+//!   building takes 1 damage;
 //! - major (tampering with the nft table or tc): every building in the
 //!   biggest district takes 1 damage;
-//! - severe (surrender): the plot under construction collapses into rubble,
-//!   fire hits the nearest buildings for 2 damage, the session's time does
-//!   not count and the streak is lost.
+//! - severe (surrender): the session earns nothing and builds nothing, fire
+//!   hits the 3 buildings nearest the site for 2 damage, and the streak is
+//!   lost.
 //!
-//! A building at [`World::MAX_DAMAGE`] falls into rubble. Completed sessions
-//! build on the oldest rubble first, then repair damage; streaks double the
-//! repairs.
+//! A building at [`World::MAX_DAMAGE`] is a ruin, and stays one (on its lot)
+//! until repairs bring it back. Every completed session repairs damage, most
+//! damaged first; streaks double the repairs.
 
-use deepwork_proto::{Construction, Plot, World, WorldCause, WorldEvent, WorldEventKind};
+use std::collections::BTreeSet;
+
+use deepwork_proto::{
+    Award, BlueprintInfo, BuildPart, Construction, Memory, NeedInfo, Plot, Scar, SiteInfo, World,
+    WorldCause, WorldEvent, WorldEventKind,
+};
 use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
+use crate::plan::{self, BLUEPRINTS, Blueprint, NEEDS, Need};
+
 pub const DISTRICT_SIZE: u32 = 8;
-/// Session minutes needed for grades 1 to 4.
-const GRADE_MINS: [u64; 4] = [25, 50, 90, 180];
-/// Focused hours needed for tiers 1 to 3.
-const TIER_HOURS: [u64; 3] = [10, 50, 200];
+const COINS_PER_HOUR: u64 = 100;
+/// Coin rate per minute of a session, in tenths, by how far into the session
+/// the minute is: depth pays, but a stopwatch left running does not.
+const LENGTH_BANDS: [(u64, u64, u64); 4] = [
+    (0, 50, 10),
+    (50, 90, 15),
+    (90, 180, 20),
+    (180, u64::MAX, 10),
+];
+/// A session this long or longer makes a streak day.
+const STREAK_MIN_SECS: u64 = 25 * 60;
+/// Coins get this many percent per streak day from the third, up to the cap.
+const STREAK_PCT_PER_DAY: u64 = 10;
+const STREAK_PCT_MAX: u64 = 50;
+/// A streak freeze is earned every this many streak days.
+const FREEZE_EVERY: u32 = 7;
+const MAX_FREEZES: u32 = 2;
 /// A completed session repairs one damage level, plus one per this many minutes.
 const REPAIR_MINS: u64 = 25;
 /// Streak length from which repairs are doubled.
@@ -34,8 +61,13 @@ const FIRE_DAMAGE: u32 = 2;
 /// One burst of tamper (or minor) events counts once.
 const PENALTY_COOLDOWN: i64 = 10 * 60;
 const HISTORY: usize = 30;
+/// Chance in a thousand that a finished building comes out shiny, and the
+/// most longer sessions can raise it to.
+const SHINY_BASE: u64 = 50;
+const SHINY_MAX: u64 = 250;
+pub const NAME_MAX: usize = 40;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FactKind {
     Completed {
         secs: u64,
@@ -49,13 +81,28 @@ pub enum FactKind {
     ClockJump,
     /// A proxy or tunnel around the throttle.
     Tunnel,
+    /// The mayor's decisions.
+    Bought {
+        blueprint: String,
+    },
+    Chose {
+        need: String,
+        blueprint: Option<String>,
+    },
+    Paused,
+    Renamed {
+        lot: String,
+        name: String,
+    },
 }
 
 /// Ordered by time first, so sorting gives a fixed fold order.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Fact {
     /// Unix seconds.
     pub ts: i64,
+    /// Ledger order within a second: the event's row id, 0 for sessions.
+    pub seq: i64,
     pub session_id: Option<i64>,
     pub kind: FactKind,
 }
@@ -65,80 +112,452 @@ pub struct Fact {
 pub struct Running {
     pub session_id: i64,
     pub elapsed_secs: u64,
-    /// Countdown length; `None` for stopwatches.
-    pub target_secs: Option<u64>,
     pub surrendering: bool,
 }
 
-pub fn grade(secs: u64) -> u32 {
-    GRADE_MINS.iter().filter(|&&m| secs >= m * 60).count() as u32
-}
-
-/// Stable randomness for a plot, from the session that built it.
-fn seed(session_id: i64) -> u64 {
-    // splitmix64
-    let mut z = (session_id as u64).wrapping_add(0x9e37_79b9_7f4a_7c15);
+/// splitmix64: stable randomness from a number.
+fn mix(x: u64) -> u64 {
+    let mut z = x.wrapping_add(0x9e37_79b9_7f4a_7c15);
     z = (z ^ (z >> 30)).wrapping_mul(0xbf58_476d_1ce4_e5b9);
     z = (z ^ (z >> 27)).wrapping_mul(0x94d0_49bb_1331_11eb);
     z ^ (z >> 31)
 }
 
-#[derive(Default)]
-struct Fold {
-    plots: Vec<Plot>,
-    focused_secs: u64,
-    streak: u32,
-    last_day: Option<Date>,
-    last_quake: Option<i64>,
-    last_minor: Option<i64>,
-    history: Vec<WorldEvent>,
+/// Stable randomness for a lot built from a design.
+fn lot_seed(index: usize, design: Option<&str>) -> u64 {
+    let d = design
+        .unwrap_or("")
+        .bytes()
+        .fold(0u64, |h, b| h.wrapping_mul(31).wrapping_add(u64::from(b)));
+    mix((index as u64) << 32 ^ d)
 }
 
-impl Fold {
-    /// Where the next building goes: the oldest rubble, or a new plot.
-    fn next_index(&self) -> u32 {
-        self.plots
-            .iter()
-            .find(|p| p.rubble)
-            .map_or(self.plots.len() as u32, |p| p.index)
-    }
+/// What a completed session earns, before any comeback bonus:
+/// `(coins, length bonus, streak bonus)`.
+pub fn coins(secs: u64, streak: u32) -> (u64, u64, u64) {
+    let mins = secs / 60;
+    let units: u64 = LENGTH_BANDS
+        .iter()
+        .map(|&(from, to, rate)| mins.clamp(from, to).saturating_sub(from) * rate)
+        .sum();
+    // Units are tenths of a minute at 1x: this many make a coin.
+    let per = 600 / COINS_PER_HOUR;
+    let base = mins * 10 / per;
+    let with_length = units / per;
+    let pct = if streak >= 3 {
+        (u64::from(streak - 2) * STREAK_PCT_PER_DAY).min(STREAK_PCT_MAX)
+    } else {
+        0
+    };
+    let total = with_length * (100 + pct) / 100;
+    (total, with_length - base, total - with_length)
+}
 
-    fn put(&mut self, session_id: i64, grade: u32, ts: i64, rubble: bool) -> u32 {
-        let index = self.next_index();
-        let plot = Plot {
-            index,
-            district: index / DISTRICT_SIZE,
-            grade,
-            damage: 0,
-            rubble,
-            seed: seed(session_id),
-            session_id,
-            built_at: ts,
-        };
-        match self.plots.get_mut(index as usize) {
-            Some(p) => *p = plot,
-            None => self.plots.push(plot),
+fn shiny_odds(session_secs: u64) -> u64 {
+    let mins = session_secs / 60;
+    (SHINY_BASE + mins.saturating_sub(50) * 50 / 30).min(SHINY_MAX)
+}
+
+#[derive(Debug, Clone, Default)]
+struct LotState {
+    /// A site stands (or stood) here.
+    site: bool,
+    design: Option<&'static str>,
+    done_secs: u64,
+    /// When, and by which session, it was finished.
+    finished: Option<(i64, i64)>,
+    damage: u32,
+    name: Option<String>,
+    shiny: bool,
+    memory: Memory,
+}
+
+/// The world as the fold goes. Also answers whether a decision is allowed,
+/// so the daemon refuses exactly what the fold would ignore.
+#[derive(Debug, Clone)]
+pub struct City {
+    lots: Vec<LotState>,
+    active: Option<usize>,
+    /// Focus waiting for a site, oldest first.
+    idle: Vec<BuildPart>,
+    owned: BTreeSet<&'static str>,
+    /// The mayor has decided something; until then the plan builds itself.
+    manual: bool,
+    level: u32,
+    coins_earned: u64,
+    coins_spent: u64,
+    focused_secs: u64,
+    streak: u32,
+    /// The last streak day, and the last day with any completed session.
+    last_day: Option<Date>,
+    last_completed_day: Option<Date>,
+    freezes: u32,
+    last_quake: Option<i64>,
+    last_minor: Option<i64>,
+    finished_count: u32,
+    history: Vec<WorldEvent>,
+    award: Option<Award>,
+}
+
+impl Default for City {
+    fn default() -> Self {
+        Self {
+            lots: vec![LotState::default(); plan::lots().len()],
+            active: None,
+            idle: Vec::new(),
+            owned: BTreeSet::from([plan::STARTER]),
+            manual: false,
+            level: 0,
+            coins_earned: 0,
+            coins_spent: 0,
+            focused_secs: 0,
+            streak: 0,
+            last_day: None,
+            last_completed_day: None,
+            freezes: 0,
+            last_quake: None,
+            last_minor: None,
+            finished_count: 0,
+            history: Vec::new(),
+            award: None,
         }
-        index
+    }
+}
+
+fn day_of(ts: i64, tz: &TimeZone) -> Date {
+    Timestamp::from_second(ts)
+        .unwrap_or_default()
+        .to_zoned(tz.clone())
+        .date()
+}
+
+fn days_between(a: Date, b: Date) -> i64 {
+    a.until(b).map_or(0, |s| i64::from(s.get_days()))
+}
+
+fn need_of(lot: usize) -> &'static Need {
+    &NEEDS[plan::lots()[lot].need]
+}
+
+impl City {
+    /// Folds `facts` (in any order).
+    pub fn fold(facts: &[Fact], tz: &TimeZone) -> Self {
+        let mut facts = facts.to_vec();
+        facts.sort_unstable();
+        let mut c = City::default();
+        for f in &facts {
+            c.apply(f, tz);
+        }
+        c
     }
 
-    fn standing(&self) -> impl Iterator<Item = &Plot> {
-        self.plots.iter().filter(|p| !p.rubble)
-    }
-
-    /// Damages plots; returns those that fell into rubble.
-    fn damage(&mut self, plots: &[u32], amount: u32) -> Vec<u32> {
-        let mut ruined = Vec::new();
-        for &i in plots {
-            let p = &mut self.plots[i as usize];
-            p.damage += amount;
-            if p.damage >= World::MAX_DAMAGE {
-                p.damage = 0;
-                p.rubble = true;
-                ruined.push(i);
+    fn apply(&mut self, f: &Fact, tz: &TimeZone) {
+        match (&f.kind, f.session_id) {
+            (FactKind::Completed { secs }, Some(id)) => self.completed(f.ts, id, *secs, tz),
+            (FactKind::Surrendered { .. }, Some(id)) => self.surrendered(f.ts, id),
+            (FactKind::Completed { .. } | FactKind::Surrendered { .. }, None) => {}
+            (FactKind::Tamper, id) => self.quake(f.ts, id),
+            (FactKind::Denied, id) => self.minor(f.ts, id, WorldCause::EscalationDenied),
+            (FactKind::ClockJump, id) => self.minor(f.ts, id, WorldCause::ClockJump),
+            (FactKind::Tunnel, id) => self.minor(f.ts, id, WorldCause::Tunnel),
+            (FactKind::Bought { blueprint }, _) => {
+                if let Ok(b) = self.check_buy(blueprint) {
+                    self.manual = true;
+                    self.owned.insert(b.id);
+                    self.coins_spent += b.price;
+                }
+            }
+            (FactKind::Chose { need, blueprint }, _) => {
+                if let Ok((ni, design)) = self.check_choose(need, blueprint.as_deref()) {
+                    self.manual = true;
+                    self.choose(f.ts, ni, design);
+                }
+            }
+            (FactKind::Paused, _) => {
+                if self.check_pause().is_ok() {
+                    self.manual = true;
+                    self.active = None;
+                }
+            }
+            (FactKind::Renamed { lot, name }, _) => {
+                if let Ok((i, name)) = self.check_rename(lot, name) {
+                    self.lots[i].name = name;
+                }
             }
         }
-        ruined
+    }
+
+    pub fn balance(&self) -> u64 {
+        self.coins_earned.saturating_sub(self.coins_spent)
+    }
+
+    fn finished(&self, i: usize) -> bool {
+        self.lots[i].finished.is_some()
+    }
+
+    /// The need's next lot to build: its standing site, or its first empty lot.
+    fn next_lot(&self, ni: usize) -> Option<usize> {
+        plan::need_lots(ni)
+            .map(|l| l.index as usize)
+            .find(|&i| !self.finished(i))
+    }
+
+    fn open(&self, ni: usize) -> bool {
+        NEEDS[ni].level == self.level && self.next_lot(ni).is_some()
+    }
+
+    fn sites(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.lots.len()).filter(|&i| self.lots[i].site && !self.finished(i))
+    }
+
+    fn paused(&self) -> usize {
+        self.sites().filter(|&i| Some(i) != self.active).count()
+    }
+
+    fn owned_fitting(&self, need: &Need) -> impl Iterator<Item = &'static Blueprint> + '_ {
+        let need = *need;
+        BLUEPRINTS
+            .iter()
+            .filter(move |b| b.fits(&need) && self.owned.contains(b.id))
+    }
+
+    pub fn check_buy(&self, id: &str) -> Result<&'static Blueprint, String> {
+        let b = plan::blueprint(id).ok_or_else(|| format!("no blueprint {id:?}"))?;
+        if self.owned.contains(b.id) {
+            return Err(format!("the {} blueprint is already yours", b.name));
+        }
+        if b.level > self.level {
+            return Err(format!(
+                "the {} blueprint is for sale from the {}",
+                b.name,
+                plan::LEVELS[b.level as usize].to_lowercase()
+            ));
+        }
+        if self.balance() < b.price {
+            return Err(format!(
+                "the {} blueprint costs {} coins; you have {}",
+                b.name,
+                b.price,
+                self.balance()
+            ));
+        }
+        Ok(b)
+    }
+
+    /// The need's index and the design its lot gets.
+    pub fn check_choose(
+        &self,
+        id: &str,
+        blueprint: Option<&str>,
+    ) -> Result<(usize, Option<&'static str>), String> {
+        let (ni, need) = plan::need_by_id(id).ok_or_else(|| format!("no need {id:?}"))?;
+        if need.level > self.level {
+            return Err(format!("nobody has asked for {:?} yet", need.title));
+        }
+        let Some(lot) = self.next_lot(ni).filter(|_| self.open(ni)) else {
+            return Err(format!("{:?} is already met", need.title));
+        };
+        let site = &self.lots[lot];
+        let design = if !need.kind.designed() {
+            if blueprint.is_some() {
+                return Err(format!(
+                    "{:?} is built by the town, not from a blueprint",
+                    need.title
+                ));
+            }
+            None
+        } else if site.done_secs > 0 {
+            match blueprint {
+                Some(b) if Some(b) != site.design => {
+                    return Err(format!(
+                        "{} is already half built from another blueprint",
+                        plan::lots()[lot].name
+                    ));
+                }
+                _ => site.design,
+            }
+        } else if let Some(id) = blueprint {
+            let b = plan::blueprint(id).ok_or_else(|| format!("no blueprint {id:?}"))?;
+            if !b.fits(need) {
+                return Err(format!("the {} does not fit {:?}", b.name, need.title));
+            }
+            if !self.owned.contains(b.id) {
+                return Err(format!("buy the {} blueprint first", b.name));
+            }
+            Some(b.id)
+        } else {
+            let first = self.owned_fitting(need).next().ok_or_else(|| {
+                format!("buy a blueprint for {:?} first", need.title.to_lowercase())
+            })?;
+            Some(first.id)
+        };
+        let pauses_one = self.active.is_some_and(|a| a != lot);
+        if pauses_one && !site.site && self.paused() >= World::MAX_PAUSED {
+            return Err(format!(
+                "{} sites already stand half built; finish or resume one first",
+                World::MAX_PAUSED
+            ));
+        }
+        Ok((ni, design))
+    }
+
+    pub fn check_pause(&self) -> Result<(), String> {
+        match self.active {
+            Some(_) => Ok(()),
+            None => Err("nothing is under construction".into()),
+        }
+    }
+
+    /// The lot's index and its new name (`None`: the plan's).
+    pub fn check_rename(&self, id: &str, name: &str) -> Result<(usize, Option<String>), String> {
+        let lot = plan::lot_by_id(id).ok_or_else(|| format!("no lot {id:?}"))?;
+        let i = lot.index as usize;
+        if !self.finished(i) {
+            return Err(format!("{} is not built yet", lot.name));
+        }
+        let name = name.trim();
+        if name.chars().count() > NAME_MAX {
+            return Err(format!("a name can be at most {NAME_MAX} characters"));
+        }
+        if name.chars().any(char::is_control) {
+            return Err("a name cannot hold control characters".into());
+        }
+        Ok((i, (!name.is_empty()).then(|| name.to_string())))
+    }
+
+    fn choose(&mut self, ts: i64, ni: usize, design: Option<&'static str>) {
+        let Some(lot) = self.next_lot(ni) else { return };
+        if self.lots[lot].done_secs == 0 {
+            self.lots[lot].design = design;
+        }
+        self.lots[lot].site = true;
+        self.active = Some(lot);
+        let idle = std::mem::take(&mut self.idle);
+        for part in idle {
+            self.pour(part, ts);
+        }
+    }
+
+    /// The plan's own pick while the mayor has chosen nothing: the first open
+    /// need in plan order that can be built, buying its cheapest blueprint
+    /// when none is owned and the coins are there.
+    fn auto_pick(&mut self) -> Option<usize> {
+        for (ni, need) in NEEDS.iter().enumerate() {
+            if !self.open(ni) {
+                continue;
+            }
+            let design = if need.kind.designed() {
+                if let Some(b) = self.owned_fitting(need).next() {
+                    Some(b.id)
+                } else {
+                    let level = self.level;
+                    let cheapest = BLUEPRINTS
+                        .iter()
+                        .filter(|b| b.fits(need) && b.level <= level)
+                        .min_by_key(|b| b.price)?;
+                    if self.balance() < cheapest.price {
+                        continue;
+                    }
+                    self.owned.insert(cheapest.id);
+                    self.coins_spent += cheapest.price;
+                    Some(cheapest.id)
+                }
+            } else {
+                None
+            };
+            let lot = self.next_lot(ni)?;
+            self.lots[lot].site = true;
+            self.lots[lot].design = design;
+            return Some(lot);
+        }
+        None
+    }
+
+    /// Puts focused time into the active site, then the next ones.
+    fn pour(&mut self, part: BuildPart, ts: i64) {
+        let mut left = part.secs;
+        while left > 0 {
+            let site = match self.active {
+                Some(a) => Some(a),
+                None if !self.manual => self.auto_pick(),
+                None => None,
+            };
+            let Some(a) = site else { break };
+            self.active = Some(a);
+            let total = need_of(a).kind.build_secs();
+            let lot = &mut self.lots[a];
+            let take = left.min(total.saturating_sub(lot.done_secs));
+            lot.done_secs += take;
+            left -= take;
+            if take > 0 {
+                if lot.memory.parts.is_empty() {
+                    lot.memory.started_at = part.ts;
+                }
+                lot.memory.parts.push(BuildPart { secs: take, ..part });
+                lot.memory.focused_secs += take;
+            }
+            if lot.done_secs >= total {
+                self.finish(a, part.ts.max(ts), part.session_id, part.session_secs);
+            }
+        }
+        if left > 0 {
+            self.idle.push(BuildPart { secs: left, ..part });
+        }
+    }
+
+    fn finish(&mut self, i: usize, ts: i64, session_id: i64, session_secs: u64) {
+        let roll = mix(lot_seed(i, None) ^ (session_id as u64).rotate_left(17)) % 1000;
+        let first = self.finished_count == 0;
+        let streak = self.streak;
+        let lot = &mut self.lots[i];
+        lot.finished = Some((ts, session_id));
+        lot.shiny = roll < shiny_odds(session_secs);
+        lot.memory.streak_at_finish = streak;
+        lot.memory.first = first;
+        if lot.memory.started_at == 0 {
+            lot.memory.started_at = ts;
+        }
+        let design = lot.design;
+        self.finished_count += 1;
+        self.active = None;
+        self.record(
+            ts,
+            (WorldEventKind::Built, WorldCause::Completed),
+            Some(session_id),
+            vec![i as u32],
+            vec![],
+        );
+        if let Some(a) = self.award.as_mut() {
+            a.finished.push(i as u32);
+        }
+        while (self.level as usize) < plan::LEVELS.len()
+            && NEEDS
+                .iter()
+                .enumerate()
+                .all(|(ni, n)| n.level != self.level || self.next_lot(ni).is_none())
+        {
+            self.level += 1;
+            self.record(
+                ts,
+                (WorldEventKind::Graduated, WorldCause::Completed),
+                Some(session_id),
+                vec![],
+                vec![],
+            );
+        }
+        // The mayor's need goes on to its next lot, same design.
+        let ni = plan::lots()[i].need;
+        if self.manual
+            && self.open(ni)
+            && let Some(next) = self.next_lot(ni)
+        {
+            let l = &mut self.lots[next];
+            if !l.site {
+                l.site = true;
+                l.design = design;
+            }
+            self.active = Some(next);
+        }
     }
 
     fn record(
@@ -159,45 +578,144 @@ impl Fold {
         });
     }
 
+    /// Finished buildings that can still take damage.
+    fn standing(&self) -> impl Iterator<Item = usize> + '_ {
+        (0..self.lots.len())
+            .filter(|&i| self.finished(i) && self.lots[i].damage < World::MAX_DAMAGE)
+    }
+
+    fn newest(&self) -> Option<usize> {
+        self.standing()
+            .max_by_key(|&i| (self.lots[i].finished.map(|f| f.0), i))
+    }
+
+    /// Damages lots; returns those that became ruins.
+    fn damage(&mut self, lots: &[u32], amount: u32, ts: i64, cause: WorldCause) -> Vec<u32> {
+        let mut ruined = Vec::new();
+        for &i in lots {
+            let lot = &mut self.lots[i as usize];
+            let before = lot.damage;
+            lot.damage = (before + amount).min(World::MAX_DAMAGE);
+            if lot.damage == before {
+                continue;
+            }
+            lot.memory.scars.push(Scar {
+                ts,
+                cause,
+                damage: lot.damage,
+                repaired: false,
+            });
+            if lot.damage == World::MAX_DAMAGE {
+                ruined.push(i);
+            }
+        }
+        ruined
+    }
+
     fn completed(&mut self, ts: i64, session_id: i64, secs: u64, tz: &TimeZone) {
         self.focused_secs += secs;
-        let day = Timestamp::from_second(ts)
-            .unwrap_or_default()
-            .to_zoned(tz.clone())
-            .date();
-        self.streak = match self.last_day {
-            Some(d) if d == day => self.streak.max(1),
-            Some(d) if d.tomorrow().ok() == Some(day) => self.streak + 1,
-            _ => 1,
-        };
-        self.last_day = Some(day);
-        let index = self.put(session_id, grade(secs), ts, false);
-        self.record(
+        let day = day_of(ts, tz);
+        let mut award = Award {
+            session_id,
             ts,
-            (WorldEventKind::Built, WorldCause::Completed),
-            Some(session_id),
-            vec![index],
-            vec![],
-        );
+            coins: 0,
+            length_bonus: 0,
+            streak_bonus: 0,
+            rested_bonus: 0,
+            build_secs: secs,
+            finished: vec![],
+            freeze_earned: false,
+            freezes_used: 0,
+        };
+        if secs >= STREAK_MIN_SECS {
+            let gap = self.last_day.map(|d| days_between(d, day));
+            let grew = match gap {
+                Some(0) => {
+                    self.streak = self.streak.max(1);
+                    false
+                }
+                Some(1) => {
+                    self.streak += 1;
+                    true
+                }
+                Some(g) if g > 1 && g - 1 <= i64::from(self.freezes) => {
+                    let used = (g - 1) as u32;
+                    self.freezes -= used;
+                    award.freezes_used = used;
+                    self.streak += 1;
+                    true
+                }
+                _ => {
+                    self.streak = 1;
+                    false
+                }
+            };
+            self.last_day = Some(day);
+            if grew && self.streak.is_multiple_of(FREEZE_EVERY) && self.freezes < MAX_FREEZES {
+                self.freezes += 1;
+                award.freeze_earned = true;
+            }
+        }
+        let rested = award.freezes_used == 0
+            && self
+                .last_completed_day
+                .is_some_and(|d| days_between(d, day) >= 2);
+        self.last_completed_day = Some(day);
 
+        let (coins, length_bonus, streak_bonus) = coins(secs, self.streak_now(day));
+        award.coins = if rested { coins * 2 } else { coins };
+        award.length_bonus = length_bonus;
+        award.streak_bonus = streak_bonus;
+        award.rested_bonus = award.coins - coins;
+        self.coins_earned += award.coins;
+
+        self.award = Some(award);
+        self.pour(
+            BuildPart {
+                session_id,
+                ts,
+                secs,
+                session_secs: secs,
+            },
+            ts,
+        );
+        self.repair(ts, session_id, secs);
+    }
+
+    /// The streak that counts on `day`: kept until the end of the next day.
+    fn streak_now(&self, day: Date) -> u32 {
+        match self.last_day {
+            Some(d) if days_between(d, day) - 1 <= i64::from(self.freezes) => self.streak,
+            _ => 0,
+        }
+    }
+
+    fn repair(&mut self, ts: i64, session_id: i64, secs: u64) {
         let mut budget = 1 + secs / (REPAIR_MINS * 60);
         if self.streak >= STREAK_BONUS_DAYS {
             budget *= 2;
         }
         let mut repaired = Vec::new();
         for _ in 0..budget {
-            let Some(p) = self
-                .plots
-                .iter_mut()
-                .filter(|p| !p.rubble && p.damage > 0)
-                .max_by_key(|p| (p.damage, std::cmp::Reverse(p.index)))
+            let Some(i) = (0..self.lots.len())
+                .filter(|&i| self.finished(i) && self.lots[i].damage > 0)
+                .max_by_key(|&i| (self.lots[i].damage, std::cmp::Reverse(i)))
             else {
                 break;
             };
-            p.damage -= 1;
-            if !repaired.contains(&p.index) {
-                repaired.push(p.index);
+            self.lots[i].damage -= 1;
+            if !repaired.contains(&(i as u32)) {
+                repaired.push(i as u32);
             }
+        }
+        for &i in &repaired {
+            let lot = &mut self.lots[i as usize];
+            lot.memory.scars.push(Scar {
+                ts,
+                cause: WorldCause::Completed,
+                damage: lot.damage,
+                repaired: true,
+            });
         }
         if !repaired.is_empty() {
             repaired.sort_unstable();
@@ -211,16 +729,25 @@ impl Fold {
         }
     }
 
-    fn surrendered(&mut self, ts: i64, session_id: i64, secs: u64) {
+    fn surrendered(&mut self, ts: i64, session_id: i64) {
         self.streak = 0;
         self.last_day = None;
-        let origin = self.put(session_id, grade(secs), ts, true);
-        let mut near: Vec<&Plot> = self.standing().collect();
-        near.sort_by_key(|p| (p.index.abs_diff(origin), p.index));
-        let mut hit: Vec<u32> = near.iter().take(FIRE_SPREAD).map(|p| p.index).collect();
+        let Some(origin) = self.active.or_else(|| self.newest()) else {
+            self.record(
+                ts,
+                (WorldEventKind::Collapsed, WorldCause::Surrendered),
+                Some(session_id),
+                vec![],
+                vec![],
+            );
+            return;
+        };
+        let mut near: Vec<usize> = self.standing().collect();
+        near.sort_by_key(|&i| (i.abs_diff(origin), i));
+        let mut hit: Vec<u32> = near.iter().take(FIRE_SPREAD).map(|&i| i as u32).collect();
         hit.sort_unstable();
-        let ruined = self.damage(&hit, FIRE_DAMAGE);
-        let mut plots = vec![origin];
+        let ruined = self.damage(&hit, FIRE_DAMAGE, ts, WorldCause::Surrendered);
+        let mut plots = vec![origin as u32];
         plots.extend(hit);
         self.record(
             ts,
@@ -237,8 +764,8 @@ impl Fold {
         }
         self.last_quake = Some(ts);
         let mut counts = std::collections::BTreeMap::<u32, usize>::new();
-        for p in self.standing() {
-            *counts.entry(p.district).or_default() += 1;
+        for i in self.standing() {
+            *counts.entry(i as u32 / DISTRICT_SIZE).or_default() += 1;
         }
         // The biggest district; the newest one on a tie.
         let district = counts
@@ -247,10 +774,10 @@ impl Fold {
             .map(|(d, _)| *d);
         let hit: Vec<u32> = self
             .standing()
-            .filter(|p| Some(p.district) == district)
-            .map(|p| p.index)
+            .map(|i| i as u32)
+            .filter(|&i| Some(i / DISTRICT_SIZE) == district)
             .collect();
-        let ruined = self.damage(&hit, 1);
+        let ruined = self.damage(&hit, 1, ts, WorldCause::Tamper);
         self.record(
             ts,
             (WorldEventKind::Quake, WorldCause::Tamper),
@@ -265,13 +792,8 @@ impl Fold {
             return;
         }
         self.last_minor = Some(ts);
-        let hit: Vec<u32> = self
-            .standing()
-            .max_by_key(|p| (p.built_at, p.index))
-            .map(|p| p.index)
-            .into_iter()
-            .collect();
-        let ruined = self.damage(&hit, 1);
+        let hit: Vec<u32> = self.newest().map(|i| i as u32).into_iter().collect();
+        let ruined = self.damage(&hit, 1, ts, cause);
         self.record(
             ts,
             (WorldEventKind::Damaged, cause),
@@ -280,54 +802,179 @@ impl Fold {
             ruined,
         );
     }
-}
 
-/// Folds `facts` (in any order) into the world as of `now`.
-pub fn build(facts: &[Fact], running: Option<&Running>, now: Timestamp, tz: &TimeZone) -> World {
-    let mut facts = facts.to_vec();
-    facts.sort_unstable();
-    let mut w = Fold::default();
-    for f in &facts {
-        match (f.kind, f.session_id) {
-            (FactKind::Completed { secs }, Some(id)) => w.completed(f.ts, id, secs, tz),
-            (FactKind::Surrendered { secs }, Some(id)) => w.surrendered(f.ts, id, secs),
-            (FactKind::Completed { .. } | FactKind::Surrendered { .. }, None) => {}
-            (FactKind::Tamper, id) => w.quake(f.ts, id),
-            (FactKind::Denied, id) => w.minor(f.ts, id, WorldCause::EscalationDenied),
-            (FactKind::ClockJump, id) => w.minor(f.ts, id, WorldCause::ClockJump),
-            (FactKind::Tunnel, id) => w.minor(f.ts, id, WorldCause::Tunnel),
+    fn name(&self, i: usize) -> String {
+        self.lots[i]
+            .name
+            .clone()
+            .unwrap_or_else(|| plan::lots()[i].name.clone())
+    }
+
+    fn plot(&self, i: usize) -> Plot {
+        let lot = &self.lots[i];
+        let plan_lot = &plan::lots()[i];
+        let need = need_of(i);
+        let (built_at, session_id) = lot.finished.unwrap_or_default();
+        Plot {
+            index: i as u32,
+            district: i as u32 / DISTRICT_SIZE,
+            grade: need.kind.grade(),
+            damage: lot.damage,
+            rubble: lot.damage >= World::MAX_DAMAGE,
+            seed: lot_seed(i, lot.design),
+            session_id,
+            built_at,
+            lot: plan_lot.id.clone(),
+            kind: need.kind.name().into(),
+            design: lot.design.map(str::to_string),
+            name: self.name(i),
+            address: plan_lot.address.clone(),
+            need: need.id.into(),
+            shiny: lot.shiny,
+            memory: lot.memory.clone(),
         }
     }
 
-    let today = now.to_zoned(tz.clone()).date();
-    let streak_days = match w.last_day {
-        Some(d) if d == today || d.tomorrow().ok() == Some(today) => w.streak,
-        _ => 0,
-    };
-    let hours = w.focused_secs / 3600;
-    let tier = TIER_HOURS.iter().filter(|&&h| hours >= h).count();
-    let construction = running.map(|r| Construction {
-        session_id: r.session_id,
-        index: w.next_index(),
-        grade: grade(r.target_secs.unwrap_or(r.elapsed_secs)),
-        progress_permille: r
-            .target_secs
-            .filter(|&t| t > 0)
-            .map(|t| (r.elapsed_secs.min(t) * 1000 / t) as u32),
-        surrendering: r.surrendering,
-        seed: seed(r.session_id),
-    });
-    let skip = w.history.len().saturating_sub(HISTORY);
-    World {
-        tier: tier as u32,
-        focused_secs: w.focused_secs,
-        tier_floor_secs: tier.checked_sub(1).map_or(0, |i| TIER_HOURS[i] * 3600),
-        next_tier_secs: TIER_HOURS.get(tier).map(|h| h * 3600),
-        streak_days,
-        plots: w.plots,
-        construction,
-        history: w.history.split_off(skip),
+    fn need_info(&self, ni: usize) -> NeedInfo {
+        let need = &NEEDS[ni];
+        let next = self.next_lot(ni);
+        let fits_locked = BLUEPRINTS
+            .iter()
+            .filter(|b| b.fits(need) && !self.owned.contains(b.id))
+            .map(|b| b.id.to_string())
+            .collect();
+        NeedInfo {
+            id: need.id.into(),
+            title: need.title.into(),
+            words: need.words.into(),
+            kind: need.kind.name().into(),
+            district: need.district.name().into(),
+            build_secs: need.kind.build_secs(),
+            lots: need.lots,
+            lots_done: plan::need_lots(ni)
+                .filter(|l| self.finished(l.index as usize))
+                .count() as u32,
+            next_lot: next.map(|i| plan::lots()[i].id.clone()),
+            site: next.is_some_and(|i| self.lots[i].site),
+            designed: need.kind.designed(),
+            fits: self.owned_fitting(need).map(|b| b.id.to_string()).collect(),
+            fits_locked,
+        }
     }
+
+    fn site_info(&self, i: usize) -> SiteInfo {
+        let lot = &self.lots[i];
+        let need = need_of(i);
+        SiteInfo {
+            index: i as u32,
+            lot: plan::lots()[i].id.clone(),
+            need: need.id.into(),
+            name: self.name(i),
+            kind: need.kind.name().into(),
+            design: lot.design.map(str::to_string),
+            done_secs: lot.done_secs,
+            build_secs: need.kind.build_secs(),
+            active: self.active == Some(i),
+            seed: lot_seed(i, lot.design),
+        }
+    }
+
+    /// The world as of `now`, with the running session's site.
+    pub fn world(&self, running: Option<&Running>, now: Timestamp, tz: &TimeZone) -> World {
+        let today = now.to_zoned(tz.clone()).date();
+        let level = self.level.min(plan::LEVELS.len() as u32);
+        let tier_floor_secs: u64 = (0..level).map(plan::level_secs).sum();
+        let next_tier_secs = ((level as usize) < plan::LEVELS.len())
+            .then(|| tier_floor_secs + plan::level_secs(level));
+        let built_secs = self.lots.iter().map(|l| l.done_secs).sum();
+
+        let construction = running.and_then(|r| {
+            // While the plan builds itself, show the lot it would pick.
+            let mut preview = self.clone();
+            let site = preview.active.or_else(|| {
+                if preview.manual {
+                    None
+                } else {
+                    preview.auto_pick()
+                }
+            })?;
+            let lot = &preview.lots[site];
+            let kind = need_of(site).kind;
+            let total = kind.build_secs();
+            let remaining = total.saturating_sub(lot.done_secs);
+            let done = lot.done_secs + r.elapsed_secs.min(remaining);
+            Some(Construction {
+                session_id: r.session_id,
+                index: site as u32,
+                grade: kind.grade(),
+                progress_permille: Some((done * 1000 / total.max(1)) as u32),
+                surrendering: r.surrendering,
+                seed: lot_seed(site, lot.design),
+                lot: plan::lots()[site].id.clone(),
+                kind: kind.name().into(),
+                design: lot.design.map(str::to_string),
+                name: preview.name(site),
+                remaining_secs: remaining,
+            })
+        });
+
+        let mut sites: Vec<SiteInfo> = self.sites().map(|i| self.site_info(i)).collect();
+        sites.sort_by_key(|s| !s.active);
+        let blueprints = BLUEPRINTS
+            .iter()
+            .map(|b| BlueprintInfo {
+                id: b.id.into(),
+                name: b.name.into(),
+                kind: b.kind.name().into(),
+                districts: b.districts.iter().map(|d| d.name().into()).collect(),
+                level: b.level,
+                price: b.price,
+                owned: self.owned.contains(b.id),
+                unlocked: b.level <= self.level,
+                built: (0..self.lots.len())
+                    .filter(|&i| self.finished(i) && self.lots[i].design == Some(b.id))
+                    .count() as u32,
+            })
+            .collect();
+        let skip = self.history.len().saturating_sub(HISTORY);
+        World {
+            tier: level.min(World::MAX_TIER),
+            focused_secs: self.focused_secs,
+            tier_floor_secs,
+            next_tier_secs,
+            built_secs,
+            streak_days: self.streak_now(today),
+            plots: (0..self.lots.len())
+                .filter(|&i| self.finished(i))
+                .map(|i| self.plot(i))
+                .collect(),
+            construction,
+            history: self.history[skip..].to_vec(),
+            coins: self.balance(),
+            coins_earned: self.coins_earned,
+            needs: (0..NEEDS.len())
+                .filter(|&ni| NEEDS[ni].level == level)
+                .map(|ni| self.need_info(ni))
+                .collect(),
+            next_needs: NEEDS
+                .iter()
+                .filter(|n| n.level == level + 1)
+                .map(|n| n.title.to_string())
+                .collect(),
+            blueprints,
+            sites,
+            idle_secs: self.idle.iter().map(|p| p.secs).sum(),
+            freezes: self.freezes,
+            auto: !self.manual,
+            last_award: self.award.clone(),
+        }
+    }
+}
+
+/// Folds `facts` (in any order) into the world as of `now`.
+#[cfg(test)]
+pub fn build(facts: &[Fact], running: Option<&Running>, now: Timestamp, tz: &TimeZone) -> World {
+    City::fold(facts, tz).world(running, now, tz)
 }
 
 #[cfg(test)]
@@ -340,6 +987,7 @@ mod tests {
     fn done(ts: i64, id: i64, mins: u64) -> Fact {
         Fact {
             ts,
+            seq: 0,
             session_id: Some(id),
             kind: FactKind::Completed { secs: mins * MIN },
         }
@@ -348,6 +996,7 @@ mod tests {
     fn gave_up(ts: i64, id: i64, mins: u64) -> Fact {
         Fact {
             ts,
+            seq: 0,
             session_id: Some(id),
             kind: FactKind::Surrendered { secs: mins * MIN },
         }
@@ -356,9 +1005,38 @@ mod tests {
     fn event(ts: i64, kind: FactKind) -> Fact {
         Fact {
             ts,
+            seq: 0,
             session_id: Some(99),
             kind,
         }
+    }
+
+    fn mayor(ts: i64, kind: FactKind) -> Fact {
+        Fact {
+            ts,
+            seq: 0,
+            session_id: None,
+            kind,
+        }
+    }
+
+    fn chose(ts: i64, need: &str, blueprint: Option<&str>) -> Fact {
+        mayor(
+            ts,
+            FactKind::Chose {
+                need: need.into(),
+                blueprint: blueprint.map(str::to_string),
+            },
+        )
+    }
+
+    fn bought(ts: i64, blueprint: &str) -> Fact {
+        mayor(
+            ts,
+            FactKind::Bought {
+                blueprint: blueprint.into(),
+            },
+        )
     }
 
     fn world(facts: &[Fact], now: i64) -> World {
@@ -370,206 +1048,459 @@ mod tests {
         )
     }
 
-    fn damage(w: &World) -> Vec<(u32, bool)> {
-        w.plots.iter().map(|p| (p.damage, p.rubble)).collect()
+    fn lots(w: &World) -> Vec<&str> {
+        w.plots.iter().map(|p| p.lot.as_str()).collect()
+    }
+
+    fn damage(w: &World) -> Vec<u32> {
+        w.plots.iter().map(|p| p.damage).collect()
+    }
+
+    /// One session a day from day 1, each `mins` long.
+    fn daily(n: i64, mins: u64) -> Vec<Fact> {
+        (1..=n).map(|d| done(d * DAY, d, mins)).collect()
     }
 
     #[test]
-    fn grades_follow_length() {
-        assert_eq!(grade(5 * MIN), 0);
-        assert_eq!(grade(25 * MIN), 1);
-        assert_eq!(grade(89 * MIN), 2);
-        assert_eq!(grade(90 * MIN), 3);
-        assert_eq!(grade(6 * 3600), 4);
+    fn coins_pay_for_depth() {
+        assert_eq!(coins(50 * MIN, 0), (83, 0, 0));
+        // 50 at 1x, 40 at 1.5x, 10 at 2x.
+        assert_eq!(coins(100 * MIN, 0).0, 216);
+        assert!(coins(100 * MIN, 0).0 > 2 * coins(50 * MIN, 0).0);
+        // Past 3 hours the bonus stops.
+        let three = coins(180 * MIN, 0).0;
+        assert_eq!(coins(240 * MIN, 0).0 - three, 100);
+        // Streak: +10% a day from day 3, capped at +50%.
+        assert_eq!(coins(60 * MIN, 2).2, 0);
+        assert_eq!(coins(60 * MIN, 0), (108, 8, 0));
+        assert_eq!(coins(60 * MIN, 3), (118, 8, 10));
+        assert_eq!(coins(60 * MIN, 30).0, 162);
+        assert_eq!(coins(30, 0).0, 0);
     }
 
     #[test]
     fn empty_world() {
         let w = world(&[], 0);
-        assert_eq!((w.tier, w.focused_secs, w.streak_days), (0, 0, 0));
+        assert_eq!(
+            (w.tier, w.focused_secs, w.streak_days, w.coins),
+            (0, 0, 0, 0)
+        );
         assert_eq!(w.next_tier_secs, Some(10 * 3600));
+        assert!(w.plots.is_empty() && w.sites.is_empty());
+        assert!(w.auto);
+        assert_eq!(w.needs.len(), 5);
+        assert_eq!(w.needs[0].fits, ["c1"]);
+        assert!(w.blueprints.iter().any(|b| b.id == "c1" && b.owned));
+        assert!(w.next_needs.contains(&"A school".to_string()));
+    }
+
+    #[test]
+    fn a_cottage_takes_an_hour_across_sessions() {
+        let w = world(&[done(100, 1, 40)], 200);
         assert!(w.plots.is_empty());
+        assert_eq!(w.sites.len(), 1);
+        assert_eq!(
+            (w.sites[0].lot.as_str(), w.sites[0].done_secs),
+            ("hamlet-homes-1", 40 * MIN)
+        );
+        assert_eq!(w.sites[0].design.as_deref(), Some("c1"));
+        assert_eq!(w.coins, 66);
+
+        let w = world(&[done(100, 1, 40), done(200, 2, 30)], 300);
+        assert_eq!(lots(&w), ["hamlet-homes-1"]);
+        let m = &w.plots[0].memory;
+        assert_eq!(m.parts.len(), 2);
+        assert_eq!(
+            (m.parts[1].secs, m.parts[1].session_secs),
+            (20 * MIN, 30 * MIN)
+        );
+        assert_eq!(m.focused_secs, 60 * MIN);
+        assert!(m.first);
+        // The rest went on to the next house.
+        assert_eq!(w.sites[0].lot, "hamlet-homes-2");
+        assert_eq!(w.sites[0].done_secs, 10 * MIN);
+        assert_eq!(w.built_secs, 70 * MIN);
+        assert_eq!(w.history.last().unwrap().kind, WorldEventKind::Built);
+        assert_eq!(w.last_award.as_ref().unwrap().finished, [0]);
     }
 
     #[test]
-    fn completed_sessions_build_and_count() {
-        let w = world(&[done(100, 1, 25), done(200, 2, 50)], 300);
-        assert_eq!(w.plots.len(), 2);
-        assert_eq!((w.plots[1].grade, w.plots[1].session_id), (2, 2));
-        assert_eq!(w.focused_secs, 75 * MIN);
-        assert_eq!(w.streak_days, 1);
-        assert_eq!(w.history.len(), 2);
-    }
-
-    #[test]
-    fn tiers() {
-        let facts: Vec<Fact> = (0..20).map(|i| done(i * 10, i, 30)).collect();
-        let w = world(&facts, 300);
+    fn auto_mode_buys_and_builds_the_hamlet_in_order() {
+        // 4 homes (4 h), then the shops need a 300-coin blueprint, which
+        // 4 h of focus pays for.
+        let w = world(&daily(5, 60), 6 * DAY);
+        assert_eq!(w.plots.len(), 4);
+        assert_eq!(w.sites[0].lot, "hamlet-shops-1");
+        assert_eq!(w.sites[0].design.as_deref(), Some("s1"));
+        assert!(w.blueprints.iter().any(|b| b.id == "s1" && b.owned));
+        // A whole hamlet (10 h): graduation to town, whose homes come next.
+        let w = world(&daily(12, 60), 13 * DAY);
         assert_eq!(w.tier, 1);
+        assert_eq!(w.plots.len(), 11);
+        assert_eq!(w.plots[10].lot, "town-homes-2");
+        assert!(
+            w.history
+                .iter()
+                .any(|e| e.kind == WorldEventKind::Graduated)
+        );
         assert_eq!(w.tier_floor_secs, 10 * 3600);
-        assert_eq!(w.next_tier_secs, Some(50 * 3600));
+        assert!(w.needs.iter().all(|n| n.id.starts_with("town-")));
     }
 
     #[test]
-    fn streaks_count_days_and_break() {
+    fn auto_mode_continues_a_need_and_keeps_the_change() {
+        let facts: Vec<Fact> = (0..6).map(|i| done(100 + i * 10, i + 1, 60)).collect();
+        let w = world(&facts, 1000);
+        // Four homes, then the shop blueprint bought from 540 coins, one shop
+        // built in 90 min and the next begun.
+        assert_eq!(w.plots.len(), 5);
+        assert_eq!(w.coins, 6 * 108 - 300);
+        assert_eq!(
+            (w.sites[0].lot.as_str(), w.sites[0].done_secs),
+            ("hamlet-shops-2", 30 * MIN)
+        );
+    }
+
+    #[test]
+    fn the_mayor_picks_the_need_and_the_plan_the_lot() {
+        let facts = vec![
+            done(100, 1, 60),
+            chose(150, "hamlet-water", None),
+            done(200, 2, 50),
+        ];
+        let w = world(&facts, 300);
+        assert!(!w.auto);
+        assert_eq!(lots(&w), ["hamlet-homes-1", "hamlet-water-1"]);
+        // Water met: the rest waits as crew hours.
+        assert!(w.sites.is_empty());
+        assert_eq!(w.idle_secs, 20 * MIN);
+        // Choosing the next need pours them in.
+        let mut facts = facts;
+        facts.push(chose(400, "hamlet-power", None));
+        let w = world(&facts, 500);
+        assert_eq!(w.sites[0].done_secs, 20 * MIN);
+        assert_eq!(w.idle_secs, 0);
+    }
+
+    #[test]
+    fn a_need_continues_to_its_next_lot() {
+        let facts = vec![chose(10, "hamlet-homes", Some("c1")), done(100, 1, 150)];
+        let w = world(&facts, 300);
+        assert_eq!(lots(&w), ["hamlet-homes-1", "hamlet-homes-2"]);
+        assert_eq!(w.sites[0].lot, "hamlet-homes-3");
+        assert_eq!(w.sites[0].done_secs, 30 * MIN);
+    }
+
+    #[test]
+    fn pausing_and_switching_leaves_sites_half_built() {
+        let mut facts = vec![
+            chose(10, "hamlet-homes", None),
+            done(100, 1, 30),
+            chose(150, "hamlet-water", None),
+            done(200, 2, 10),
+        ];
+        let w = world(&facts, 300);
+        assert_eq!(w.sites.len(), 2);
+        assert!(w.sites[0].active && w.sites[0].lot == "hamlet-water-1");
+        assert_eq!(w.sites[1].done_secs, 30 * MIN);
+        facts.push(mayor(250, FactKind::Paused));
+        facts.push(done(300, 3, 25));
+        let w = world(&facts, 400);
+        assert!(w.sites.iter().all(|s| !s.active));
+        assert_eq!(w.idle_secs, 25 * MIN);
+        // Back to the homes: the house resumes where it was.
+        facts.push(chose(450, "hamlet-homes", None));
+        let w = world(&facts, 500);
+        let home = w.sites.iter().find(|s| s.active).unwrap();
+        assert_eq!(
+            (home.lot.as_str(), home.done_secs),
+            ("hamlet-homes-1", 55 * MIN)
+        );
+    }
+
+    #[test]
+    fn choices_the_daemon_would_refuse_are_ignored() {
+        let facts = vec![
+            chose(10, "town-school", None),
+            chose(20, "hamlet-shops", None),
+            bought(30, "s1"),
+            chose(40, "hamlet-homes", Some("c2")),
+        ];
+        let c = City::fold(&facts, &TimeZone::UTC);
+        assert!(!c.manual);
+        let w = c.world(None, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
+        assert!(w.auto && w.sites.is_empty() && w.coins == 0);
+        assert!(
+            c.check_choose("town-school", None)
+                .unwrap_err()
+                .contains("nobody")
+        );
+        assert!(
+            c.check_choose("hamlet-shops", None)
+                .unwrap_err()
+                .contains("buy a blueprint")
+        );
+        assert!(c.check_buy("s1").unwrap_err().contains("costs 300"));
+        assert!(c.check_buy("o1").unwrap_err().contains("city"));
+        assert!(c.check_buy("c1").unwrap_err().contains("already"));
+        assert!(c.check_choose("hamlet-water", Some("c1")).is_err());
+        assert!(c.check_pause().is_err());
+    }
+
+    #[test]
+    fn buying_spends_coins_and_unlocks_the_design() {
+        let mut facts: Vec<Fact> = (0..4).map(|i| done(i * 10, i + 1, 60)).collect();
+        facts.push(bought(100, "c2"));
+        facts.push(chose(110, "hamlet-shops", None));
+        let c = City::fold(&facts, &TimeZone::UTC);
+        assert_eq!(c.balance(), 4 * 108 - 250);
+        // c2 is a cottage: still no shop blueprint, so no site.
+        assert!(c.sites().next().is_none());
+        assert!(c.check_buy("s3").unwrap_err().contains("costs 400"));
+        let w = c.world(None, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
+        let shops = w.needs.iter().find(|n| n.id == "hamlet-shops").unwrap();
+        assert!(shops.fits.is_empty());
+        assert_eq!(shops.fits_locked, ["s1", "s3", "s2"]);
+    }
+
+    #[test]
+    fn at_most_three_paused_sites() {
+        let tz = TimeZone::UTC;
+        let mut c = City {
+            coins_earned: 10_000,
+            ..City::default()
+        };
+        c.apply(&bought(1, "s1"), &tz);
+        c.apply(&bought(2, "s4"), &tz);
+        let mut ts = 10;
+        for need in [
+            "hamlet-homes",
+            "hamlet-shops",
+            "hamlet-jobs",
+            "hamlet-water",
+        ] {
+            c.apply(&chose(ts, need, None), &tz);
+            c.apply(&done(ts + 1, ts, 5), &tz);
+            ts += 10;
+        }
+        assert_eq!(c.paused(), 3);
+        assert!(
+            c.check_choose("hamlet-power", None)
+                .unwrap_err()
+                .contains("half built")
+        );
+        // Resuming one is always allowed.
+        c.check_choose("hamlet-homes", None).unwrap();
+        c.apply(&chose(ts, "hamlet-homes", None), &tz);
+        assert_eq!(c.paused(), 3);
+        assert_eq!(c.active, Some(0));
+    }
+
+    #[test]
+    fn rested_bonus_doubles_the_comeback() {
+        let w = world(&[done(DAY, 1, 60), done(4 * DAY, 2, 60)], 4 * DAY + 10);
+        let a = w.last_award.unwrap();
+        assert_eq!((a.coins, a.rested_bonus), (216, 108));
+        // The next day is not a comeback.
+        let w = world(&[done(DAY, 1, 60), done(2 * DAY, 2, 60)], 2 * DAY + 10);
+        assert_eq!(w.last_award.unwrap().rested_bonus, 0);
+    }
+
+    #[test]
+    fn streaks_count_days_of_25_minutes_and_break() {
         let facts = [
             done(DAY, 1, 25),
             done(2 * DAY, 2, 25),
             done(2 * DAY + 60, 3, 25),
+            done(3 * DAY, 4, 10),
         ];
-        assert_eq!(world(&facts, 2 * DAY + 100).streak_days, 2);
-        // Still alive the next day, gone the day after.
+        assert_eq!(world(&facts[..3], 2 * DAY + 100).streak_days, 2);
+        // A 10-minute session is not a streak day.
         assert_eq!(world(&facts, 3 * DAY + 100).streak_days, 2);
         assert_eq!(world(&facts, 4 * DAY + 100).streak_days, 0);
         let mut facts = facts.to_vec();
-        facts.push(gave_up(2 * DAY + 200, 4, 10));
-        assert_eq!(world(&facts, 2 * DAY + 300).streak_days, 0);
+        facts.push(gave_up(3 * DAY + 200, 5, 10));
+        assert_eq!(world(&facts, 3 * DAY + 300).streak_days, 0);
     }
 
     #[test]
-    fn surrender_collapses_and_burns_neighbours() {
-        let mut facts: Vec<Fact> = (1..=5).map(|i| done(i * 10, i, 10)).collect();
-        facts.push(gave_up(100, 6, 40));
+    fn a_seven_day_streak_earns_a_freeze_that_saves_a_missed_day() {
+        let mut facts = daily(7, 30);
+        let w = world(&facts, 7 * DAY + 10);
+        assert_eq!((w.streak_days, w.freezes), (7, 1));
+        assert!(w.last_award.unwrap().freeze_earned);
+        // Day 8 missed; the streak still shows on day 9, then goes on.
+        assert_eq!(world(&facts, 9 * DAY + 10).streak_days, 7);
+        assert_eq!(world(&facts, 10 * DAY + 10).streak_days, 0);
+        facts.push(done(9 * DAY, 9, 30));
+        let w = world(&facts, 9 * DAY + 10);
+        assert_eq!((w.streak_days, w.freezes), (8, 0));
+        let a = w.last_award.unwrap();
+        assert_eq!((a.freezes_used, a.rested_bonus), (1, 0));
+    }
+
+    #[test]
+    fn surrender_burns_the_buildings_near_the_site() {
+        let mut facts = vec![chose(5, "hamlet-homes", None), done(10, 1, 240)];
+        facts.push(chose(20, "hamlet-water", None));
+        facts.push(done(30, 2, 10));
+        facts.push(gave_up(100, 3, 40));
         let w = world(&facts, 200);
-        assert_eq!(w.focused_secs, 50 * MIN, "surrendered time does not count");
-        assert_eq!(
-            damage(&w),
-            [
-                (0, false),
-                (0, false),
-                (2, false),
-                (2, false),
-                (2, false),
-                (0, true)
-            ]
-        );
+        assert_eq!(w.coins_earned, coins(240 * MIN, 1).0 + coins(10 * MIN, 1).0);
+        assert_eq!(w.focused_secs, 250 * MIN, "surrendered time does not count");
+        // The water tower site (lot 7) loses nothing banked but burns the
+        // three homes nearest it.
+        assert_eq!(damage(&w), [0, 2, 2, 2]);
         let last = w.history.last().unwrap();
         assert_eq!(last.kind, WorldEventKind::Collapsed);
-        assert_eq!(last.plots, [5, 2, 3, 4]);
-
-        // A second surrender lands on the same rubble and ruins what is
-        // still burning.
-        facts.push(gave_up(200, 7, 5));
+        assert_eq!(last.plots, [7, 1, 2, 3]);
+        assert_eq!(w.sites[0].done_secs, 10 * MIN);
+        // A second surrender ruins them; they stay standing as ruins.
+        facts.push(gave_up(200, 4, 5));
         let w = world(&facts, 300);
-        assert_eq!(w.plots.len(), 6);
-        assert_eq!(w.history.last().unwrap().ruined, [2, 3, 4]);
+        assert_eq!(w.plots.len(), 4);
+        assert_eq!(w.history.last().unwrap().ruined, [1, 2, 3]);
+        assert!(w.plots[1].rubble);
+        assert_eq!(w.plots[1].memory.scars.len(), 2);
     }
 
     #[test]
-    fn completed_session_builds_on_rubble_then_repairs() {
-        let mut facts: Vec<Fact> = (1..=3).map(|i| done(i * 10, i, 10)).collect();
-        facts.push(gave_up(100, 4, 10));
-        assert_eq!(world(&facts, 200).plots.len(), 4);
-        // 50 min: builds on the rubble (plot 3) and repairs 3 levels.
-        facts.push(done(300, 5, 50));
+    fn completed_sessions_repair_ruins_back() {
+        let mut facts = vec![chose(5, "hamlet-homes", None), done(10, 1, 240)];
+        facts.push(gave_up(100, 2, 10));
+        facts.push(gave_up(200, 3, 10));
+        let w = world(&facts, 300);
+        assert_eq!(damage(&w), [0, 3, 3, 3]);
+        // 50 min: 3 levels, most damaged first.
+        facts.push(done(300, 4, 50));
         let w = world(&facts, 400);
-        assert_eq!(w.plots.len(), 4);
-        assert_eq!((w.plots[3].session_id, w.plots[3].rubble), (5, false));
-        assert_eq!(damage(&w), [(1, false), (1, false), (1, false), (0, false)]);
-        let last = w.history.last().unwrap();
-        assert_eq!(
-            (last.kind, last.plots.clone()),
-            (WorldEventKind::Repaired, vec![0, 1, 2])
-        );
+        assert_eq!(damage(&w), [0, 2, 2, 2]);
+        assert!(w.plots[1].memory.scars.last().unwrap().repaired);
     }
 
     #[test]
     fn streak_doubles_repairs() {
-        let mut facts = vec![
-            done(DAY, 1, 10),
-            done(2 * DAY, 2, 10),
-            gave_up(2 * DAY + 10, 3, 10),
-            done(2 * DAY + 20, 4, 10),
-        ];
-        // The surrender reset the streak, so 1 repair.
-        let w = world(&facts, 2 * DAY + 30);
-        assert_eq!(w.plots.iter().map(|p| p.damage).sum::<u32>(), 3);
-        facts.extend([done(3 * DAY, 5, 10), done(4 * DAY, 6, 10)]);
-        // Day 4 has a 3-day streak: 2 repairs instead of 1.
-        let w = world(&facts, 4 * DAY + 10);
-        assert_eq!(w.streak_days, 3);
-        assert_eq!(w.plots.iter().map(|p| p.damage).sum::<u32>(), 0);
+        let mut facts = vec![chose(5, "hamlet-homes", None)];
+        facts.extend(daily(3, 60));
+        facts.push(event(3 * DAY + 10, FactKind::Tamper));
+        let w = world(&facts, 3 * DAY + 20);
+        assert_eq!(damage(&w).iter().sum::<u32>(), 3);
+        facts.push(done(3 * DAY + 100, 9, 10));
+        // Day 3 of a streak: 2 repairs for a short session.
+        let w = world(&facts, 3 * DAY + 200);
+        assert_eq!(damage(&w).iter().sum::<u32>(), 1);
     }
 
     #[test]
     fn quake_hits_the_biggest_district_once_per_burst() {
-        let mut facts: Vec<Fact> = (0..10).map(|i| done(i * 10, i, 10)).collect();
+        let facts: Vec<Fact> = daily(12, 60);
+        let mut facts = facts;
         facts.extend([
-            event(200, FactKind::Tamper),
-            event(201, FactKind::Tamper),
-            event(300, FactKind::Tamper),
+            event(20 * DAY, FactKind::Tamper),
+            event(20 * DAY + 1, FactKind::Tamper),
         ]);
-        let w = world(&facts, 400);
-        let hit: Vec<u32> = w.plots.iter().map(|p| p.damage).collect();
-        assert_eq!(hit, [1, 1, 1, 1, 1, 1, 1, 1, 0, 0]);
+        let w = world(&facts, 21 * DAY);
+        let hit: Vec<u32> = damage(&w);
+        assert_eq!(hit, [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
         assert_eq!(w.history.last().unwrap().kind, WorldEventKind::Quake);
-
-        facts.push(event(200 + PENALTY_COOLDOWN, FactKind::Tamper));
-        let w = world(&facts, 2000);
-        assert_eq!(w.plots[0].damage, 2);
+        facts.push(event(20 * DAY + PENALTY_COOLDOWN, FactKind::Tamper));
+        assert_eq!(world(&facts, 21 * DAY).plots[0].damage, 2);
     }
 
     #[test]
     fn minor_penalties_hit_the_newest_building() {
         let facts = [
-            done(10, 1, 10),
-            done(20, 2, 10),
+            done(10, 1, 120),
             event(30, FactKind::Denied),
             event(31, FactKind::Denied),
             event(40 + PENALTY_COOLDOWN, FactKind::ClockJump),
-            event(50 + 2 * PENALTY_COOLDOWN, FactKind::Denied),
+            event(50 + 2 * PENALTY_COOLDOWN, FactKind::Tunnel),
         ];
         let w = world(&facts, 5000);
-        assert_eq!(damage(&w), [(0, false), (0, true)]);
+        assert_eq!(damage(&w), [0, 3]);
         assert_eq!(w.history.last().unwrap().ruined, [1]);
-    }
-
-    #[test]
-    fn a_tunnel_damages_like_a_minor_penalty() {
-        let facts = [done(10, 1, 10), event(30, FactKind::Tunnel)];
-        let w = world(&facts, 100);
-        assert_eq!(w.plots[0].damage, 1);
-        let last = w.history.last().unwrap();
-        assert_eq!(
-            (last.kind, last.cause),
-            (WorldEventKind::Damaged, WorldCause::Tunnel)
-        );
+        assert_eq!(w.history.last().unwrap().cause, WorldCause::Tunnel);
     }
 
     #[test]
     fn penalties_on_an_empty_world_are_harmless() {
         let w = world(
-            &[event(1, FactKind::Tamper), event(2, FactKind::Denied)],
+            &[
+                event(1, FactKind::Tamper),
+                event(2, FactKind::Denied),
+                gave_up(3, 1, 10),
+            ],
             10,
         );
         assert!(w.plots.is_empty());
-        assert_eq!(w.history.len(), 2);
+        assert_eq!(w.history.len(), 3);
     }
 
     #[test]
-    fn construction() {
+    fn renames() {
+        let mut facts = vec![done(10, 1, 60)];
+        let c = City::fold(&facts, &TimeZone::UTC);
+        assert!(c.check_rename("hamlet-homes-2", "x").is_err());
+        assert!(c.check_rename("hamlet-homes-1", &"x".repeat(41)).is_err());
+        assert!(c.check_rename("hamlet-homes-1", "a\nb").is_err());
+        facts.push(mayor(
+            20,
+            FactKind::Renamed {
+                lot: "hamlet-homes-1".into(),
+                name: "  Grandma's  ".into(),
+            },
+        ));
+        assert_eq!(world(&facts, 30).plots[0].name, "Grandma's");
+        facts.push(mayor(
+            40,
+            FactKind::Renamed {
+                lot: "hamlet-homes-1".into(),
+                name: "".into(),
+            },
+        ));
+        let w = world(&facts, 50);
+        assert_eq!(w.plots[0].name, plan::lots()[0].name);
+        assert!(w.auto, "a rename is not a building decision");
+    }
+
+    #[test]
+    fn shiny_odds_rise_with_length() {
+        assert_eq!(shiny_odds(25 * MIN), SHINY_BASE);
+        assert!(shiny_odds(110 * MIN) > SHINY_BASE);
+        assert_eq!(shiny_odds(6 * 3600), SHINY_MAX);
+        // Over a whole plan some come out shiny, most do not.
+        let w = world(&daily(400, 120), 401 * DAY);
+        let shiny = w.plots.iter().filter(|p| p.shiny).count();
+        assert!(shiny > 0 && shiny < w.plots.len() / 2, "{shiny}");
+    }
+
+    #[test]
+    fn construction_shows_the_site_with_this_session() {
         let running = Running {
             session_id: 7,
             elapsed_secs: 15 * MIN,
-            target_secs: Some(60 * MIN),
             surrendering: false,
         };
         let w = build(
-            &[done(10, 1, 10)],
+            &[done(10, 1, 30)],
             Some(&running),
             Timestamp::from_second(100).unwrap(),
             &TimeZone::UTC,
         );
         let c = w.construction.unwrap();
-        assert_eq!((c.index, c.grade, c.progress_permille), (1, 2, Some(250)));
-
-        let stopwatch = Running {
-            target_secs: None,
-            ..running
-        };
-        let w = build(&[], Some(&stopwatch), Timestamp::UNIX_EPOCH, &TimeZone::UTC);
-        let c = w.construction.unwrap();
-        assert_eq!((c.index, c.grade, c.progress_permille), (0, 0, None));
+        assert_eq!(
+            (c.index, c.progress_permille, c.remaining_secs),
+            (0, Some(750), 30 * MIN)
+        );
+        assert_eq!(c.design.as_deref(), Some("c1"));
+        // The mayor paused: nothing is built, the session banks.
+        let w = build(
+            &[done(10, 1, 30), mayor(20, FactKind::Paused)],
+            Some(&running),
+            Timestamp::from_second(100).unwrap(),
+            &TimeZone::UTC,
+        );
+        assert!(w.construction.is_none());
     }
 
     #[test]
@@ -578,9 +1509,10 @@ mod tests {
             done(10, 1, 30),
             event(20, FactKind::Tamper),
             event(20, FactKind::Denied),
+            chose(25, "hamlet-water", None),
             gave_up(30, 2, 5),
         ];
-        let mut reversed = facts;
+        let mut reversed = facts.clone();
         reversed.reverse();
         assert_eq!(world(&facts, 100), world(&reversed, 100));
     }

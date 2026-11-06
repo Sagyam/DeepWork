@@ -23,7 +23,7 @@ use crate::enforcer::{EnforcerHandle, Mode};
 use crate::free;
 use crate::schedule::{self, Occurrence, RunKey};
 use crate::session::Session;
-use crate::store::{EventKind, RunOutcome, Store};
+use crate::store::{Decision, EventKind, RunOutcome, Store};
 use crate::tunnel;
 use crate::world;
 
@@ -291,6 +291,57 @@ impl Core {
                 self.finish().await;
                 Ok(Response::Session(info))
             }
+            Request::Buy { blueprint } => {
+                self.mayor_closed()?;
+                let city = self.city()?;
+                let b = city.check_buy(&blueprint)?;
+                self.decide(
+                    EventKind::BlueprintBought,
+                    Decision {
+                        blueprint: Some(b.id.into()),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::Choose { need, blueprint } => {
+                self.mayor_closed()?;
+                let city = self.city()?;
+                let (_, design) = city.check_choose(&need, blueprint.as_deref())?;
+                self.decide(
+                    EventKind::NeedChosen,
+                    Decision {
+                        need: Some(need),
+                        blueprint: design.map(str::to_string),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::Pause => {
+                self.mayor_closed()?;
+                self.city()?.check_pause()?;
+                self.decide(EventKind::SitePaused, Decision::default())
+            }
+            Request::Rename { lot, name } => {
+                let (_, name) = self.city()?.check_rename(&lot, &name)?;
+                self.decide(
+                    EventKind::BuildingRenamed,
+                    Decision {
+                        lot: Some(lot),
+                        name: Some(name.unwrap_or_default()),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::Extend { secs } => {
+                let min = self.stopwatch_min();
+                let session = self.session.as_mut().ok_or("no session is running")?;
+                session.extend(secs)?;
+                let info = session.info(min);
+                let id = session.id;
+                self.persist();
+                self.log(Some(id), EventKind::Extend, &format!("{secs}s, uid {uid}"));
+                Ok(Response::Session(info))
+            }
             Request::Surrender { phrase } => {
                 let wait = Duration::from_secs(self.cfg.session.surrender_wait_secs);
                 let min = self.stopwatch_min();
@@ -493,26 +544,42 @@ impl Core {
         }
     }
 
-    fn world(&self) -> Result<deepwork_proto::World, String> {
+    fn city(&self) -> Result<world::City, String> {
         let facts = self
             .store
             .world_facts()
             .map_err(|e| format!("could not read the ledger: {e:#}"))?;
+        Ok(world::City::fold(&facts, &self.tz))
+    }
+
+    fn world(&self) -> Result<deepwork_proto::World, String> {
         let running = self.session.as_ref().map(|s| world::Running {
             session_id: s.id,
             elapsed_secs: s.elapsed.as_secs(),
-            target_secs: match s.kind {
-                SessionKind::Countdown { secs } => Some(secs),
-                SessionKind::Stopwatch => None,
-            },
             surrendering: s.state == SessionState::Surrendering,
         });
-        Ok(world::build(
-            &facts,
-            running.as_ref(),
-            Timestamp::now(),
-            &self.tz,
-        ))
+        Ok(self
+            .city()?
+            .world(running.as_ref(), Timestamp::now(), &self.tz))
+    }
+
+    /// The shop and the plan stay shut while a session runs: the session is
+    /// for the work, not the game.
+    fn mayor_closed(&self) -> Result<(), String> {
+        match self.session {
+            Some(_) => Err("the mayor's desk opens when the session ends".into()),
+            None => Ok(()),
+        }
+    }
+
+    /// Records a decision the fold was just asked about, and answers with the
+    /// world it makes.
+    fn decide(&mut self, kind: EventKind, d: Decision) -> Result<Response, String> {
+        let detail = serde_json::to_string(&d).map_err(|e| e.to_string())?;
+        self.store
+            .log_event(unix_now(), None, kind, &detail)
+            .map_err(|e| format!("could not record it: {e:#}"))?;
+        Ok(Response::World(Box::new(self.world()?)))
     }
 
     fn history(&self, since: i64) -> Result<Vec<Finished>, String> {

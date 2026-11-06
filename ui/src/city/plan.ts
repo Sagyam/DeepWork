@@ -6,7 +6,7 @@
 // fill the grid outward from the centre in rings, so the city grows round,
 // and every fourth block is a park: a plaza, a park with a pond or a
 // football ground. Lots are roomy, with yards, drives and parking.
-import { DISTRICT_SIZE, type Construction, type Plot, type World } from "../proto";
+import { DISTRICT_SIZE, type Construction, type Plot, type SiteInfo, type World } from "../proto";
 
 export const LOT = 16;
 /** Kerb to kerb plus the pavements either side. */
@@ -31,6 +31,51 @@ export const STYLES: Record<Kind, [string, number][]> = {
   office: [["classic", 0.6], ["round", 0.4]],
   landmark: [["deco", 0.25], ["glass", 0.25], ["twist", 0.25], ["tvtower", 0.25]],
 };
+
+/**
+ * What a blueprint is drawn as: the kit style its realistic model replaces
+ * (DEFS in real.ts), and the model itself. Kept here so the plan stays pure.
+ */
+export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
+  c1: { kind: "cottage", style: "classic" },
+  c2: { kind: "cottage", style: "classic" },
+  c3: { kind: "cottage", style: "modern" },
+  c4: { kind: "cottage", style: "aframe" },
+  s1: { kind: "shop", style: "classic" },
+  s2: { kind: "shop", style: "classic" },
+  s3: { kind: "shop", style: "diner" },
+  s4: { kind: "shop", style: "factory" },
+  a1: { kind: "apartment", style: "classic" },
+  a2: { kind: "apartment", style: "townhouse" },
+  a3: { kind: "apartment", style: "classic" },
+  o1: { kind: "office", style: "classic" },
+  l1: { kind: "landmark", style: "deco" },
+};
+
+/**
+ * Buildings the town provides have no models yet: stand-ins until they do
+ * (docs/progression.md, "Build checklist"). `water`, `square` and `park` are
+ * drawn by models.ts itself.
+ */
+export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string }> = {
+  water: { kind: "shop", style: "water" },
+  power: { kind: "shop", style: "factory", model: "s4" },
+  school: { kind: "apartment", style: "classic", model: "a3" },
+  clinic: { kind: "apartment", style: "classic", model: "a3" },
+  fire_station: { kind: "shop", style: "factory", model: "s4" },
+  square: { kind: "shop", style: "square" },
+  park: { kind: "shop", style: "park" },
+  police: { kind: "apartment", style: "classic", model: "a1" },
+  library: { kind: "apartment", style: "townhouse", model: "a2" },
+  hospital: { kind: "office", style: "classic", model: "o1" },
+  city_hall: { kind: "landmark", style: "deco", model: "l1" },
+};
+
+/** The look a lot gets from its blueprint or kind; none from an older daemon. */
+export function lookOf(design: string | null | undefined, kind: string | undefined): { kind: Kind; style: string; model?: string } | undefined {
+  if (design && DESIGNS[design]) return { ...DESIGNS[design], model: design };
+  return kind ? PUBLIC[kind] : undefined;
+}
 
 /** How far each type stands back from the street, front wall to lot edge. */
 const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, apartment: 2.2, townhouse: 2.6, office: 2.6 };
@@ -64,8 +109,13 @@ export interface Spec {
   seed: number;
   damage: number;
   rubble: boolean;
-  /** A realistic model to draw it with (the viewer); otherwise one of its style's, from the seed. */
+  /** A realistic model to draw it with (its blueprint); otherwise one of its style's, from the seed. */
   model?: string;
+  /** Came out rare: drawn with a gilded finial. */
+  shiny?: boolean;
+  /** The plan's lot id and the building's name, for picking. */
+  lot?: string;
+  name?: string;
 }
 
 export interface SiteSpec extends Spec {
@@ -88,6 +138,8 @@ export interface CityPlan {
   parks: ParkSpec[];
   buildings: Spec[];
   site: SiteSpec | null;
+  /** Sites standing half built while another is worked on. */
+  paused: SiteSpec[];
   /** Empty lots in used blocks: grass, maybe a tree. */
   emptyLots: { x: number; z: number; seed: number }[];
   /** Trees outside the city, more with the tier. */
@@ -184,11 +236,11 @@ export function lot(index: number): { x: number; z: number; rot: number } {
 const between = (r: () => number, a: number, b: number) => a + (b - a) * r();
 const pick = (r: () => number, n: number) => Math.floor(r() * n);
 
-/** Shape of a building of a grade, from its seed. */
-export function shape(grade: number, seed: number) {
+/** Shape of a building of a grade, from its seed; `look` forces its kind and style. */
+export function shape(grade: number, seed: number, look?: { kind: Kind; style: string }) {
   const r = rng(seed);
   const g = Math.min(4, Math.max(0, grade));
-  const kind = KINDS[g];
+  const kind = look?.kind ?? KINDS[g];
   let w: number, d: number, floors: number, floorH: number;
   switch (kind) {
     case "cottage":
@@ -210,7 +262,7 @@ export function shape(grade: number, seed: number) {
   const [wall, accent, own] = [pick(r, 8), pick(r, 6), Math.floor(r() * 2 ** 31)];
   // Drawn after the rest, so adding styles left the older buildings' sizes alone.
   let u = r();
-  const style = STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
+  const style = look?.style ?? STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
   if (style === "diner") floors = 1;
   if (style === "factory") [floors, floorH] = [1, 5];
   if (style === "townhouse") floors = Math.min(floors, 3 + pick(r, 2));
@@ -226,17 +278,30 @@ function placed(index: number, s: ReturnType<typeof shape>) {
 }
 
 function spec(p: Plot): Spec {
-  const s = shape(p.grade, p.seed);
-  return { index: p.index, ...s, ...placed(p.index, s), damage: p.damage, rubble: p.rubble };
+  const look = lookOf(p.design, p.kind);
+  const s = shape(p.grade, p.seed, look);
+  return {
+    index: p.index,
+    ...s,
+    ...placed(p.index, s),
+    damage: Math.min(2, p.damage),
+    rubble: p.rubble,
+    ...(look?.model ? { model: look.model } : {}),
+    ...(p.shiny ? { shiny: true } : {}),
+    ...(p.lot ? { lot: p.lot, name: p.name } : {}),
+  };
 }
 
 function siteSpec(c: Construction, elapsedSecs: number): SiteSpec {
-  const s = shape(c.grade, c.seed);
+  const look = lookOf(c.design, c.kind);
+  const s = shape(c.grade, c.seed, look);
   const progress = c.progress_permille === null ? 0.8 + 0.2 * ((elapsedSecs % 900) / 900) : c.progress_permille / 1000;
   return {
     index: c.index,
     ...s,
     ...placed(c.index, s),
+    ...(look?.model ? { model: look.model } : {}),
+    ...(c.lot ? { lot: c.lot, name: c.name } : {}),
     damage: 0,
     rubble: false,
     progress: Math.min(1, Math.max(0, progress)),
@@ -245,9 +310,29 @@ function siteSpec(c: Construction, elapsedSecs: number): SiteSpec {
   };
 }
 
+function pausedSpec(site: SiteInfo): SiteSpec {
+  const look = lookOf(site.design, site.kind);
+  const s = shape(KINDS.indexOf(look?.kind ?? "cottage"), site.seed, look);
+  return {
+    index: site.index,
+    ...s,
+    ...placed(site.index, s),
+    ...(look?.model ? { model: look.model } : {}),
+    lot: site.lot,
+    name: site.name,
+    damage: 0,
+    rubble: false,
+    progress: Math.min(1, site.done_secs / Math.max(1, site.build_secs)),
+    surrendering: false,
+    stopwatch: false,
+  };
+}
+
 export function plan(w: World, elapsedSecs = 0): CityPlan {
   const siteIndex = w.construction?.index ?? -1;
-  const lots = Math.max(w.plots.length, siteIndex + 1);
+  // Sites standing between sessions; the session's own one is drawn live.
+  const standing = (w.sites ?? []).filter((s) => s.index !== siteIndex);
+  const lots = Math.max(0, siteIndex + 1, ...w.plots.map((p) => p.index + 1), ...standing.map((s) => s.index + 1));
   const districts = Math.max(1, Math.ceil(lots / DISTRICT_SIZE));
   const last = districtCell(districts - 1);
   const parks: ParkSpec[] = [];
@@ -255,9 +340,11 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
   const blocks = [...Array.from({ length: districts }, (_, d) => blockCentre(d)), ...parks.map(({ x, z }) => ({ x, z }))];
   const buildings = w.plots.filter((p) => p.index !== siteIndex).map(spec);
   const site = w.construction ? siteSpec(w.construction, elapsedSecs) : null;
+  const paused = standing.map(pausedSpec);
 
+  const taken = new Set([...buildings.map((b) => b.index), ...paused.map((s) => s.index), siteIndex]);
   const emptyLots: CityPlan["emptyLots"] = [];
-  for (let i = lots; i < districts * DISTRICT_SIZE; i++) emptyLots.push({ ...lot(i), seed: i * 2654435761 });
+  for (let i = 0; i < districts * DISTRICT_SIZE; i++) if (!taken.has(i)) emptyLots.push({ ...lot(i), seed: i * 2654435761 });
 
   const half = { x: PITCH_X / 2, z: PITCH_Z / 2 };
   const bounds = {
@@ -279,7 +366,7 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
     if (!inside) trees.push({ x, z, s: between(r, 0.7, 1.4), seed: Math.floor(r() * 2 ** 31) });
   }
 
-  return { blocks, parks, buildings, site, emptyLots, trees, bounds, tier: w.tier };
+  return { blocks, parks, buildings, site, paused, emptyLots, trees, bounds, tier: w.tier };
 }
 
 /** A closed path that can be sampled by distance travelled. */

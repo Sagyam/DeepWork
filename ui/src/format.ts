@@ -28,39 +28,47 @@ export function ago(secs: number): string {
   return `${Math.floor(secs / 86400)} d`;
 }
 
-function plots(list: number[]): string {
-  const names = list.map((i) => String(i + 1));
-  return names.length === 1 ? `plot ${names[0]}` : `plots ${names.join(", ")}`;
+/** A lot by its index: the building's name, a site's, or its number. */
+export function nameOf(w: World, i: number): string {
+  const p = w.plots.find((p) => p.index === i);
+  if (p?.name) return p.name;
+  const site = w.sites?.find((s) => s.index === i);
+  if (site) return `the ${site.name} site`;
+  return `plot ${i + 1}`;
+}
+
+export function namesOf(w: World, list: number[]): string {
+  const names = list.map((i) => nameOf(w, i));
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "");
 }
 
 /** Whether an event cost the player something. */
 export const isLoss = (e: WorldEvent) => e.kind === "collapsed" || e.kind === "quake" || e.kind === "damaged";
 
 export function describe(w: World, e: WorldEvent): string {
-  const ruined = e.ruined.length ? `; ${plots(e.ruined)} fell into rubble` : "";
+  const ruined = e.ruined.length ? `; ${namesOf(w, e.ruined)} in ruins` : "";
   let text: string;
   switch (e.kind) {
-    case "built": {
-      const p = w.plots[e.plots[0]];
-      const what = p && p.session_id === e.session_id ? BUILDINGS[Math.min(4, p.grade)] : "building";
-      text = `built a ${what} (${plots(e.plots)})`;
+    case "built":
+      text = `finished ${namesOf(w, e.plots)}`;
       break;
-    }
     case "repaired":
-      text = `repaired ${plots(e.plots)}`;
+      text = `repaired ${namesOf(w, e.plots)}`;
+      break;
+    case "graduated":
+      text = "every need was met: the settlement grew";
       break;
     case "collapsed": {
-      const [site, ...burned] = e.plots;
-      const fire = burned.length ? `, fire spread to ${plots(burned)}` : "";
-      text = `surrendered: plot ${(site ?? 0) + 1} collapsed${fire}`;
+      const burned = e.plots.slice(1);
+      text = burned.length ? `surrendered: fire spread to ${namesOf(w, burned)}` : "surrendered: the session built nothing";
       break;
     }
     case "quake":
-      text = e.plots.length ? `earthquake (tampering) hit ${plots(e.plots)}` : "earthquake (tampering) on empty land";
+      text = e.plots.length ? `earthquake (tampering) hit ${namesOf(w, e.plots)}` : "earthquake (tampering) on empty land";
       break;
     case "damaged": {
       const why = { clock_jump: "wall clock jump", tunnel: "proxy / tunnel" }[e.cause as string] ?? "refused root access";
-      text = e.plots.length ? `${why} damaged ${plots(e.plots)}` : `${why}, nothing to damage yet`;
+      text = e.plots.length ? `${why} damaged ${namesOf(w, e.plots)}` : `${why}, nothing to damage yet`;
       break;
     }
   }

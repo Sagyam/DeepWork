@@ -1,13 +1,14 @@
 // Canned daemon for developing the renderer in a browser: `bun run dev`, then
 // open http://localhost:5173/?mock=city (empty, hamlet, city, metropolis,
-// session, stopwatch, surrender, ruins). `&hour=22` fixes the time of day.
+// session, stopwatch, surrender, ruins, desk). `&hour=22` fixes the time of day.
 // Every scenario but `empty` has two routines, a month of past sessions and a
 // pending config change, for the Stats and Session logs sections.
 // Each load replays the history (its timestamps are relative to now). In the
 // console, `city.demo("collapse" | "build" | "damage", plot?)` plays one
 // transition (the tallest building if no plot is given).
-import type { Config, Construction, Finished, PendingConfig, Plot, Request, Response, RoutineInfo, SessionInfo, Status, World, WorldEvent } from "./proto";
+import type { Config, Finished, PendingConfig, Request, Response, RoutineInfo, SessionInfo, Status } from "./proto";
 import { SURRENDER_PHRASE } from "./proto";
+import { MockCity } from "./mockcity";
 
 const scenario = new URLSearchParams(location.search).get("mock") ?? "city";
 const t0 = Math.floor(Date.now() / 1000);
@@ -20,31 +21,6 @@ function rand(seed: number) {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
-
-function plots(n: number, seed: number, grades: number[], damage = 0.15): Plot[] {
-  const r = rand(seed);
-  return Array.from({ length: n }, (_, index) => {
-    const x = r();
-    return {
-      index,
-      district: Math.floor(index / 8),
-      grade: grades[Math.floor(r() * grades.length)],
-      damage: x < damage ? 1 + Math.floor(r() * 2) : 0,
-      rubble: x > 1 - damage / 3,
-      seed: Math.floor(r() * 2 ** 52),
-      session_id: index + 1,
-      built_at: t0 - (n - index) * 7200,
-    };
-  });
-}
-
-const history: WorldEvent[] = [
-  { ts: t0 - 86400, kind: "built", cause: "completed", session_id: 1, plots: [0], ruined: [] },
-  { ts: t0 - 50000, kind: "quake", cause: "tamper", session_id: null, plots: [1, 2, 3], ruined: [] },
-  { ts: t0 - 20000, kind: "collapsed", cause: "surrendered", session_id: 4, plots: [4, 2, 3], ruined: [3] },
-  { ts: t0 - 3000, kind: "repaired", cause: "completed", session_id: 5, plots: [1, 2], ruined: [] },
-  { ts: t0 - 3000, kind: "built", cause: "completed", session_id: 5, plots: [4], ruined: [] },
-];
 
 function session(kind: SessionInfo["kind"], elapsed: number, surrendering = false): SessionInfo {
   const secs = kind.type === "countdown" ? kind.secs : null;
@@ -144,7 +120,12 @@ function pastSessions(): Finished[] {
   return out.reverse();
 }
 
-function build(): { world: World; status: Status; past: Finished[]; pending: PendingConfig | null } {
+/** Grows a city by `n` completed sessions of `mins`, a day apart, ending yesterday. */
+function grow(city: MockCity, n: number, mins: number) {
+  for (let k = 0; k < n; k++) city.complete(mins * 60, t0 - (n - k) * 86400 + 36000);
+}
+
+function build(): { city: MockCity; status: Status; past: Finished[]; pending: PendingConfig | null } {
   const status: Status = {
     session: null,
     profiles: ["deep", "trial"],
@@ -159,62 +140,77 @@ function build(): { world: World; status: Status; past: Finished[]; pending: Pen
     nudge: { level: 2, idle_secs: 4200 },
     free: null,
   };
-  const world: World = {
-    tier: 2,
-    focused_secs: 71 * 3600,
-    tier_floor_secs: 50 * 3600,
-    next_tier_secs: 200 * 3600,
-    streak_days: 4,
-    plots: plots(30, 7, [0, 1, 1, 2, 2, 3, 3, 4]),
-    construction: null,
-    history,
+  const city = new MockCity();
+  city.streak = 4;
+  const r = rand(7);
+  const scar = (share: number) => {
+    for (const i of city.built.keys()) if (r() < share) city.hurt(i, 1 + Math.floor(r() * 3), t0 - 20000 + i);
   };
-  const site = (grade: number, progress: number | null, surrendering = false): Construction => ({
-    session_id: 99,
-    index: world.plots.findIndex((p) => p.rubble) >= 0 ? world.plots.findIndex((p) => p.rubble) : world.plots.length,
-    grade,
-    progress_permille: progress,
-    surrendering,
-    seed: 123456789,
-  });
   switch (scenario) {
     case "empty":
-      Object.assign(world, { tier: 0, focused_secs: 0, tier_floor_secs: 0, next_tier_secs: 36000, streak_days: 0, plots: [], history: [] });
+      city.streak = 0;
       break;
     case "hamlet":
-      Object.assign(world, { tier: 0, focused_secs: 5 * 3600, tier_floor_secs: 0, next_tier_secs: 36000, plots: plots(5, 3, [0, 0, 1], 0), history: history.slice(0, 1) });
+      grow(city, 6, 60);
+      break;
+    case "desk":
+      // The mayor at work: a choice made, a site paused, crew hours waiting.
+      grow(city, 5, 60);
+      city.buy("s4");
+      city.choose("hamlet-jobs", null, t0 - 7000);
+      city.complete(50 * 60, t0 - 6000);
+      city.choose("hamlet-water", null, t0 - 5000);
+      city.complete(45 * 60, t0 - 3000);
       break;
     case "metropolis":
-      Object.assign(world, { tier: 3, focused_secs: 260 * 3600, tier_floor_secs: 200 * 3600, next_tier_secs: null, plots: plots(120, 11, [1, 2, 3, 3, 4, 4], 0.08) });
+      grow(city, 200, 150);
+      scar(0.05);
       break;
+    case "ruins":
+      grow(city, 60, 90);
+      scar(0.6);
+      break;
+    default:
+      grow(city, 80, 90);
+      scar(0.12);
+  }
+  switch (scenario) {
     case "session":
       status.nudge = null;
       status.session = session({ type: "countdown", secs: 3000 }, 1260);
-      world.construction = site(2, 420);
       break;
     case "stopwatch":
       status.nudge = null;
       status.session = session({ type: "stopwatch" }, 3300);
-      world.construction = site(1, null);
       break;
     case "surrender":
       status.nudge = null;
       status.session = session({ type: "countdown", secs: 5400 }, 2000, true);
-      world.construction = site(3, 370, true);
+      break;
+    case "nearmiss":
+      // A countdown about to end a few minutes short of a finish line.
+      status.nudge = null;
+      status.session = session({ type: "countdown", secs: 3000 }, 2950);
       break;
     case "inverted":
       status.nudge = null;
       status.free = { balance_secs: 1440, spending: false, stops_in_secs: null, max_bank_secs: 7200, free_mins_per_hour: 12, throttled: true };
       break;
-    case "ruins":
-      world.plots = plots(16, 5, [1, 2, 3], 0.7);
-      break;
+  }
+  if (scenario === "nearmiss") {
+    // Leave the site 55 min short, so 5 more minutes than the countdown finish it.
+    const site = city.construction(99, 0, false);
+    if (site) {
+      const total = (site.remaining_secs ?? 0) + (city.sites.get(site.index)?.done ?? 0);
+      city.sites.set(site.index, { design: site.design ?? null, done: Math.max(0, total - 3300) });
+      city.active = site.index;
+    }
   }
   const empty = scenario === "empty";
   const pending: PendingConfig | null = empty
     ? null
     : { applies_at: t0 + 61000, applies_in_secs: 61000, reasons: ["profile deep: youtube.com no longer throttled"] };
-  return { world, status, past: empty ? [] : pastSessions(), pending };
+  return { city, status, past: empty ? [] : pastSessions(), pending };
 }
 
 const state = build();
@@ -231,27 +227,57 @@ export function mockDaemon(req: Request): Response {
       }
       return { type: "status", ...state.status };
     }
-    case "world":
-      return { type: "world", ...state.world };
+    case "world": {
+      const now = Math.floor(Date.now() / 1000);
+      if (s?.kind.type === "countdown" && s.state === "active" && now - s.started_at >= s.kind.secs) {
+        // The countdown ran out: it completes, as the daemon would.
+        state.city.complete(s.kind.secs, now);
+        state.status.session = null;
+      }
+      const live = state.status.session;
+      const site = live ? state.city.construction(live.id, Math.max(0, now - live.started_at), live.state === "surrendering") : null;
+      return { type: "world", ...state.city.world(now, site) };
+    }
     case "start":
       if (s) return { type: "error", message: "a session is already running" };
       state.status.session = session(req.kind, 0);
       state.status.nudge = null;
-      state.world.construction = { session_id: 99, index: state.world.plots.length, grade: 0, progress_permille: req.kind.type === "countdown" ? 0 : null, surrendering: false, seed: 42 };
       return { type: "session", ...state.status.session };
     case "stop":
       if (!s || s.kind.type !== "stopwatch") return { type: "error", message: "countdowns cannot be stopped" };
       if (s.stop_locked_secs > 0) return { type: "error", message: "too early to stop" };
       state.status.session = null;
-      state.world.construction = null;
+      state.city.complete(s.elapsed_secs, Math.floor(Date.now() / 1000));
       return { type: "session", ...s, state: "completed" };
     case "surrender":
       if (!s) return { type: "error", message: "no session" };
       if (req.phrase !== SURRENDER_PHRASE) return { type: "error", message: "the phrase does not match" };
       s.state = "surrendering";
       s.surrender_remaining_secs = 600;
-      if (state.world.construction) state.world.construction.surrendering = true;
       return { type: "session", ...s };
+    case "buy":
+    case "choose":
+    case "pause":
+    case "rename": {
+      if (s && req.type !== "rename") return { type: "error", message: "the mayor's desk opens when the session ends" };
+      const now = Math.floor(Date.now() / 1000);
+      const c = state.city;
+      const err =
+        req.type === "buy" ? c.buy(req.blueprint)
+        : req.type === "choose" ? c.choose(req.need, req.blueprint, now)
+        : req.type === "pause" ? c.pause()
+        : c.rename(req.lot, req.name);
+      if (err) return { type: "error", message: err };
+      return { type: "world", ...c.world(now, null) };
+    }
+    case "extend": {
+      if (!s || s.state !== "active") return { type: "error", message: "no session is running" };
+      if (s.kind.type !== "countdown") return { type: "error", message: "a stopwatch runs as long as you like already" };
+      if (s.kind.secs + req.secs > 6 * 3600) return { type: "error", message: "a session can be at most 6 hours" };
+      s.kind = { type: "countdown", secs: s.kind.secs + req.secs };
+      s.remaining_secs = s.kind.secs - s.elapsed_secs;
+      return { type: "session", ...s };
+    }
     case "skip": {
       const u = state.status.upcoming.find((u) => !u.skipped && u.starts_in_secs > 0 && (req.routine === null || u.routine === req.routine));
       if (!u) return { type: "error", message: "nothing to skip in the next 24 hours" };
@@ -300,12 +326,7 @@ export function mockDaemon(req: Request): Response {
           exported_at: t0,
           config: "# the mock does not write TOML\n",
           sessions: state.past,
-          events: history.filter((e) => e.kind === "quake" || e.kind === "damaged").map((e) => ({
-            ts: e.ts,
-            session_id: e.session_id,
-            kind: e.cause === "tamper" ? "tamper" : "clock_jump",
-            detail: "",
-          })),
+          events: [],
           routine_runs: [],
           free_bank: state.status.free ? { balance_ms: state.status.free.balance_secs * 1000, spending: null } : null,
         },

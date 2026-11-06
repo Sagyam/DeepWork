@@ -8,6 +8,7 @@ mod engine;
 mod free;
 mod loosen;
 mod nfqueue;
+mod plan;
 mod schedule;
 mod server;
 mod session;

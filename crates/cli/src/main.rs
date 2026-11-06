@@ -58,6 +58,21 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// List the blueprints, or buy one with coins (between sessions).
+    Buy { blueprint: Option<String> },
+    /// Build for one of the residents' needs (see `deepwork world`), pausing
+    /// the current site. `--design` picks the blueprint.
+    Build {
+        need: String,
+        #[arg(long, short)]
+        design: Option<String>,
+    },
+    /// Pause the construction site; focus banks as crew hours until `build`.
+    Pause,
+    /// Rename a finished building (an empty name restores the plan's).
+    Rename { lot: String, name: String },
+    /// Add time to the running countdown, e.g. `10m`.
+    Extend { duration: String },
     /// Inverted mode: spend banked free minutes (all, or e.g. `15m`), lifting
     /// the throttle outside sessions. `--stop` banks the rest again.
     Free {
@@ -310,6 +325,72 @@ fn main() -> Result<()> {
             let color = std::io::stdout().is_terminal() && std::env::var_os("NO_COLOR").is_none();
             print!("{}", skyline::render(&world, unix_now(), color));
         }
+        Command::Buy { blueprint: None } => {
+            let Response::World(world) = expect_ok(request(&cli.socket, &Request::World)?)? else {
+                bail!("unexpected reply")
+            };
+            print!("{}", skyline::blueprints(&world));
+        }
+        Command::Buy {
+            blueprint: Some(blueprint),
+        } => {
+            let w = mayor(
+                &cli.socket,
+                Request::Buy {
+                    blueprint: blueprint.clone(),
+                },
+            )?;
+            let name = w
+                .blueprints
+                .iter()
+                .find(|b| b.id == blueprint)
+                .map_or(blueprint, |b| b.name.clone());
+            println!("Bought the {name} blueprint. {} coins left.", w.coins);
+        }
+        Command::Build { need, design } => {
+            let w = mayor(
+                &cli.socket,
+                Request::Choose {
+                    need,
+                    blueprint: design,
+                },
+            )?;
+            match w.sites.iter().find(|s| s.active) {
+                Some(s) => println!(
+                    "Building {} ({}): {} of {}.",
+                    s.name,
+                    s.lot,
+                    skyline::fmt_hm(s.done_secs),
+                    skyline::fmt_hm(s.build_secs)
+                ),
+                None => println!("Done: the crew hours finished it."),
+            }
+        }
+        Command::Pause => {
+            mayor(&cli.socket, Request::Pause)?;
+            println!("Site paused. Focus banks as crew hours until you `deepwork build` again.");
+        }
+        Command::Rename { lot, name } => {
+            let w = mayor(
+                &cli.socket,
+                Request::Rename {
+                    lot: lot.clone(),
+                    name,
+                },
+            )?;
+            if let Some(p) = w.plots.iter().find(|p| p.lot == lot) {
+                println!("{} is now {}.", p.address, p.name);
+            }
+        }
+        Command::Extend { duration } => {
+            let secs = parse_duration(&duration)?;
+            let Response::Session(s) = expect_ok(request(&cli.socket, &Request::Extend { secs })?)?
+            else {
+                bail!("unexpected reply")
+            };
+            println!("Extended by {}.", fmt_secs(secs));
+            print_session(&s);
+        }
         Command::Bar => {
             let line = match request(&cli.socket, &Request::Status) {
                 Ok(Response::Status(status)) => bar(&status),
@@ -507,6 +588,14 @@ fn describe_pending(p: Option<PendingConfig>) {
         for reason in p.reasons {
             println!("  - {reason}");
         }
+    }
+}
+
+/// Sends a decision and returns the world it made.
+fn mayor(socket: &Path, req: Request) -> Result<Box<deepwork_proto::World>> {
+    match expect_ok(request(socket, &req)?)? {
+        Response::World(w) => Ok(w),
+        _ => bail!("unexpected reply"),
     }
 }
 

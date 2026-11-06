@@ -7,7 +7,7 @@ checklists live in [PLAN.md](PLAN.md), which is the source of truth.
 
 | Path | What |
 |---|---|
-| `crates/daemon` | `deepworkd`, the root daemon: sessions, DNS forwarder, nft/tc enforcement, SQLite ledger |
+| `crates/daemon` | `deepworkd`, the root daemon: sessions, DNS forwarder, nft/tc enforcement, SQLite ledger, the city (`plan.rs` the master plan as data, `world.rs` the fold) |
 | `crates/cli` | `deepwork`, the CLI |
 | `crates/agent` | `deepwork-agent`, desktop notifications and nudges |
 | `crates/proto` | IPC types (newline-delimited JSON over a Unix socket) |
@@ -41,7 +41,10 @@ bun run dev        # then open http://localhost:5173/?mock=city
 ```
 
 Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
-`surrender`, `ruins`; `&hour=16` fixes the time of day. In the console,
+`surrender`, `ruins`, `desk` (a choice made, a site paused, crew hours
+waiting), `nearmiss` (a countdown ending just short of a finish line);
+the mock's city (`src/mockcity.ts`) is a small hand mirror of the daemon's
+fold, so buying, building, pausing and renaming work in the browser too; `&hour=16` fixes the time of day. In the console,
 `city.demo("collapse" | "build" | "damage")` plays one transition.
 
 The realistic models (`docs/models.md`) are built with Blender into the
@@ -193,7 +196,12 @@ deepwork start 50m           # countdown
 deepwork start --stopwatch   # stopwatch, can be stopped after 10 minutes
 deepwork status
 deepwork surrender           # the only way out of a countdown; it takes 10 minutes
-deepwork world               # the city your sessions built, and what giving in cost
+deepwork world               # the city, coins, the residents' needs and the sites
+deepwork buy [s1]            # list the blueprints, or buy one (between sessions)
+deepwork build hamlet-shops  # build for a need (--design s3 picks the blueprint)
+deepwork pause               # pause the site; focus banks as crew hours
+deepwork rename hamlet-homes-1 "Grandma's"
+deepwork extend 10m          # a longer countdown, up to 6 hours
 deepwork config export backup.json   # settings + progress in one file
 deepwork config import backup.json
 ```

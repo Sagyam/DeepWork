@@ -440,7 +440,7 @@ Rules, mapped onto the skyline:
 Assets are generated, not hand-made: buildings and trees come from a Blender
 script (see "The app"), so they can be tuned like code.
 
-### World model (phase 3, built)
+### World model (phase 3, built; replaced by progression v2)
 
 `world.rs` folds the ledger into a `World` (proto type) on every
 `Request::World`; nothing is stored, so it cannot drift from the ledger and
@@ -466,7 +466,12 @@ streak, and a history of the last 30 changes with their cause.
   notifies losses (collapse, earthquake, damage) within ~10s. Builds are left
   to the "Session complete" note.
 
-### Progression v2: coins, a shop and our city plan (ideas, not built)
+### Progression v2: coins, blueprints and our city plan (built 2026-11-06)
+
+Replaces the world model above: `world.rs` now folds the ledger onto the
+master plan in `plan.rs`; penalty tiers keep their triggers but hit plan
+lots, and ruins stay standing until repaired. The build checklist, with the
+decisions taken while building, is at the end of `docs/progression.md`.
 
 In `docs/progression.md` (revised 2026-11-05 from the user's brief): the
 user is the mayor; residents present each level's needs at once (houses, a
@@ -476,8 +481,10 @@ coins (per hour, with session length and day streak bonuses) that buy
 blueprints, each buildable many times, and build hours: every kind of
 building takes a fixed number of focused hours, so big projects stay under
 construction across sessions. Levels graduate when their needs are met;
-penalties become repair needs; every building keeps a memory of how it was
-built (hover tag, click card). Open questions for the user are listed there.
+repairs stay automatic (decided 2026-11-06); every building keeps a memory
+of how it was built (hover tag, click card). First hooks from
+`docs/hooks.md` are in: shiny buildings, the near-miss prompt, the streak
+freeze and the rested bonus.
 
 ### The app (phase 3, built)
 
@@ -690,6 +697,23 @@ TypeScript + three.js frontend, built with bun.
 | Install URL | `https://deepwork.sagyamthapa.com.np/get.sh`, a Vercel rewrite in `Sagyam/deepwork-site` to `dist/get.sh` on `main` |
 
 ## Next session: start here
+
+Progression v2 (2026-11-06): built from the checklist at the end of
+`docs/progression.md`. Daemon: `plan.rs` (levels, needs, 71 lots, 13
+blueprints), `world.rs` rewritten (coins, build hours, needs, sites,
+blueprints, auto mode for old ledgers, penalties on lots, shiny, freezes,
+memories), four new ledger events behind `Buy` / `Choose` / `Pause` /
+`Rename`, and `Extend` for countdowns. CLI `buy`, `build`, `pause`,
+`rename`, `extend`; agent coin notes. App: the mayor's desk, the blueprint
+shop, the deed card and hover tag (picking), the near-miss prompt, paused
+sites, stand-ins for public buildings, the shiny finial; mock scenarios
+`desk` and `nearmiss`. Checked with tests, a dry-run daemon over the
+socket (a 1 min countdown extended to 3 built 3 min of the water tower and
+paid 5 coins) and headless screenshots of the mock, light and dark; not yet
+seen in the Tauri window or against the installed daemon. Host check after
+reinstalling: `deepwork world` shows the existing city rebuilt on the plan
+(auto mode), then `deepwork build <need>` takes over. Next: the "Next"
+list in that checklist, then the master plan's real layout.
 
 Realistic props (2026-11-04): the user did not like the new buildings in
 front of the kit's cars, trees, bushes, pavements and roads, so those went
@@ -944,8 +968,9 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
-- [ ] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
-      building memories (designed 2026-11-05, not built)
+- [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
+      building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
+      its "Next" and "Later" lists hold what is left, the plan's real layout first)
 
 ### Phase 4: Deeper enforcement
 

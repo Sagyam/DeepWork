@@ -976,7 +976,72 @@ function yard(p: Parts, s: Spec, r: () => number) {
   }
 }
 
+/**
+ * Stand-ins for buildings the town provides until they have models: a water
+ * tower, and a square or a park on one lot. Local frame: the lot's centre is
+ * `yard` behind the origin, the street in front (+z).
+ */
+function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
+  const g = new THREE.Group();
+  const p = new Parts();
+  const r = rng(s.seed * 13 + 7);
+  const info: ModelInfo = { height: 4, emitters: [], beacons: [], night: [], debris: 0x7a7570 };
+  const cz = -s.yard;
+  const half = LOT / 2 - 0.4;
+  if (s.style === "water") {
+    p.box(lawn(), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
+    const steel = mat(0x8c96a0, { metalness: 0.6, roughness: 0.45 });
+    const tank = mat(s.damage ? 0x6a6e70 : 0xc8ccd0, { metalness: 0.5, roughness: 0.4 });
+    const legH = s.damage >= 2 ? 9 : 13;
+    for (const [lx, lz] of [[-2.4, -2.4], [2.4, -2.4], [-2.4, 2.4], [2.4, 2.4]]) p.box(steel, 0.35, legH, 0.35, lx, KERB, cz + lz);
+    for (const y of [4, 8.5]) {
+      p.box(steel, 5.2, 0.15, 0.15, 0, KERB + y, cz - 2.4);
+      p.box(steel, 5.2, 0.15, 0.15, 0, KERB + y, cz + 2.4);
+      p.box(steel, 0.15, 0.15, 5.2, -2.4, KERB + y, cz);
+      p.box(steel, 0.15, 0.15, 5.2, 2.4, KERB + y, cz);
+    }
+    const top = KERB + legH;
+    p.cyl(tank, 3.4, 3.4, 4.4, 0, top, cz, 24);
+    p.add(tank, new THREE.ConeGeometry(3.6, 1.8, 24), 0, top + 4.4 + 0.9, cz);
+    p.box(steel, 0.5, top + 4.4, 0.1, 0, 0, cz + 3.45);
+    if (hasReal("street")) fenceRun(p, "fence_rail", -half, cz + half, half, cz + half, 0.9);
+    info.height = top + 6.2;
+    info.beacons.push(new THREE.Vector3(0, top + 6.3, cz));
+  } else {
+    const park = s.style === "park";
+    p.box(park ? lawn() : mat(0xb9b2a6, { roughness: 0.9 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
+    if (park) p.box(mat(0xc8bfae, { roughness: 1 }), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
+    const stone = mat(0xd8d2c4, { roughness: 0.8 });
+    const water = mat(0x4f7d93, { metalness: 0.3, roughness: 0.15 });
+    p.cyl(stone, 2.6, 2.8, 0.6, 0, KERB, cz, 24);
+    p.cyl(water, 2.3, 2.3, 0.08, 0, KERB + 0.5, cz, 24);
+    p.cyl(stone, 0.35, 0.5, 1.8, 0, KERB + 0.6, cz, 10);
+    p.cyl(stone, 0.9, 0.2, 0.3, 0, KERB + 2.4, cz, 12);
+    const n = park ? 6 : 4;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.4;
+      tree(p, Math.cos(a) * 5.6, cz + Math.sin(a) * 5.6, 0.8 + r() * 0.3, Math.floor(r() * 1e6), KERB);
+    }
+    if (!park && hasReal("street")) for (const x of [-4.5, 4.5]) furniture(p, "bench", x, KERB, cz + 3.6);
+    info.height = 6;
+  }
+  if (s.damage >= 1) info.emitters.push({ pos: new THREE.Vector3(0, info.height * 0.6, cz), kind: "smoke", rate: s.damage >= 2 ? 6 : 2 });
+  p.into(g);
+  g.position.set(s.x, 0, s.z);
+  g.rotation.y = s.rot;
+  return { group: g, info };
+}
+
+/** A gilded finial for a shiny building: rare, and meant to be noticed. */
+function finial(p: Parts, y: number) {
+  const gold = mat(0xd4a640, { metalness: 1, roughness: 0.25, emissive: 0x3a2400 });
+  p.cyl(gold, 0.12, 0.3, 1.2, 0, y, 0, 8);
+  p.add(gold, new THREE.SphereGeometry(0.45, 14, 10), 0, y + 1.6, 0);
+  p.add(gold, new THREE.ConeGeometry(0.12, 1.4, 8), 0, y + 2.6, 0);
+}
+
 export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
+  if (s.style === "water" || s.style === "square" || s.style === "park") return utility(s);
   const g = new THREE.Group();
   const p = new Parts();
   const r = rng(s.seed * 31 + 5);
@@ -996,6 +1061,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" ? 1.4 : 0.25 });
   if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
   if (broken) wreckTop(p, top.w, top.d, top.top, def?.debris ?? (s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall]), r, def ? THREE.MathUtils.clamp(top.top / 20, 0.4, 1) : 1);
+  if (s.shiny && !broken) finial(p, top.top);
 
   if (s.damage >= 1) {
     const h = top.top;

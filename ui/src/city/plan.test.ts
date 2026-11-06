@@ -139,11 +139,49 @@ test("format", () => {
   expect(clock(25 * 60)).toBe("25:00");
   expect(clock(3909)).toBe("1:05:09");
   expect(hm(3 * 3600 + 20 * 60)).toBe("3h 20m");
-  const w = world([plot(0, 1), plot(1, 4)]);
-  expect(describe(w, { ts: 0, kind: "collapsed", cause: "surrendered", session_id: 3, plots: [2, 1], ruined: [] })).toBe(
-    "surrendered: plot 3 collapsed, fire spread to plot 2",
+  const w = world([plot(0, 1), { ...plot(1, 4), name: "Hart Tower" }]);
+  expect(describe(w, { ts: 0, kind: "collapsed", cause: "surrendered", session_id: 3, plots: [2, 1, 0], ruined: [1] })).toBe(
+    "surrendered: fire spread to Hart Tower and plot 1; Hart Tower in ruins",
   );
-  expect(describe(w, { ts: 0, kind: "built", cause: "completed", session_id: 2, plots: [1], ruined: [] })).toBe("built a landmark tower (plot 2)");
+  expect(describe(w, { ts: 0, kind: "built", cause: "completed", session_id: 2, plots: [1], ruined: [] })).toBe("finished Hart Tower");
+});
+
+group("progression v2", () => {
+  test("a blueprint picks the look and the model", () => {
+    const p = plan(world([{ ...plot(0, 0), kind: "cottage", design: "c4" }, { ...plot(1, 1), kind: "workshop", design: "s4" }]));
+    expect(p.buildings[0]).toMatchObject({ kind: "cottage", style: "aframe", model: "c4" });
+    expect(p.buildings[1]).toMatchObject({ kind: "shop", style: "factory", model: "s4", floors: 1 });
+  });
+
+  test("public buildings get stand-ins", () => {
+    const p = plan(world([{ ...plot(7, 0), kind: "water", design: null }, { ...plot(12, 1), kind: "square", design: null }]));
+    expect(p.buildings.map((b) => b.style)).toEqual(["water", "square"]);
+  });
+
+  test("lots fill out of order; the gaps stay empty lots", () => {
+    const p = plan(world([plot(0), { ...plot(7), kind: "water" }]));
+    expect(p.buildings.map((b) => b.index)).toEqual([0, 7]);
+    expect(p.emptyLots).toHaveLength(6);
+    expect(p.blocks).toHaveLength(1);
+  });
+
+  test("paused sites stand half built; the session's own site is live", () => {
+    const sites = [
+      { index: 3, lot: "hamlet-homes-4", need: "hamlet-homes", name: "The Sato house", kind: "cottage", design: "c1", done_secs: 1800, build_secs: 3600, active: false, seed: 9 },
+      { index: 4, lot: "hamlet-shops-1", need: "hamlet-shops", name: "Hart's Bakery", kind: "shop", design: "s1", done_secs: 600, build_secs: 5400, active: true, seed: 8 },
+    ];
+    const construction = { session_id: 9, index: 4, grade: 1, progress_permille: 300, surrendering: false, seed: 8, kind: "shop", design: "s1" };
+    const p = plan(world([plot(0)], { sites, construction }));
+    expect(p.paused.map((s) => [s.index, s.progress, s.model])).toEqual([[3, 0.5, "c1"]]);
+    expect(p.site).toMatchObject({ index: 4, progress: 0.3, model: "s1" });
+    expect(p.emptyLots.map((l) => l.seed)).not.toContain(3 * 2654435761);
+  });
+
+  test("shiny and ruined buildings", () => {
+    const p = plan(world([{ ...plot(0), shiny: true }, { ...plot(1), damage: 3, rubble: true }]));
+    expect(p.buildings[0].shiny).toBe(true);
+    expect(p.buildings[1]).toMatchObject({ rubble: true, damage: 2 });
+  });
 });
 
 test("traffic loops keep the block on the right and stay in their lane", () => {
