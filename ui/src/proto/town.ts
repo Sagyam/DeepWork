@@ -57,7 +57,8 @@ const BLOCKS: Block[] = [
   { bx: -1, bz: -1, south: ["c3", "c4", "c1", "c2"], north: ["c4", "c3", "c2", "c1"] },
   { bx: 1, bz: -1, park: "park" },
   { bx: 0, bz: 1, south: ["o1:7", "s1", "a1:4", "s3"], north: ["s3", "a2", "s2", "a3:5"] },
-  { bx: 1, bz: 1, south: ["s4", "s4", "s3", "s4"], north: ["s4", "s4", "s4", "s1"] },
+  // The public buildings (2026-11-06): fire station, school, clinic, city hall; the substation by the works.
+  { bx: 1, bz: 1, south: ["f1", "e1", "h1", "l5"], north: ["s4", "p1", "s4", "s1"] },
   { bx: -1, bz: 1, park: "plaza" },
 ];
 const ROAD_Z = PITCH_Z / 2; // the through road, between the middle and south block rows
@@ -94,6 +95,7 @@ const VIEWS: Record<string, [number[], number[], number]> = {
   main: [[PITCH_X + 40, 1.8, ROAD_Z - 1], [PITCH_X - 10, 6, 6], 58],
   homes: [[-20, 26, -PITCH_Z - 50], [-20, 2, -PITCH_Z], 46],
   works: [[PITCH_X + 60, 30, PITCH_Z + 70], [PITCH_X, 4, PITCH_Z], 44],
+  civic: [[PITCH_X - 2, 22, PITCH_Z + 78], [PITCH_X - 2, 5, PITCH_Z + 6], 50],
   bridge: [[RX + 40, 6, ROAD_Z + 34], [RX - 10, 3, ROAD_Z], 50],
   plaza: [[-PITCH_X + 10, 14, PITCH_Z + 48], [-PITCH_X, 2, PITCH_Z], 50],
   skyline: [[-260, 40, 120], [0, 30, 0], 32],
