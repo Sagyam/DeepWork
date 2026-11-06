@@ -13,7 +13,7 @@ factory, C2, the brick cottage (sharing the classic cottages with C1), and
 S2, the corner café (sharing the classic shops with S1), O1, the
 curtain-wall office tower, A2, the brownstone row (the townhouse
 apartments), L1, the art deco skyscraper, and A3, the balcony block
-(sharing the classic apartments with A1);
+(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, E1, the school, and H1, the clinic, and L5, city hall;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -439,7 +439,7 @@ Civic buildings, squares, parks and monuments (new):
 
 | ID | Model | Look | Size | Effort | Priority |
 |---|---|---|---|---|---|
-| L5 | City hall | Classical front with columns and steps, dome or clock tower, flagpoles, forecourt | half block | 30% | P1 |
+| L5 | City hall | Classical front with columns and steps, dome or clock tower, flagpoles, forecourt | half block (lot size for now) | **done at lot size** (2026-11-06, `l5_cityhall.py`): a Beaux-Arts city hall of about 1910, 14.4 x 10 m, limestone over a rusticated podium; a portico of four giant Ionic columns (entasis over the full height) up five steps between lamp plinths, three bronze doors under fanlights, CITY HALL in gilt on the frieze, a pediment with the city's shield; pedimented windows on the main floor, eared above, pilasters; a modillioned cornice and a balustrade round the roof; a clock tower with four dials (lit at night), an open drum of eight columns, a ribbed copper dome, a lantern and a flagpole; the model moves itself back so its footprint is centred; pieces ground / floor / roof; 21.1 k triangles. Grows to its half block with the master plan's layout | 30% | P1 |
 | L6 | Town square | Paving, a fountain, a statue on a plinth, trees, café tables, a bandstand or market stalls | half block | 20% | P1 |
 | L7 | Monument | Triumphal arch or obelisk on a plaza, steps, lamps, flowerbeds | half block | 15% | P1 |
 | L8 | Museum or library | Portico, broad steps, stone lions, banners | half block | 25% | P2 |
@@ -453,6 +453,70 @@ The automatic parks every fourth cell stay as they are (plaza, pond park,
 football ground; see "Not buildings"); earned parks and squares are larger
 and grander, so the two read differently.
 
+### Public buildings and utilities (new, 2026-11-06)
+
+The master plan's needs (`crates/daemon/src/plan.rs`) ask for kinds that
+no blueprint fills: water, power and the public buildings. Until they have
+models, `PUBLIC` in `ui/src/city/plan.ts` borrows a blueprint's model for
+them (see "Early-game gaps" below). They fit an ordinary lot (16 x 16 m)
+like the blueprints; the town builds them, so they need no blueprint and
+take no coins. Hamlet and Town power share a model, the City's power
+station is its own; `PUBLIC` picks by kind, so P1 serves all three power
+needs until P2 lands.
+
+| ID | Model | Look | Need (level, hour) | Effort | Priority |
+|---|---|---|---|---|---|
+| P1 | Electrical substation | Fenced gravel yard: a transformer on a plinth with radiator fins and bushings, a steel gantry taking the overhead line, insulator strings, a brick switch house with louvred doors and a danger sign, poles carrying the line off the lot | Electricity (Hamlet, ~10 h), More power (Town) | **done** (2026-11-06, `p1_substation.py`): 14 x 12 m compound behind 2.2 m galvanised palisade on a concrete kerb, shut double gates with danger signs; gravel, cable trench covers; a transformer in an oil bund (plinth, skids, tank with ribs and lugs, two radiator banks of 16 fins, conservator with breather, three HV and four LV porcelain bushings, cable box, rating plate, earth tape); a lattice gantry with strain and suspension disc strings, the line from a wooden H-pole with cross brace and stays; a brick switch house with louvred green doors, barred vents, a bulkhead lamp and a precast roof slab; an LV pole by the gate with a riser and crossarm; a floodlight; pieces body / roof; 14.9 k triangles | 12% | P1 |
+| F1 | Fire station | Two-bay brick engine house, red folding doors, hose-drying tower, a lamp over the door, the town's name in stone | A fire station (Town, ~10-50 h) | **done** (2026-11-06, `f1_fire.py`): a 1915 engine house, 11 x 13 m, red brick on granite with rubbed-brick quoins; two engine bays of four folding red leaves each (raised panels, six-light tops, strap hinges) under steel beams and a stone band lettered FIRE STATION in gilt, rubbing posts, the number on the pier, red globe lamps on brackets (lit at night); crew storey of five sashes with keyed lintels; corbelled cornice, parapet with a dated panel, chimney, flagpole; the hose tower proud of the back right corner rising to an open belfry with the bell, a slate pyramid and copper finial; personnel door, yard door; pieces ground / floor / roof; 11.1 k triangles | 12% | P1 |
+| E1 | School | One- or two-storey schoolhouse, tall classroom windows, a bell cupola, a fenced playground with a hopscotch court and a flagpole | A school (Town) | **done** (2026-11-06, `e1_school.py`): a 1924 two-storey schoolhouse, 14 x 10 m, red brick on a raised ashlar basement with vents; an entrance pavilion with quoins, steps with iron rails, double six-panel doors under a radiating fanlight in an arched stone surround, SCHOOL on the frieze, lamps; banks of four tall six-over-six sashes per classroom under continuous lintel bands, a belt course; a hipped slate roof with a cross-gabled pediment and the year in a roundel, two chimneys, a white louvred bell cupola with a copper ogee roof and a weathervane; classroom interiors in the glass; the yard has lawns, railings, a flagpole and hopscotch on the playground; pieces ground / floor / roof; 12.1 k triangles | 15% | P1 |
+| H1 | Clinic | Low rendered building, a canopy over the entrance with a green cross, ramp and rails, a bench, an ambulance bay | A clinic (Town) | **done** (2026-11-06, `h1_clinic.py`): an early-1960s health centre, 13 x 9 m, one storey of white render on a brick plinth; aluminium ribbon windows with transoms over sea-green spandrels; a recessed glass entrance screen with sliding doors under a thin cantilevered canopy lettered CLINIC with downlights, a green-cross lightbox (lit at night); steps and a 1:10 ramp with steel rails, a bench and a bin; frosted and ambulance doors on the sides, an ambulance bay canopy on posts; a deep oversailing roof slab with fascia, plant behind a louvre screen, a rooflight and a flue; pieces body / roof; 2.3 k triangles | 12% | P1 |
+| P2 | Power station | Brick turbine hall with tall arched windows, a pair of stacks, a cooling tower or a switchyard behind | A power station (City) | 20% | P2 |
+| W2 | Pumping station | Victorian brick engine house with a tall chimney, a gated yard over the mains | Water mains (City) | 12% | P2 |
+| H2 | Hospital | Several storeys of wards on a podium, an emergency canopy, a helipad on the roof | A hospital (City) | 20% | P1 |
+| E2 | Police station | Stone ground storey, blue lamp over the door, flagpole, cars in the yard | A police station (City) | 12% | P1 |
+| E3 | Library | See L8 (one model: portico, steps, lions, banners), at lot size | A library (City) | 15% | P1 |
+
+City hall is L5 above; the town square L6; the City's park L12.
+
+## Early-game gaps (2026-11-06)
+
+What the first ~100 focused hours ask for, against what is drawn. The plan
+spends them as Hamlet (0-10 h), Town (10-49.5 h) and about a third of City
+(49.5-196.5 h); in the City the mayor's order decides, and the default
+order (an old ledger, no choices) spends hours 50-98 on six office towers.
+
+| # | Gap | First seen | Drawn today | Fix |
+|---|---|---|---|---|
+| 1 | Power | ~10 h (Hamlet) | ~~S4, the brick factory~~ done: P1 substation | P2 power station for the City |
+| 2 | Fire station | Town | ~~S4 again~~ done: F1 | |
+| 3 | School, clinic | Town | ~~A3, the balcony block~~ done: E1, H1 | |
+| 4 | Works: one design | ~8 h | S4 is the only workshop blueprint, so the mayor never chooses | a second workshop (a timber mill or a brewery) |
+| 5 | Water, three times | 10 h, ~45 h, ~100 h | the civic water tower each time | W2 pumping station for the City's mains |
+| 6 | City hall | City | ~~L1, also the City's landmark~~ done: L5 | |
+| 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
+| 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
+| 9 | Ruins | the first surrender | ~~the rubble heap~~ done: burnt shells left standing | |
+| 10 | Shop pictures | the first purchase | ~~one outline per kind~~ done: a render of each model (`city/thumbs.ts`) | |
+| 11 | Square, park | Town, City | assembled in `models.ts` from the civic props | L6 (statue, market stalls), L12 |
+| 12 | Sound | always | none (no chime on completion, nothing at level-up or a fire) | a few short sounds, if wanted |
+
+Build order (decided 2026-11-06): P1 substation, F1 fire station, E1
+school, H1 clinic (every borrowed model before 50 h gone), shop pictures,
+ruins standing, L5 city hall, O2 or O3, a second workshop, then H2, E2, E3.
+The master plan's real layout in `plan.ts` decides where the public
+buildings stand, so it should come before L5.
+
+- [x] P1 substation (2026-11-06)
+- [x] F1 fire station (2026-11-06)
+- [x] E1 school (2026-11-06)
+- [x] H1 clinic (2026-11-06)
+- [x] Blueprint pictures in the shop (2026-11-06): `city/thumbs.ts` draws each design's model on its lot with the city's renderer, off screen, once; locked designs show as the model's true silhouette; the outline stays until the pack is loaded
+- [x] Ruins standing (2026-11-06): `shell()` in `models.ts` draws a realistic model's ruin as about half its storeys, roofless, burnt (damage 3: black empty windows), with ragged brick stumps along the top of masonry models (`civic` rubble walls), charred beams and slabs, debris heaped against the walls and thin smoke; the kit keeps its heap
+- [x] L5 city hall (2026-11-06, at lot size until the plan reserves its half block)
+- [ ] O2 or O3
+- [ ] A second workshop
+- [ ] H2 hospital, E2 police station, E3 library
+
 ### States every building needs
 
 | State | Today | Realistic version | Effort |
@@ -460,7 +524,7 @@ and grander, so the two read differently.
 | Construction | Floors up to progress, scaffold, crane, blueprint | Same scheme with realistic scaffold, formwork, safety netting, site hoarding; landmarks fenced across their whole ground | 20% |
 | Damage 1 | Darker, smoke | Soot streaks (grime shader), a few broken panes, smoke | 5% (shader) |
 | Damage 2 | Lower ~3/4, no roof, fire | Broken top edge per piece, burnt interiors in the window shader, exposed floors; parks and squares scorched, statues toppled | 15% |
-| Rubble | ~~Heap of chunks~~ | **done** (2026-11-06): a heap of crushed masonry (`civic`) with broken brick walls in the building's brick, slabs with rebar and bent beams, more for bigger buildings | 15% |
+| Rubble | ~~Heap of chunks~~ (the kit's ruins; realistic models stand as burnt shells since 2026-11-06) | **done** (2026-11-06): a heap of crushed masonry (`civic`) with broken brick walls in the building's brick, slabs with rebar and bent beams, more for bigger buildings | 15% |
 | Night | Window atlas lit | Done: the interior shader lights rooms | done |
 
 ## Not buildings, but they must match

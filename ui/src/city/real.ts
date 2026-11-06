@@ -87,6 +87,14 @@ const S2_F2 = 3.2;
 const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
 const S4_TOP = 5.3;
+const P1_EAVES = 3.0;
+const F1_G = 5.0;
+const F1_FL = 3.4;
+const E1_G = 4.6;
+const E1_FL = 3.9;
+const H1_H = 3.6;
+const L5_G = 1.4 + 4.8;
+const L5_FL = 4.4;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -313,6 +321,98 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 7.85,
     smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
     debris: 0x8a4e3c,
+  },
+  p1: {
+    id: "p1",
+    kind: "shop",
+    style: "substation",
+    // The fenced compound (p1_substation.py); the gate on the street side.
+    w: 14,
+    d: 12,
+    front: 1.2,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: P1_EAVES }] : [])],
+    // The switch house's eaves; the gantry and poles stand to 8.6 m.
+    top: () => P1_EAVES,
+    height: () => 8.6,
+    debris: 0x9a9890,
+  },
+  f1: {
+    id: "f1",
+    kind: "shop",
+    style: "firestation",
+    // The engine house with the hose tower proud of its back right corner.
+    w: 11.4,
+    d: 13.3,
+    // A concrete apron before the bays.
+    front: 3.4,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: F1_G }] : []),
+      ...(roof ? [{ piece: "roof", y: F1_G + F1_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? F1_G + F1_FL : F1_G),
+    // The parapet; the hose tower's finial is at 20.5 m.
+    height: () => F1_G + F1_FL + 1.3,
+    smoke: () => new THREE.Vector3(-5.12, F1_G + F1_FL + 3.0, -1.0),
+    debris: 0x8a4e3c,
+  },
+  e1: {
+    id: "e1",
+    kind: "apartment",
+    style: "school",
+    // The schoolhouse with its eaves; the entrance steps reach 1.8 m out in front.
+    w: 15.1,
+    d: 13.6,
+    front: 1.0,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: E1_G }] : []),
+      ...(roof ? [{ piece: "roof", y: E1_G + E1_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? E1_G + E1_FL : E1_G),
+    // The ridge; the cupola's weathervane is at 16 m.
+    height: () => E1_G + E1_FL + 3.9,
+    smoke: () => new THREE.Vector3(2.4, E1_G + E1_FL + 5.55, 0),
+    debris: 0x8a4e3c,
+  },
+  h1: {
+    id: "h1",
+    kind: "shop",
+    style: "clinic",
+    // The storey with its oversailing roof, the ambulance bay on the right
+    // and the entrance canopy, ramp and steps reaching 2.8 m out in front.
+    w: 17.4,
+    d: 15.2,
+    front: 0.6,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: H1_H }] : [])],
+    top: () => H1_H,
+    // The fascia; the plant screen and flue stand to 5.5 m.
+    height: () => H1_H + 0.5,
+    debris: 0xd8d4c8,
+  },
+  l5: {
+    id: "l5",
+    kind: "landmark",
+    style: "cityhall",
+    // The block with its cornice, the portico and its steps (l5_cityhall.py
+    // moves itself back so this is centred).
+    w: 15.3,
+    d: 14.3,
+    front: 0.6,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: L5_G }] : []),
+      ...(roof ? [{ piece: "roof", y: L5_G + L5_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? L5_G + L5_FL : L5_G),
+    // The balustrade; the clock tower's dome and flagpole reach 25 m.
+    height: () => L5_G + L5_FL + 2.0,
+    debris: 0xc8bca4,
   },
   o1: {
     id: "o1",
@@ -1329,7 +1429,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
-  const shade = [1, 0.72, 0.42][Math.min(2, damage)];
+  const shade = [1, 0.72, 0.42, 0.36][Math.min(3, damage)];
   const w = (mat: THREE.MeshStandardMaterial, weather = 0) => weathered(mat, ao, weather + damage * 0.8);
   const room = (kind: RoomKind, tint?: number) => {
     const g = glass(kind, damage / 2, tint);
@@ -1346,7 +1446,10 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     glassMats.add(g);
     return g;
   };
+  // A ruin's windows: burnt out, black and empty.
+  if (damage >= 3 && role.endsWith("glass")) role = "gutted";
   switch (role) {
+    case "gutted": m = plain(0x0b0a09, 0.95); break;
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
     // The factory.
@@ -1386,7 +1489,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
       // A3's walls sit deep between balconies: the bake over-darkens them against the bounce they would get.
       if (id === "a3") (m as THREE.MeshStandardMaterial).aoMapIntensity = 0.55;
       break;
@@ -1622,7 +1725,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room("home"); break;
+    case "glass": m = room(id === "e1" || id === "h1" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
@@ -1642,6 +1745,39 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // City hall's clock dials (l5_cityhall.py): white enamel, lit from behind at night.
+    case "clock":
+      m = plain(0xf2efe6, 0.35, 0, { emissive: 0xfff0c8, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.2;
+      break;
+    // The clinic (h1_clinic.py): sea-green spandrels, frosted glass, the green cross lit at night.
+    case "clinicpanel": m = w(plain(0x5f9c94, 0.5), 0.6); break;
+    case "frosted": m = w(plain(0xdfe6e8, 0.3, 0.05), 0.2); break;
+    case "clinicname": m = w(plain(0x2c3e50, 0.4, 0.3), 0.3); break;
+    case "cross":
+      m = plain(0x1c9a4a, 0.3, 0, { emissive: 0x2aff6a, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
+    // The school's cupola (e1_school.py): white louvres.
+    case "cupola": m = w(pbr("louvre", [1, 1], { roughness: 0.6, color: 0xeeebe2 }), 0.8); break;
+    // The fire station (f1_fire.py): engine-house red, gilt letters, red lamps lit at night.
+    case "firedoor": m = w(plain(0x9c1c16, 0.42), 1.2); break;
+    case "fireletter": m = w(plain(0xd8b45a, 0.3, 0.8), 0.4); break;
+    case "redlamp":
+      m = plain(0xa01810, 0.25, 0, { emissive: 0xff2a14, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
+    // The substation (p1_substation.py): a transformer in dark green-grey
+    // paint gone chalky, brown-glazed porcelain, bare aluminium line,
+    // creosoted poles, louvred steel doors in green, enamel signs.
+    case "trafo": m = w(pbr("paintsteel", [2, 2], { rough: true, metalness: 0.2, color: 0x6c7a6c }), 1.2); break;
+    case "porcelain": m = w(plain(0x5a2e1c, 0.22, 0.05), 0.3); break;
+    case "line": m = w(plain(0x8c9094, 0.4, 0.8)); break;
+    case "pole": m = w(pbr("wood", [1.2, 1.2], { roughness: 0.9, color: 0x5a4636 }), 1); break;
+    case "subdoor": m = w(pbr("louvre", [1, 1], { roughness: 0.6, color: 0x4e6a52 }), 1.2); break;
+    case "subframe": m = w(plain(0x41584a, 0.55, 0.3), 1); break;
+    case "danger": m = w(plain(0xe6c22a, 0.45), 0.5); break;
+    case "plate": m = w(plain(0x2c4a7a, 0.4, 0.2), 0.3); break;
     case "rubble": m = w(pbr("rubble", [3, 3], { roughness: 0.97 }), 0.6); break;
     case "char": m = w(plain(0x1d1a18, 0.95), 0.4); break;
     // Scaffold boards: pale, sun-greyed softwood (the plank texture would cut

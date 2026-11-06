@@ -18,6 +18,7 @@ import { Bench } from "./bench";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
+import { thumbnail } from "./thumbs";
 import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
@@ -302,6 +303,11 @@ export class City {
     new ResizeObserver(() => this.resize()).observe(el);
     this.resize();
     r.setAnimationLoop(() => this.frame());
+  }
+
+  /** The shop's picture of a blueprint (thumbs.ts), or null while its model is not loaded. */
+  blueprintPic(id: string): string | null {
+    return thumbnail(this.renderer, id);
   }
 
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {

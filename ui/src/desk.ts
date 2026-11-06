@@ -93,7 +93,10 @@ export function deskHtml(w: World, session: SessionInfo | null): string {
   return parts.join("");
 }
 
-function tile(w: World, b: BlueprintInfo, closed: boolean): string {
+/** A blueprint's picture (its realistic model, drawn by the city), or null to use the outline. */
+export type BlueprintPic = (id: string) => string | null;
+
+function tile(w: World, b: BlueprintInfo, closed: boolean, pic?: BlueprintPic): string {
   const coins = w.coins ?? 0;
   let state: string;
   if (b.owned) state = `<span class="tag pass">Owned${b.built ? ` · ${b.built} built` : ""}</span>`;
@@ -101,7 +104,10 @@ function tile(w: World, b: BlueprintInfo, closed: boolean): string {
   else if (coins < b.price) state = `<span class="small muted">${b.price} coins · ${b.price - coins} more to go</span>`;
   else state = `<button class="primary" data-action="buy" data-blueprint="${escapeHtml(b.id)}" ${closed ? "disabled" : ""}>Buy · ${b.price}</button>`;
   return `<div class="bp${b.unlocked ? "" : " locked"}${b.owned ? " owned" : ""}">
-      ${silhouette(b.kind)}
+      ${(() => {
+        const url = pic?.(b.id);
+        return url ? `<img class="bp-pic" src="${url}" alt="" width="120" height="90">` : silhouette(b.kind);
+      })()}
       <div class="bp-text">
         <strong>${b.unlocked ? escapeHtml(b.name) : escapeHtml(b.name)}</strong>
         <div class="small muted">${KIND_NAMES[b.kind] ?? b.kind} · ${b.districts.map((d) => DISTRICTS[d] ?? d).join(", ")}</div>
@@ -111,10 +117,10 @@ function tile(w: World, b: BlueprintInfo, closed: boolean): string {
 }
 
 /** The shop: this level's blueprints for sale, later ones as locked silhouettes. */
-export function shopHtml(w: World, inSession: boolean): string {
+export function shopHtml(w: World, inSession: boolean, pic?: BlueprintPic): string {
   const list = w.blueprints ?? [];
   const closed = inSession ? `<p class="small muted">The shop opens when the session ends.</p>` : "";
-  return `${closed}<div class="bp-grid">${list.map((b) => tile(w, b, inSession)).join("")}</div>`;
+  return `${closed}<div class="bp-grid">${list.map((b) => tile(w, b, inSession, pic)).join("")}</div>`;
 }
 
 function day(ts: number): string {

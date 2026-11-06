@@ -298,6 +298,7 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
       return { top: floors * fh, w: s.w, d: s.d, anchors };
     }
     case "diner":
+    case "substation":
     case "factory": {
       const [g, rf] = s.style === "diner" ? ["shop_ground_d", "shop_roof_d"] : ["factory_ground", "factory_roof"];
       if (floors > 0) place(g, 0);
@@ -606,6 +607,69 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const k of [-1, 1]) p.box(board, 0.55, 0.95, 0.05, 4.9, KERB, s.d / 2 - 0.4 + k * 0.08, 0, Math.PI / 4 - k * 0.17);
       const bin = mat(0x2a4a34, { roughness: 0.6 });
       for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6, KERB, back + 0.7 + i * 0.85);
+      break;
+    }
+    case "p1": {
+      // Rough grass round the compound, a concrete drive from the gate
+      // (x 0.6 to 4.6, p1_substation.py) to the street, a hedge either side.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const drive = mat(0xa29e96, { roughness: 0.95 });
+      p.box(drive, 4.4, KERB + 0.01, front - s.d / 2, 2.6, 0, (front + s.d / 2) / 2);
+      for (const x of [-5.5, -2.5]) shrub(p, x, front - 0.6, s.seed * 5 + x * 3, KERB, 0.7);
+      break;
+    }
+    case "h1": {
+      // Paved to the pavement in front (the ramp and steps run onto it),
+      // lawns down the left and behind with shrubs, a car at the
+      // ambulance bay on the right.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(paving, LOT - 0.4, KERB + 0.01, front - 4.5, 0, 0, (front + 4.5) / 2);
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, half - 6.5, KERB + 0.012, 8, (half + 6.5) / 2, 0, 0.4);
+      const line = mat(0xd8b83a, { roughness: 0.7 });
+      for (const z of [-3.2, 4.0]) p.box(line, half - 6.6, KERB + 0.02, 0.1, (half + 6.6) / 2, 0, z);
+      parked(p, 7.2, 0.4, 0, s.seed + 3);
+      for (const [x, z] of [[-7.3, -2], [-7.3, 1.5], [-3, -5.6], [1.5, -5.6]]) shrub(p, x, z, s.seed * 5 + x * 3 + z, KERB, 0.8);
+      break;
+    }
+    case "e1": {
+      // Lawns either side of a paved path to the steps, an iron railing
+      // along the street open at the path, the flagpole on the lawn; the
+      // asphalt playground round the sides and back, hopscotch on it.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(paving, 2.6, KERB + 0.01, front - 5.0, 0, 0, (front + 5.0) / 2);
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, LOT - 0.4, KERB + 0.005, 5.5 - back, 0, 0, (5.5 + back) / 2);
+      const chalk = mat(0xe8e4d8, { roughness: 0.8 });
+      for (let i = 0; i < 6; i++) {
+        const z = 2.0 - i * 0.62;
+        if (i % 3 === 1) for (const dx of [-0.31, 0.31]) p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25 + dx, 0, z);
+        else p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25, 0, z);
+      }
+      if (hasReal("street")) {
+        fenceRun(p, "fence_iron", -half, front - 0.3, -1.4, front - 0.3, 1.1);
+        fenceRun(p, "fence_iron", 1.4, front - 0.3, half, front - 0.3, 1.1);
+      }
+      const pole = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.4 });
+      p.add(pole, new THREE.CylinderGeometry(0.04, 0.07, 9, 10), 4.6, KERB + 4.5, front - 1.2);
+      p.add(mat(0xc9a24e, { roughness: 0.3, metalness: 1 }), new THREE.SphereGeometry(0.1, 10, 8), 4.6, KERB + 9.05, front - 1.2);
+      for (const x of [-3.0, 3.0]) shrub(p, x, 5.9, s.seed * 5 + x * 3, KERB, 0.7);
+      break;
+    }
+    case "f1": {
+      // A concrete apron from the bays to the kerb, KEEP CLEAR hatched in
+      // yellow before each door; a paved yard behind, walled.
+      const concrete = mat(0xa29e96, { roughness: 0.95 });
+      p.box(concrete, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const yellow = mat(0xd8b83a, { roughness: 0.7 });
+      for (const x of [-2.95, 2.95]) {
+        for (const dx of [-1.7, 1.7]) p.box(yellow, 0.12, KERB + 0.01, front - s.d / 2 - 0.3, x + dx, 0, (front + s.d / 2) / 2);
+        for (let i = 0; i < 4; i++) p.box(yellow, 3.3, KERB + 0.01, 0.14, x, 0, s.d / 2 + 0.5 + i * 0.75);
+      }
+      if (hasReal("street")) {
+        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, -s.d / 2, 1.8);
+      }
       break;
     }
     case "s3": {
@@ -1105,7 +1169,88 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   return { group: g, info };
 }
 
+/** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1", "l5"]);
+
+/**
+ * A ruin (damage 3) of a realistic building: the burnt shell left standing,
+ * about half its storeys with a broken top and no roof, scorched and
+ * blackened, broken masonry heaped against its walls; thin smoke, no fire.
+ * It stands until repairs bring it back (docs/progression.md).
+ */
+function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
+  const g = new THREE.Group();
+  const p = new Parts();
+  const r = rng(s.seed * 7 + 1);
+  // Damage 3: the burnt materials, and black, empty window openings (realMat).
+  const burnt: Spec = { ...s, damage: 3 };
+  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: def.debris };
+  const yp = new Parts(YARD);
+  realYard(yp, p, burnt, def, r);
+  yp.into(g);
+  const floors = s.floors > 1 ? Math.max(1, Math.round(s.floors * (0.5 + r() * 0.12))) : 1;
+  const top = stackReal(p, burnt, def, floors, false, info);
+  info.height = top.top;
+  if (hasReal("civic")) {
+    // The broken top: ragged stumps of wall along each edge (masonry) or
+    // charred joists and rafters standing out of it (timber and glass).
+    const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
+    const y = top.top - 0.15;
+    if (MASONRY.has(def.id)) {
+      const edges: [number, number, number, number][] = [
+        [0, def.d / 2 - 0.2, def.w, 0],
+        [0, -def.d / 2 + 0.2, def.w, Math.PI],
+        [def.w / 2 - 0.2, 0, def.d, Math.PI / 2],
+        [-def.w / 2 + 0.2, 0, def.d, -Math.PI / 2],
+      ];
+      for (const [x, z, len, a] of edges) {
+        const n = Math.max(1, Math.round(len / 3.6));
+        for (let i = 0; i < n; i++) {
+          if (r() < 0.2) continue;
+          const t = (i + 0.5) / n - 0.5;
+          const along = t * (len - 0.6);
+          civic(p, "rubble_wall", x + (a % Math.PI ? 0 : along), y, z + (a % Math.PI ? along : 0), { ry: a + (r() < 0.5 ? Math.PI : 0), scale: new THREE.Vector3(((len - 0.6) / n / 3.2) * 1.02, 0.45 + r() * 0.5, 1), paint, damage: 2 });
+        }
+      }
+    }
+    // Smaller beams on low buildings, where a girder would dwarf the walls.
+    const k = THREE.MathUtils.clamp(top.top / 10, 0.4, 1);
+    for (let i = 0; i < 2 + s.grade; i++) {
+      civic(p, "rubble_beam", (r() - 0.5) * def.w * 0.7, y + 0.2 * k, (r() - 0.5) * def.d * 0.7, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.2, rz: (r() - 0.5) * 1.2, scale: new THREE.Vector3(k, k, k), damage: 2 });
+    }
+    for (let i = 0; i < 2; i++) civic(p, "rubble_slab", (r() - 0.5) * def.w * 0.5, y + 0.1, (r() - 0.5) * def.d * 0.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.8, damage: 1 });
+  } else wreckTop(p, top.w, top.d, top.top, def.debris, r, THREE.MathUtils.clamp(top.top / 14, 0.5, 1.1));
+  // Scorch round the walls, and what fell from above heaped against them.
+  p.add(mat(0x1a1714, { transparent: true, opacity: 0.7, depthWrite: false }), new THREE.CircleGeometry(Math.max(s.w, s.d) * 0.75, 16), 0, KERB + 0.02, 0, -Math.PI / 2);
+  if (hasReal("civic")) {
+    const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
+    const pile = 0.9 + s.grade * 0.4;
+    const sides: [number, number, number][] = [
+      [0, s.d / 2 + 0.6, 0],
+      [s.w / 2 + 0.6, 0, Math.PI / 2],
+      [-s.w / 2 - 0.6, 0, -Math.PI / 2],
+    ];
+    for (const [x, z, a] of sides) {
+      if (r() < 0.25) continue;
+      const along = (r() - 0.5) * (a ? s.d : s.w) * 0.5;
+      const px = x + (a ? 0 : along);
+      const pz = z + (a ? along : 0);
+      const R = 1.6 + r() * 1.2;
+      civic(p, "rubble_heap", px, KERB, pz, { ry: r() * Math.PI * 2, scale: new THREE.Vector3(R / 5, pile / 2.5, R / 5), damage: 1 });
+      civic(p, "rubble_slab", px + (r() - 0.5) * 1.5, KERB + pile * 0.5, pz + (r() - 0.5) * 1.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.1, rz: (r() - 0.5) * 0.9, damage: 1 });
+      if (r() < 0.6) civic(p, "rubble_wall", px, KERB + 0.1, pz, { ry: a + (r() - 0.5) * 0.6, rx: (r() - 0.5) * 0.4, scale: new THREE.Vector3(0.6 + r() * 0.4, 0.5 + r() * 0.4, 1), paint, damage: 2 });
+    }
+  }
+  info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * s.w * 0.4, top.top, (r() - 0.5) * s.d * 0.4), kind: "smoke", rate: 0.9 });
+  p.into(g);
+  g.position.set(s.x, 0, s.z);
+  g.rotation.y = s.rot;
+  return { group: g, info };
+}
+
 export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
+  const def = realDef(s);
+  if (def) return shell(s, def);
   const g = new THREE.Group();
   const p = new Parts();
   const r = rng(s.seed * 7 + 1);

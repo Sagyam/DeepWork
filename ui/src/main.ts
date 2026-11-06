@@ -356,7 +356,7 @@ let deedIndex: number | null = null;
 function renderShop() {
   if (!world) return;
   $("#shop-coins").textContent = `You have ${world.coins ?? 0} coins.`;
-  $("#shop-main").innerHTML = shopHtml(world, status?.session != null);
+  $("#shop-main").innerHTML = shopHtml(world, status?.session != null, skyline ? (id) => skyline!.blueprintPic(id) : undefined);
 }
 
 function openShop() {

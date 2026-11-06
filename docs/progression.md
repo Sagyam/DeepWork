@@ -322,9 +322,9 @@ build order. Decisions taken while building are noted inline.
 - [x] App: renderer reads lots, kinds and designs from the world (a
       blueprint picks its realistic model; public buildings get stand-ins:
       a water tower, a square and a park drawn in `models.ts`, the rest
-      borrowed models); lots fill out of order; paused sites drawn half
-      built; a gilded finial on shiny buildings. Ruins still draw as the
-      rubble heap
+      borrowed models until their own: P1, F1, E1, H1 on 2026-11-06); lots fill out of order; paused sites drawn half
+      built; a gilded finial on shiny buildings. Ruins drew as the rubble
+      heap (burnt shells since 2026-11-06, see "Next")
 - [x] App: the mayor's desk card: needs in the residents' words, a design
       pick when more than one fits, coins, paused sites, "What next?" when
       nothing is under construction (and on the start card)
@@ -340,7 +340,8 @@ build order. Decisions taken while building are noted inline.
 ### Next
 
 - [ ] Use it for real: install, then tune prices, build hours and odds
-- [ ] Ruins drawn standing (scarred shells) instead of the rubble heap
+- [x] Ruins drawn standing (scarred shells) instead of the rubble heap
+      (2026-11-06, `shell()` in `ui/src/city/models.ts`; the kit keeps the heap)
 - [x] The level-up moment (2026-11-06): the camera backs off to the whole
       city and circles it while fireworks go up over the rooftops (10 + 3
       per level, a finale of three; `Fx.firework`), with the narration line;
@@ -356,6 +357,8 @@ build order. Decisions taken while building are noted inline.
 - [ ] The master plan's real layout in `plan.ts` (streets, districts,
       reserved landmark ground); a test that its lot ids match the daemon's
 - [ ] Models for water, power and the public buildings, with blueprints
+      (models listed and ordered in `docs/models.md`, "Public buildings and
+      utilities" and "Early-game gaps")
 - [ ] Metropolis and beyond: open-ended needs in expansion districts
 - [ ] Endowed progress, collection sets, staking coins, seasons and quests,
       residents' letters and move-outs

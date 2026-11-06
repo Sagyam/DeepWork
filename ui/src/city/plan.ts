@@ -59,16 +59,16 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
  */
 export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string }> = {
   water: { kind: "shop", style: "water" },
-  power: { kind: "shop", style: "factory", model: "s4" },
-  school: { kind: "apartment", style: "classic", model: "a3" },
-  clinic: { kind: "apartment", style: "classic", model: "a3" },
-  fire_station: { kind: "shop", style: "factory", model: "s4" },
+  power: { kind: "shop", style: "substation", model: "p1" },
+  school: { kind: "apartment", style: "school", model: "e1" },
+  clinic: { kind: "shop", style: "clinic", model: "h1" },
+  fire_station: { kind: "shop", style: "firestation", model: "f1" },
   square: { kind: "shop", style: "square" },
   park: { kind: "shop", style: "park" },
   police: { kind: "apartment", style: "classic", model: "a1" },
   library: { kind: "apartment", style: "townhouse", model: "a2" },
   hospital: { kind: "office", style: "classic", model: "o1" },
-  city_hall: { kind: "landmark", style: "deco", model: "l1" },
+  city_hall: { kind: "landmark", style: "cityhall", model: "l5" },
 };
 
 /** The look a lot gets from its blueprint or kind; none from an older daemon. */
@@ -78,7 +78,7 @@ export function lookOf(design: string | null | undefined, kind: string | undefin
 }
 
 /** How far each type stands back from the street, front wall to lot edge. */
-const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, apartment: 2.2, townhouse: 2.6, office: 2.6 };
+const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, substation: 1.2, firestation: 3.4, school: 1.0, clinic: 0.6, cityhall: 0.6, apartment: 2.2, townhouse: 2.6, office: 2.6 };
 
 export type ParkKind = "plaza" | "park" | "sports";
 const PARKS: ParkKind[] = ["plaza", "park", "sports", "park"];
@@ -264,8 +264,11 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
   let u = r();
   const style = look?.style ?? STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
   if (style === "diner") floors = 1;
-  if (style === "factory") [floors, floorH] = [1, 5];
+  if (style === "factory" || style === "substation") [floors, floorH] = [1, 5];
   if (style === "townhouse") floors = Math.min(floors, 3 + pick(r, 2));
+  if (style === "school") floors = 2;
+  if (style === "clinic") floors = 1;
+  if (style === "cityhall") [w, d, floors] = [10.4, 10.4, 4];
   return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
 }
 
