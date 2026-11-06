@@ -65,9 +65,7 @@ with a root shell open in another terminal for the PAM checks.
       merged `Parts`.
 - [ ] Quality presets (render scale, shadow map, MSAA, bloom) for weak
       iGPUs on 1440p+.
-- [ ] Cheaper shadow filter (5 PCF taps into 8192² cost 3-4 ms).
 - [ ] Geometry compression (meshopt) to shrink the pack.
-- [ ] Fountain spray in the app's parks (`Parts` can't hold `Points`).
 - [ ] Retune lighting: it is still tuned for the flat kit.
 
 ## Packaging

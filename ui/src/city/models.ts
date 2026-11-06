@@ -7,7 +7,7 @@ import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { NOMINAL, piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
-import { CAR_PAINTS, DEFS, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef, waterMat } from "./real";
+import { CAR_PAINTS, DEFS, fountainSpray, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef, waterMat } from "./real";
 import { ATLAS, panes, type Pane } from "./textures";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
@@ -58,6 +58,8 @@ export function mat(color: number, opts: THREE.MeshStandardMaterialParameters & 
 /** Collects geometry per material and merges it into one mesh each. */
 export class Parts {
   private byMat = new Map<THREE.Material, THREE.BufferGeometry[]>();
+  /** Objects that cannot be merged (a fountain's spray, Points), added as they are. */
+  private extras: THREE.Object3D[] = [];
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private e = new THREE.Euler();
@@ -116,7 +118,13 @@ export class Parts {
     this.add(material, new THREE.CylinderGeometry(r0, r1, h, seg), x, y + h / 2, z);
   }
 
+  /** Adds an object that is not merged (Points, say) to the group into() fills. */
+  extra(o: THREE.Object3D) {
+    this.extras.push(o);
+  }
+
   into(group: THREE.Group, shadows = true) {
+    for (const o of this.extras) group.add(o);
     for (const [material, list] of this.byMat) {
       const mesh = new THREE.Mesh(mergeGeometries(list), material);
       // Clear glass (balcony rails) would cast a solid shadow: it casts none.
@@ -1162,6 +1170,7 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
     if (hasReal("civic")) {
       const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
       civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(0.85, 0.85, 0.85), swap: water });
+      if (s.damage === 0) p.extra(fountainSpray(0, KERB, cz, 0.85));
     } else {
       const stone = mat(0xd8d2c4, { roughness: 0.8 });
       const water = mat(0x4f7d93, { metalness: 0.3, roughness: 0.15 });
@@ -1543,6 +1552,7 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       flat(mat(0x9a8e7e, { roughness: 0.9 }), new THREE.CircleGeometry(10, 32), 0, 0);
       flat(mat(0xd8d0c0, { roughness: 0.9 }), new THREE.RingGeometry(10, 10.8, 32), 0, 0, KERB + 0.03);
       prop(p, "fountain", X, Z, 0, 1.45);
+      if (hasReal("civic")) p.extra(fountainSpray(X, KERB, Z, 1.45));
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
         // Benches face the fountain (a bench's front is +z before turning).

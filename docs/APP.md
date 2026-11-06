@@ -131,6 +131,9 @@ behind `&opt=N` before they move to `scene.ts`. What was learned:
 - **Draw only when something changes.** A still city draws no frames; a
   hidden window none at all; an unfocused one ambient motion at `DIM_FPS`
   with traffic and auto-rotate stopped, moments still at full rate.
+- **Shadow filter**: a fixed 2x2 grid of hardware-PCF taps (`shadow.ts`)
+  looks like three's noisy 5-tap disc and saves ~1.5 ms; one tap shows
+  jagged leaf shadows. `&taps=1|4|5` compares them in the app and the town.
 - **Instance, don't merge** detailed models: merged geometry costs gigabytes.
 - Texture bandwidth is not the limit here; BC7 compression (`scripts/textures.ts`)
   is for memory and download size. Share canvas sheets (`sheet()`), never

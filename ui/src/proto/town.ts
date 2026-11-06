@@ -5,7 +5,7 @@
 //   ?view=overview|downtown|main|homes|works|bridge|plaza|skyline|fountain|pond &hour=15
 //   &still (parks the traffic) &gputimer=0 (no GPU timer queries)
 //   &opt=0-8 (the optimisations below, cumulative; default all)
-//   &aa=msaa|smaa|fxaa|none &scale=1 &shadowmap=8192 (trade-offs) &fps=30 (cap) &bench (see scripts/bench-town.ts)
+//   &aa=msaa|smaa|fxaa|none &scale=1 &shadowmap=8192 &taps=1|4|5 (trade-offs) &fps=30 (cap) &bench (see scripts/bench-town.ts)
 // The bottom-left panel ("stats for nerds") shows frame, CPU and GPU times,
 // draw calls, triangles and memory, for judging the cost of new models.
 // A new model shows up once it is added to BLOCKS below.
@@ -32,9 +32,12 @@ import { loadKit } from "../city/kit";
 import { building, furniture, KERB, mat, park, parked, Parts, SPECIES, tree } from "../city/models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, rng, type Spec } from "../city/plan";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "../city/impostor";
+import { shadowTaps, type ShadowTaps } from "../city/shadow";
 import { CAR_PAINTS, DEFS, fountainSpray, groundMat, hasReal, interiorUniforms, loadReal, PROPS, realMat, realPiece, realPieces, setRealEnv, setSignals, setWaterTime, waterMat } from "../city/real";
 
 const q = new URLSearchParams(location.search);
+const taps = Number(q.get("taps") ?? 5) as ShadowTaps;
+shadowTaps(taps);
 const hour = Number(q.get("hour") ?? 15);
 const night = hour < 6 || hour >= 19.5;
 
@@ -576,9 +579,7 @@ Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS], renderer)]).t
       park(P.props, { x, z, kind: b.park, seed: 5 + b.bx * 3 + b.bz }, pole, bulb);
       // The plaza's fountain plays (park() draws it at 1.45x on the kerb).
       if (b.park === "plaza") {
-        const spray = fountainSpray(x, KERB, z, 1.45);
-        if (night) (spray.material as THREE.ShaderMaterial).uniforms.uBright.value = 0.22;
-        cats.streets.add(spray);
+        cats.streets.add(fountainSpray(x, KERB, z, 1.45));
       }
       continue;
     }
@@ -825,7 +826,7 @@ function updateText() {
     ["programs", fmt(i.programs?.length ?? 0)],
     ["scene", `${fmt(objects)} objects, ${movers.length} cars`],
     ["canvas", `${renderer.domElement.width}×${renderer.domElement.height} @${pr}x, ${aa === "msaa" ? "MSAA 4x" : aa.toUpperCase()}`],
-    ["shadow", `${sun.shadow.mapSize.x}² PCF, ${renderer.shadowMap.autoUpdate ? "every frame" : "drawn once"}`],
+    ["shadow", `${sun.shadow.mapSize.x}² PCF ${taps} taps, ${renderer.shadowMap.autoUpdate ? "every frame" : "drawn once"}`],
     ["heap", mem ? `${(mem.usedJSHeapSize / 2 ** 20).toFixed(0)} / ${(mem.jsHeapSizeLimit / 2 ** 20).toFixed(0)} MB` : "n/a"],
     ["gpu dev", gpuName.replace(/^ANGLE \(/, "").replace(/ \(.*$/, "").replace(/^[^,]*, /, "").slice(0, 34)],
   ];

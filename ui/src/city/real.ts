@@ -1383,6 +1383,9 @@ export function waterMat(o: { amp?: number; scale?: number; ring?: [number, numb
  * the upper basin's rim into the lower one, as the kit fountain shows them.
  * `x, y, z` is the fountain's foot, `s` its scale.
  */
+/** The spray's brightness, dimmed at night by setSignals. */
+const sprayBright = { value: 1 };
+
 export function fountainSpray(x: number, y: number, z: number, s: number): THREE.Points {
   const N = 1400;
   const p0 = new Float32Array(N * 3);
@@ -1422,7 +1425,7 @@ export function fountainSpray(x: number, y: number, z: number, s: number): THREE
   geo.setAttribute("aVel", new THREE.BufferAttribute(v, 3));
   geo.setAttribute("aLife", new THREE.BufferAttribute(life, 2));
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uTime: waterUniforms.uTime, uSize: { value: 0.09 }, uBright: { value: 1 } },
+    uniforms: { uTime: waterUniforms.uTime, uSize: { value: 0.09 }, uBright: sprayBright },
     transparent: true,
     depthWrite: false,
     vertexShader: /* glsl */ `
@@ -1467,6 +1470,7 @@ const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, s
  * brightens the lit lenses.
  */
 export function setSignals(t: number, night = 0) {
+  sprayBright.value = 1 - 0.78 * night;
   const T = 30;
   const c = ((t % T) + T) % T;
   const lit = (phase: string) => {

@@ -15,6 +15,7 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { World, WorldEvent } from "../proto";
 import { namesOf } from "../format";
 import { Bench } from "./bench";
+import { shadowTaps, type ShadowTaps } from "./shadow";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
@@ -209,6 +210,10 @@ export class City {
     r.setPixelRatio(1);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
+    // shadow filter (shadow.ts): a fixed 2x2 grid looks as soft as three's
+    // noisy 5-tap disc and costs less; &taps=1|4|5 compares them.
+    const taps = Number(new URLSearchParams(location.search).get("taps") ?? 4);
+    shadowTaps(([1, 4, 5].includes(taps) ? taps : 4) as ShadowTaps);
     // shadow: the city stands still nearly all the time and the sun moves
     // slowly, so the shadow map is drawn only when the sun has moved on, a
     // building changes or cut-out textures arrive (shadowsDirty()), not every
