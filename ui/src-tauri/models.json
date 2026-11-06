@@ -1,6 +1,6 @@
 {
- "id": "72a8723f09d5dfa7",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-72a8723f09d5dfa7/",
+ "id": "674b768cd37cb672",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-674b768cd37cb672/",
  "files": [
   {
    "path": "a1.glb",
@@ -58,8 +58,8 @@
   },
   {
    "path": "civic.glb",
-   "size": 2521680,
-   "sha256": "f3e8d2f15d2a69b5e631b09361ee065b1cf9224b58bd8044b2b260cce8b6b127",
+   "size": 2518232,
+   "sha256": "01a061655c6e56f49b477b49c6f61b1d733e0ab47bda7aa388443f10729a406d",
    "asset": "civic.glb"
   },
   {
@@ -112,8 +112,8 @@
   },
   {
    "path": "bc7.json",
-   "size": 1584,
-   "sha256": "e02513cd502185b6922c5becb0d6d4ec61c23cc85cc285d87592d93d6101e268",
+   "size": 1677,
+   "sha256": "c3236bb79e855b373159001760bba3c61f8de850002823fcde588552e97af4c0",
    "asset": "bc7.json"
   },
   {
@@ -172,8 +172,8 @@
   },
   {
    "path": "civic_ao.bc7",
-   "size": 7814478,
-   "sha256": "efc133776a2d39d0c1900963bb69eedef7975e2ba45219fe4cb2525820b7f1e1",
+   "size": 7815620,
+   "sha256": "f1f422d696a3e4cb17fe9e3cebc83cecbed2f4be38b0340b38cb81ddbdbad876",
    "asset": "civic_ao.bc7"
   },
   {
@@ -543,6 +543,24 @@
    "asset": "tex.net_col.bc7"
   },
   {
+   "path": "tex/paintsteel_col.bc7",
+   "size": 809313,
+   "sha256": "2a4dc8be0e0a2e5e8fa88aa7ad467bc1415ad938b3569cb36ca464359ebf93fb",
+   "asset": "tex.paintsteel_col.bc7"
+  },
+  {
+   "path": "tex/paintsteel_nrm.bc7",
+   "size": 218053,
+   "sha256": "528e8c49882b8f9b53a7039b17df6448d13894b83a8766e8d260ce26d0e09971",
+   "asset": "tex.paintsteel_nrm.bc7"
+  },
+  {
+   "path": "tex/paintsteel_rgh.bc7",
+   "size": 584544,
+   "sha256": "14bd88b87f31ed3fd89b9132e4edead1c9ce98680280529367aa167861ea9237",
+   "asset": "tex.paintsteel_rgh.bc7"
+  },
+  {
    "path": "tex/pave_col.bc7",
    "size": 548606,
    "sha256": "a30e82ca39055d170c62f9e54e96034123229d2144d011e4bf826e2d6172c7ce",
@@ -721,6 +739,18 @@
    "size": 192175,
    "sha256": "932a52f64a8f79823da9bec458bdc3698aea3065dd1cd0d490aa1ae7d8343a83",
    "asset": "tex.woods_col.bc7"
+  },
+  {
+   "path": "tex/zinc_col.bc7",
+   "size": 730339,
+   "sha256": "dcbec71b569ac41177cadedbc21d61335d01c7f98a5bfc466a82212368bea4d6",
+   "asset": "tex.zinc_col.bc7"
+  },
+  {
+   "path": "tex/zinc_nrm.bc7",
+   "size": 218227,
+   "sha256": "2a99743ccb541197f4c1dbc68716327083421d06be78af1448ee668a8b38e237",
+   "asset": "tex.zinc_nrm.bc7"
   },
   {
    "path": "trees_ao.bc7",
