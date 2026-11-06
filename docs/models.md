@@ -460,7 +460,7 @@ and grander, so the two read differently.
 | Construction | Floors up to progress, scaffold, crane, blueprint | Same scheme with realistic scaffold, formwork, safety netting, site hoarding; landmarks fenced across their whole ground | 20% |
 | Damage 1 | Darker, smoke | Soot streaks (grime shader), a few broken panes, smoke | 5% (shader) |
 | Damage 2 | Lower ~3/4, no roof, fire | Broken top edge per piece, burnt interiors in the window shader, exposed floors; parks and squares scorched, statues toppled | 15% |
-| Rubble | Heap of chunks | Brick / concrete heaps by family, bent beams, dust | 15% |
+| Rubble | ~~Heap of chunks~~ | **done** (2026-11-06): a heap of crushed masonry (`civic`) with broken brick walls in the building's brick, slabs with rebar and bent beams, more for bigger buildings | 15% |
 | Night | Window atlas lit | Done: the interior shader lights rooms | done |
 
 ## Not buildings, but they must match
@@ -472,10 +472,10 @@ Low-poly next to realistic buildings looks broken, so these follow in turn:
 | Terrain | Faceted, flat-shaded hills, river, lake | Smooth terrain, grass / rock / soil textures, real water | 40% |
 | Trees | ~~Six low-poly species~~ | **done** (2026-11-04): nine species, four shrubs, a hedge, light trees for the woods, lawns (see "Props") | 30% |
 | Streets | ~~Flat roads, zebras, lamps~~ | **done** (2026-11-04): asphalt, kerbs, paving, lane marks, drains, manholes, LED street lights, hydrants, bins, benches, bus stops, traffic signals on a cycle | 25% |
-| Automatic parks | Plaza / pond / football ground | Partly (2026-11-04): paving, lawns, lanterns, benches and trees are realistic; the fountain, bandstand, goals and stands are still the kit's | 30% |
+| Automatic parks | Plaza / pond / football ground | **done** (2026-11-06): paving, lawns, lanterns, benches and trees (2026-11-04), then the fountain (two tiers, animated water), bandstand, goals with nets and the covered stand (`civic`) | 30% |
 | Vehicles | ~~Four cars, a bus~~ | **done** (2026-11-04): hatchback, saloon, estate, SUV, coupé, taxi, pickup, van, bus, box truck | 25% |
-| People | One pedestrian | A few figures in varied clothes (small on screen, low detail) | 15% |
-| Tower crane | Lattice crane | More detailed lattice (reuses the fire-escape strut code) | 10% |
+| People | ~~One pedestrian~~ | **done** (2026-11-06): a smooth mid-stride figure (`civic` person, ~900 triangles), tinted per walker as before | 15% |
+| Tower crane | ~~Lattice crane~~ | **done** (2026-11-06): the kit's crane rebuilt at its sizes (`civic`): braced mast with ladder and fishplates, cab, tower head, triangular jib with rails, counter-jib with winch, cabinet and ballast; tube-and-fitting scaffold bays with boards | 10% |
 | Bridge | ~~Truss bridge~~ | **done** (2026-11-04): riveted steel Pratt through truss | 10% |
 
 ### Props (2026-11-04)
@@ -493,6 +493,7 @@ lays any of them out: `/proto.html?props=cars` (see `docs/DEVELOPMENT.md`).
 | `trees` | `trees.py` | oak, maple, linden, birch, cherry, spruce, pine, poplar, young; bush, bush_wide, shrub, flowers, hedge; forest_a-e | 0.5-2 k a tree, ~170 a shrub, ~120 a wood tree | species by frequency, foliage tint (`FOLIAGE`), size from the kit's scale, turn; hedges stretched to length |
 | `street` | `street.py` | lamp_led, lamp_heritage, lamp_park, signal_mast, signal_post, fence_panel, fence_rail, fence_iron, wall_brick, hydrant, bin, bench, bollard, busstop | 30-310 each | fence and wall runs stretched to fit (`fenceRun`); signals on two phases |
 | `bridge` | `bridge.py` | bridge | 5.6 k | |
+| `civic` | `civic.py` | water_tower, crane_* (nine, the kit's names and anchors), scaffold, rubble_heap, rubble_wall, rubble_slab, rubble_beam, fountain, bandstand, goal, bleachers, person | 8.5 k tower, 0.1-1.2 k a crane piece, 0.4 k a scaffold bay, 7.5 k heap, ~4 k each park piece, 0.9 k person | crane anchors from the kit; scaffold bays stretched to each face and storey; rubble laid out per lot (walls in the building's brick, slabs, beams by grade); fountain water animated (`waterMat`); people tinted per walker |
 
 - **Vehicles** (rebuilt 2026-11-04: the first, lofted ones looked melted
   up close) are modelled the way car models are: a coarse cage of

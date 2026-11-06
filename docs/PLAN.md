@@ -698,6 +698,18 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Civic props (2026-11-06): the last low-poly things round the buildings went
+realistic in one new props model, `civic` (`ui/blender/real/civic.py`):
+the water tower (an elevated steel tank, leaning when broken), the tower
+crane at the kit's sizes (its anchors still come from the kit), tube-and-
+fitting scaffold bays, rubble (a heap of crushed masonry with wall stumps
+in the building's brick, slabs with rebar and bent beams), the parks'
+fountain (also the town square's), bandstand, goals with nets and covered
+stand, and a smooth pedestrian. The kit draws them all while `civic` is
+missing. Needs `bun run models -- civic`, and a new model pack for
+releases. Checked headless in the props viewer and the city and metropolis
+mocks, day and night; draw cost unchanged within noise.
+
 Visual fixes (2026-11-06), from the user's complaints: (1) white things
 glowed: the day bloom threshold (0.9) sat below a sunlit white wall (about
 1.3), so it is now 6 by day and 1.5 by night; (2) trees looked like sheets
@@ -1008,7 +1020,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB);
       downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them;
-      visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground
+      visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground;
+      civic props realistic (2026-11-06): water tower, tower crane and scaffold, rubble, park fountain / bandstand / goals / stand, people
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)
