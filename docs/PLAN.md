@@ -698,6 +698,21 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Early-game gaps (2026-11-06): the user asked for an inventory of the assets
+and what the first ~100 focused hours lack. The list and its build order
+are in `docs/models.md`, "Early-game gaps", with the new models under
+"Public buildings and utilities". Built from it, each checked in the
+viewer by day and night and wired through `PUBLIC` in `city/plan.ts`: P1
+substation (power), F1 fire station, E1 school, H1 clinic and L5 city hall
+(at lot size), so nothing before 50 h borrows a blueprint's model; the
+shop's blueprint pictures (`city/thumbs.ts`, the models drawn off screen
+by the city's renderer, locked ones as silhouettes, light and dark); ruins
+drawn standing as burnt shells (`shell()` in `models.ts`, `&damage=3` in
+the viewer). Pack `models-3c1b1b260663f795` (136 files). Left, in that
+list's order: O2 or O3, a second workshop, then H2 hospital, E2 police
+and E3 library, and P2 power station and W2 pumping station for the City;
+the master plan's layout before L5 grows to its half block.
+
 Civic props, textured (2026-11-06): the civic pieces were flat `plain()`
 colours and read as clean CG. Now: a weathered painted-steel texture
 (`paintsteel`, in `civic.py`: chalky fading, rain streaks, chips, rust spots
@@ -1050,7 +1065,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them;
       visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground;
       civic props realistic (2026-11-06): water tower, tower crane and scaffold, rubble, park fountain / bandstand / goals / stand, people;
-      early-game gaps listed (2026-11-06, `docs/models.md` "Early-game gaps"): public buildings borrow blueprint models, built in the order there
+      early-game gaps listed (2026-11-06, `docs/models.md` "Early-game gaps"); P1 substation, F1 fire station, E1 school, H1 clinic, L5 city hall,
+      blueprint pictures in the shop and ruins standing done the same day (pack `models-3c1b1b260663f795`)
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)
