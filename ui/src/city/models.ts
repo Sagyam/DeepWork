@@ -781,6 +781,12 @@ export function furniture(p: Parts, name: string, x: number, y: number, z: numbe
   for (const { role, geo } of realPiece("street", name)) p.add(realMat("street", role, tintOf(0), 0, phase), geo, x, y, z, 0, ry, 0, scale);
 }
 
+/** A piece of the civic props model (civic.py): water tower, crane, scaffold, rubble, park pieces. */
+export function civic(p: Parts, name: string, x: number, y: number, z: number, opts: { rx?: number; ry?: number; rz?: number; scale?: THREE.Vector3; paint?: Paint; damage?: number; swap?: (role: string) => THREE.Material | undefined } = {}) {
+  const { rx = 0, ry = 0, rz = 0, scale, paint = tintOf(0), damage = 0, swap } = opts;
+  for (const { role, geo } of realPiece("civic", name)) p.add(swap?.(role) ?? realMat("civic", role, paint, damage), geo, x, y, z, rx, ry, rz, scale);
+}
+
 /**
  * A fence or wall (a street piece: fence_panel, fence_rail, fence_iron,
  * wall_brick) from (x0, z0) to (x1, z1), its 2.4 m panels stretched to fit;
@@ -988,7 +994,15 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const info: ModelInfo = { height: 4, emitters: [], beacons: [], night: [], debris: 0x7a7570 };
   const cz = -s.yard;
   const half = LOT / 2 - 0.4;
-  if (s.style === "water") {
+  if (s.style === "water" && hasReal("civic")) {
+    // An elevated steel tank (civic.py), 22 m to its vent; broken, it leans.
+    p.box(lawn(), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
+    const lean = s.damage >= 2 ? 0.07 : 0;
+    civic(p, "water_tower", 0, KERB, cz, { rx: lean, rz: lean * 0.6, damage: s.damage });
+    if (hasReal("street")) fenceRun(p, "fence_rail", -half, cz + half, half, cz + half, 0.9);
+    info.height = KERB + 21.9;
+    info.beacons.push(new THREE.Vector3(0, KERB + 22.0, cz));
+  } else if (s.style === "water") {
     p.box(lawn(), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
     const steel = mat(0x8c96a0, { metalness: 0.6, roughness: 0.45 });
     const tank = mat(s.damage ? 0x6a6e70 : 0xc8ccd0, { metalness: 0.5, roughness: 0.4 });
@@ -1011,12 +1025,17 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
     const park = s.style === "park";
     p.box(park ? lawn() : mat(0xb9b2a6, { roughness: 0.9 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
     if (park) p.box(mat(0xc8bfae, { roughness: 1 }), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
-    const stone = mat(0xd8d2c4, { roughness: 0.8 });
-    const water = mat(0x4f7d93, { metalness: 0.3, roughness: 0.15 });
-    p.cyl(stone, 2.6, 2.8, 0.6, 0, KERB, cz, 24);
-    p.cyl(water, 2.3, 2.3, 0.08, 0, KERB + 0.5, cz, 24);
-    p.cyl(stone, 0.35, 0.5, 1.8, 0, KERB + 0.6, cz, 10);
-    p.cyl(stone, 0.9, 0.2, 0.3, 0, KERB + 2.4, cz, 12);
+    if (hasReal("civic")) {
+      const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
+      civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(0.85, 0.85, 0.85), swap: water });
+    } else {
+      const stone = mat(0xd8d2c4, { roughness: 0.8 });
+      const water = mat(0x4f7d93, { metalness: 0.3, roughness: 0.15 });
+      p.cyl(stone, 2.6, 2.8, 0.6, 0, KERB, cz, 24);
+      p.cyl(water, 2.3, 2.3, 0.08, 0, KERB + 0.5, cz, 24);
+      p.cyl(stone, 0.35, 0.5, 1.8, 0, KERB + 0.6, cz, 10);
+      p.cyl(stone, 0.9, 0.2, 0.3, 0, KERB + 2.4, cz, 12);
+    }
     const n = park ? 6 : 4;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + 0.4;
@@ -1086,6 +1105,35 @@ export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const r = rng(s.seed * 7 + 1);
   const pile = 1.4 + s.grade * 0.9;
   p.box(mat(0x4a4642), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, -s.yard);
+  if (hasReal("civic")) {
+    // A heap of broken masonry (civic.py) with what is left standing or
+    // thrown about on it: wall stumps in the building's brick, broken
+    // slabs with their rebar out, bent beams; more of each for bigger buildings.
+    const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
+    const R = s.w * 0.62;
+    civic(p, "rubble_heap", 0, 0, 0, { ry: r() * Math.PI * 2, scale: new THREE.Vector3(R / 5, pile / 2.5, R / 5), damage: 1 });
+    const on = (d: number) => Math.max(0, pile * (1 - d * d) ** 1.4 - 0.3);
+    for (let i = 0; i < 2 + s.grade; i++) {
+      const a = r() * Math.PI * 2;
+      const d = 0.55 + r() * 0.4;
+      civic(p, "rubble_wall", Math.cos(a) * R * d, on(d) * 0.6, Math.sin(a) * R * d, { ry: -a + Math.PI / 2 + (r() - 0.5) * 0.6, rx: (r() - 0.5) * 0.25, scale: new THREE.Vector3(0.8 + r() * 0.5, 0.7 + r() * 0.6 + s.grade * 0.15, 1), paint, damage: 2 });
+    }
+    for (let i = 0; i < 3 + s.grade * 2; i++) {
+      const a = r() * Math.PI * 2;
+      const d = r() * 0.85;
+      civic(p, "rubble_slab", Math.cos(a) * R * d, on(d), Math.sin(a) * R * d, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.1, rz: (r() - 0.5) * 0.9, damage: 1 });
+    }
+    for (let i = 0; i < 1 + s.grade; i++) {
+      const a = r() * Math.PI * 2;
+      const d = r() * 0.7;
+      civic(p, "rubble_beam", Math.cos(a) * R * d, on(d) + 0.2, Math.sin(a) * R * d, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.5, damage: 2 });
+    }
+    p.into(g);
+    g.position.set(s.x, 0, s.z);
+    g.rotation.y = s.rot;
+    const info: ModelInfo = { height: pile, emitters: [{ pos: new THREE.Vector3(0, pile * 0.6, 0), kind: "smoke", rate: 0.8 }], beacons: [], night: [], debris: WALLS[s.wall] };
+    return { group: g, info };
+  }
   p.add(mat(0x5d5852, { flatShading: true, roughness: 1 }), new THREE.ConeGeometry(s.w * 0.62, pile, 9, 1), 0, pile / 2, 0, 0, r(), 0);
   const conc = mat(0x7a7570, { roughness: 1, flatShading: true });
   const wall = mat(new THREE.Color(WALLS[s.wall]).multiplyScalar(0.55).getHex(), { flatShading: true });
@@ -1141,7 +1189,22 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   const gap = 0.8;
   const W = s.w + gap * 2;
   const D = s.d + gap * 2;
-  for (const [len, axis] of [[W, "x"], [D, "z"]] as const) {
+  if (hasReal("civic")) {
+    // Tube-and-fitting bays (civic.py), 2.4 m stretched to fit each face,
+    // one lift a storey; red tubes while the site is being surrendered.
+    const red = s.surrendering ? mat(0xc0392b, { metalness: 0.4, roughness: 0.5 }) : undefined;
+    const swap = (role: string) => (role === "galv" ? red : undefined);
+    const lift = new THREE.Vector3(1, s.floorH / 2, 1);
+    for (const [len, ox, oz, ry] of [[W, 0, D / 2, 0], [W, 0, -D / 2, Math.PI], [D, W / 2, 0, Math.PI / 2], [D, -W / 2, 0, -Math.PI / 2]] as const) {
+      const n = Math.max(1, Math.round(len / 2.4));
+      const scale = lift.clone().setX(len / n / 2.4);
+      const [dx, dz] = [Math.cos(ry), -Math.sin(ry)];
+      for (let i = 0; i < n; i++) {
+        const t = -len / 2 + (len * (i + 0.5)) / n;
+        for (let y = 0; y < sh - 0.01; y += s.floorH) civic(p, "scaffold", ox + dx * t, y, oz + dz * t, { ry, scale, swap });
+      }
+    }
+  } else for (const [len, axis] of [[W, "x"], [D, "z"]] as const) {
     const n = Math.max(2, Math.round(len / 2.4));
     for (let i = 0; i <= n; i++) {
       const t = -len / 2 + (len * i) / n;
@@ -1151,7 +1214,7 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
       }
     }
   }
-  for (let y = s.floorH; y <= sh + 0.01; y += s.floorH) {
+  if (!hasReal("civic")) for (let y = s.floorH; y <= sh + 0.01; y += s.floorH) {
     for (const side of [-1, 1]) {
       p.box(scaff, W, 0.08, 0.08, 0, y, (side * D) / 2);
       p.box(scaff, 0.08, 0.08, D, (side * W) / 2, y, 0);
@@ -1172,8 +1235,11 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
 
   // Tower crane from the kit: base and mast sections, then a jib that turns
   // with its cab, counter-jib, pendant ties, trolley, hook and a load of steel.
+  // The anchors (apex, beacons, the counter-jib's end) are the kit's; the
+  // realistic crane (civic.py) is built to the same sizes.
   const crane = (p: Parts, name: string, x: number, y: number, z: number) => {
-    for (const { role, geo } of piece(name).parts) p.add(kitMat(ROLES[role] ?? ROLES.metal, 0), geo, x, y, z);
+    if (hasReal("civic")) civic(p, name, x, y, z);
+    else for (const { role, geo } of piece(name).parts) p.add(kitMat(ROLES[role] ?? ROLES.metal, 0), geo, x, y, z);
     return piece(name).anchors;
   };
   const cp = new Parts();
@@ -1229,6 +1295,8 @@ function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = K
   const scale = new THREE.Vector3(s, s, s);
   if (name === "bench" && hasReal("street")) return furniture(p, "bench", x, y, z, ry);
   // A fountain's water moves: calm small ripples, rings from where it lands, streaks down the jet and streams.
+  const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [x, z] }) : undefined);
+  if (hasReal("civic")) return civic(p, name, x, y, z, { ry, scale, swap: water });
   for (const { role, geo } of piece(name).parts) p.add(role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [x, z] }) : kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 

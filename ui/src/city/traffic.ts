@@ -188,7 +188,17 @@ export class Traffic {
     }
 
     const walkers = p.blocks.length * PEOPLE[tier];
-    const people = new Fleet(piece("person").parts, walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
+    // The realistic figure (civic.py) when loaded; the same roles, so the
+    // same palettes. These materials read the kit's baked AO from vertex
+    // colours, so the figure gets plain white ones.
+    const figure = hasReal("civic")
+      ? realPiece("civic", "person").map(({ role, geo }) => {
+          const g = geo.clone();
+          g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3).fill(1), 3));
+          return { role, geo: g };
+        })
+      : piece("person").parts;
+    const people = new Fleet(figure, walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
     const walks = p.blocks.flatMap((b) => [
       blockLoop(b.x, b.z, BLOCK_X / 2 + 0.5, BLOCK_Z / 2 + 0.5, 0.8),
       blockLoop(b.x, b.z, BLOCK_X / 2 + 1.25, BLOCK_Z / 2 + 1.25, 1.2),

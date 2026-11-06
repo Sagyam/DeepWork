@@ -380,7 +380,7 @@ export const DEFS: Record<string, RealDef> = {
  * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
  * the kit's props.
  */
-export const PROPS = ["cars", "trees", "street", "bridge"];
+export const PROPS = ["cars", "trees", "street", "bridge", "civic"];
 
 // ---- compressed textures ------------------------------------------------------------
 //
@@ -1599,6 +1599,16 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;
     case "cafeglass": m = room("cafe"); break;
+    // Civic props (civic.py): water tower, crane, scaffold, rubble, parks.
+    case "tankpaint": m = w(plain(0xd4d8d6, 0.5, 0.35), 1.2); break;
+    case "tankband": m = w(plain(0x2f5a8a, 0.5, 0.3), 1.2); break;
+    case "crane": m = w(plain(0xe8b020, 0.5, 0.3), 1); break;
+    case "rubble": m = w(pbr("rubble", [3, 3], { roughness: 0.97 }), 0.6); break;
+    case "char": m = w(plain(0x1d1a18, 0.95), 0.4); break;
+    case "scaffboard": m = w(plain(0xa08458, 0.85), 1.2); break;
+    case "net": m = new THREE.MeshStandardMaterial({ map: tex("net_col", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }); break;
+    case "water": m = sheen({ color: 0x4f7d93, roughness: 0.1, metalness: 0.2 }); break;
+    case "skin": case "shirt": case "pants": case "hair": m = w(plain(0xffffff, 0.8)); break;
     default: m = plain(0xff00ff);
   }
   if (damage && !role.endsWith("glass")) (m as THREE.MeshStandardMaterial).color.multiplyScalar(shade);
