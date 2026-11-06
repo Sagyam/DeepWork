@@ -1,6 +1,6 @@
 {
- "id": "14c9325ec6d74ab5",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-14c9325ec6d74ab5/",
+ "id": "72a8723f09d5dfa7",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-72a8723f09d5dfa7/",
  "files": [
   {
    "path": "a1.glb",
@@ -57,6 +57,12 @@
    "asset": "cars.glb"
   },
   {
+   "path": "civic.glb",
+   "size": 2521680,
+   "sha256": "f3e8d2f15d2a69b5e631b09361ee065b1cf9224b58bd8044b2b260cce8b6b127",
+   "asset": "civic.glb"
+  },
+  {
    "path": "l1.glb",
    "size": 901916,
    "sha256": "f98503f8d95b4cd5b7307dbc16ce3997b701868504222e22b3f3de775fc2644c",
@@ -100,14 +106,14 @@
   },
   {
    "path": "trees.glb",
-   "size": 1222108,
-   "sha256": "d91cdf2ff8a0aa28188f9491dd85239f9efef3f1c9595711dc9008bccde77627",
+   "size": 2687288,
+   "sha256": "beca8d33eae6c564cf8c3575cda3d1ec0704efdb9e190ed0a28412bc07388469",
    "asset": "trees.glb"
   },
   {
    "path": "bc7.json",
-   "size": 1525,
-   "sha256": "e653c1eaad8bb54ad95fe8e1a704a427d34a710d1102cbb10944c2b76e0c13ea",
+   "size": 1584,
+   "sha256": "e02513cd502185b6922c5becb0d6d4ec61c23cc85cc285d87592d93d6101e268",
    "asset": "bc7.json"
   },
   {
@@ -163,6 +169,12 @@
    "size": 3277233,
    "sha256": "24caf215c89b202c57a50dd9d3b67fe1c09b56995cd716fc2ab6f29d6a63385b",
    "asset": "cars_ao.bc7"
+  },
+  {
+   "path": "civic_ao.bc7",
+   "size": 7814478,
+   "sha256": "efc133776a2d39d0c1900963bb69eedef7975e2ba45219fe4cb2525820b7f1e1",
+   "asset": "civic_ao.bc7"
   },
   {
    "path": "l1_ao.bc7",
@@ -525,6 +537,12 @@
    "asset": "tex.needles_nrm.bc7"
   },
   {
+   "path": "tex/net_col.bc7",
+   "size": 3212,
+   "sha256": "93e0331fb69404adb397dde1024e391098eb34687541bad13b64b019743ee2e6",
+   "asset": "tex.net_col.bc7"
+  },
+  {
    "path": "tex/pave_col.bc7",
    "size": 548606,
    "sha256": "a30e82ca39055d170c62f9e54e96034123229d2144d011e4bf826e2d6172c7ce",
@@ -559,6 +577,18 @@
    "size": 1041634,
    "sha256": "c3e1ee652bd9a10981b0c7a7f7320c3603640601693a707aeec74a7d6cb68f96",
    "asset": "tex.roof_nrm.bc7"
+  },
+  {
+   "path": "tex/rubble_col.bc7",
+   "size": 860845,
+   "sha256": "cba417c5f2ed015d7ffc6c6e92c35fac6617983b2fec3830daec3de303fcac30",
+   "asset": "tex.rubble_col.bc7"
+  },
+  {
+   "path": "tex/rubble_nrm.bc7",
+   "size": 886478,
+   "sha256": "c4bc38835b603a52ea71c993f2343a78f5e2415a788fcac57af4db1070e632d3",
+   "asset": "tex.rubble_nrm.bc7"
   },
   {
    "path": "tex/rustic_col.bc7",
@@ -694,8 +724,8 @@
   },
   {
    "path": "trees_ao.bc7",
-   "size": 2774351,
-   "sha256": "8dc546545bddd7a4dad57f5d8ac6c86b21ae0ba5447392ce37554c7bcf4ba541",
+   "size": 2577646,
+   "sha256": "1a286ec9a949db939df4c177c3c2e2fa09d2ab7303250cfca02335daed384c66",
    "asset": "trees_ao.bc7"
   }
  ]
