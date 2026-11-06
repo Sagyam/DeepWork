@@ -899,7 +899,8 @@ impl City {
                 }
             })?;
             let lot = &preview.lots[site];
-            let kind = need_of(site).kind;
+            let need = need_of(site);
+            let kind = need.kind;
             let total = kind.build_secs();
             let remaining = total.saturating_sub(lot.done_secs);
             let done = lot.done_secs + r.elapsed_secs.min(remaining);
@@ -914,6 +915,7 @@ impl City {
                 kind: kind.name().into(),
                 design: lot.design.map(str::to_string),
                 name: preview.name(site),
+                need: need.id.into(),
                 remaining_secs: remaining,
             })
         });

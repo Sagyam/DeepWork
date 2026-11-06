@@ -252,6 +252,8 @@ export interface Construction {
   kind?: string;
   design?: string | null;
   name?: string;
+  /** The need the lot meets (`city-power`, ...); absent from an older daemon. */
+  need?: string;
   /** Build time the site still needed when the session started. */
   remaining_secs?: number;
 }

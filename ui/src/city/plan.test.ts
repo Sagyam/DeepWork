@@ -1,5 +1,5 @@
 import { describe as group, expect, test } from "bun:test";
-import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, STYLES, blockLoop, cells, districtCell, isPark, lot, plan, rng, shape, spiral } from "./plan";
+import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, PUBLIC, ROAD, STYLES, blockLoop, cells, districtCell, isPark, lookOf, lot, plan, rng, shape, spiral } from "./plan";
 import { clock, describe, hm } from "../format";
 import type { Plot, World } from "../proto";
 
@@ -203,4 +203,18 @@ test("traffic loops keep the block on the right and stay in their lane", () => {
   }
   // Wraps around.
   expect(loop.at(loop.length + 5).x).toBeCloseTo(loop.at(5).x, 6);
+});
+
+test("the City's power and water get their own models; the public buildings have theirs", () => {
+  expect(lookOf(null, "power", "hamlet-power")?.model).toBe("p1");
+  expect(lookOf(null, "power", "city-power")?.model).toBe("p2");
+  expect(lookOf(null, "water", "town-water")?.model).toBeUndefined();
+  expect(lookOf(null, "water", "city-water")?.model).toBe("w2");
+  // A blueprint wins over the need.
+  expect(lookOf("s4", "power", "city-power")?.model).toBe("s4");
+  expect([PUBLIC.hospital.model, PUBLIC.police.model, PUBLIC.library.model]).toEqual(["h2", "e2", "e3"]);
+  // A built City power station is drawn as P2.
+  const p = plan(world([{ ...plot(0, 1), kind: "power", need: "city-power" }]), 0);
+  expect(p.buildings[0].model).toBe("p2");
+  expect(p.buildings[0].style).toBe("powerstation");
 });

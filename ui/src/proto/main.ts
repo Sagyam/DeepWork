@@ -1,7 +1,7 @@
 // Viewer for the realistic models (blender/real, `bun run models`): one
 // building on its lot, built by the app's own code (models.ts), on a street
 // corner. Open /proto.html in the dev server with
-//   ?model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1|p1|f1|e1|h1|l5 &floors=7 &seed=3 &damage=0|1|2|3 (3: the ruin)
+//   ?model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1|p1|f1|e1|h1|l5|e2|e3|h2|p2|w2 &floors=7 &seed=3 &damage=0|1|2|3 (3: the ruin)
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
