@@ -952,7 +952,12 @@ export class City {
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.clamp.enabled = d.night > 0.05;
-    this.bloom.threshold = 0.9 - d.night * 0.1;
+    // threshold: a white wall in full sun reaches about 1.3 before tone
+    // mapping, so a threshold under that made every white car, sign and
+    // painted wall glow. By day only the sun disc (thousands) and real lights
+    // clear it; by night the moonlit city sits far below 1 and lit windows,
+    // lamps and neon (2 and up) still bloom.
+    this.bloom.threshold = THREE.MathUtils.lerp(1.5, 6, d.day);
     for (const e of this.entries.values()) this.applyNight(e.info);
     for (const m of this.lampMats) m.emissiveIntensity = d.night * (m.userData.night ?? 1);
     interiorUniforms.uDay.value = d.day;
