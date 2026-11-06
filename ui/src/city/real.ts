@@ -538,7 +538,7 @@ const texLoader = new THREE.TextureLoader();
 const library = new Map<string, THREE.Texture>();
 
 /** A library texture; `tile` is its size in metres (UV0 is in metres). */
-function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE.Texture {
+export function tex(name: string, tile: [number, number] = [1, 1], color = true): THREE.Texture {
   const key = `${name}:${tile}`;
   let t = library.get(key);
   if (!t) {

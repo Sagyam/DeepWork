@@ -384,7 +384,7 @@ def spray(m, role, base, a, size, face, rng, width=1.0):
     m.poly(role, [b - side * hx, b + side * hx, top + side * hx, top - side * hx], out=f, uvs=[(0, 0), (1, 0), (1, 1), (0, 1)])
 
 
-def sprays(m, role, rng, tips, segs, per_tip, size, centre, droop=0.25, along=0.35, up=0.6):
+def sprays(m, role, rng, tips, segs, per_tip, size, centre, droop=0.25, along=0.35, up=0.6, lo=0.35):
     """Leaves on the twigs: sprays fanned out from every twig tip, and some
     along the outer branches, each held at its stem by the wood. Sprays face
     out of the crown and up a little, turned at random about their stems,
@@ -406,7 +406,7 @@ def sprays(m, role, rng, tips, segs, per_tip, size, centre, droop=0.25, along=0.
         if not segs:
             break
         a0, a1 = segs[rng.randrange(len(segs))]
-        put(a0 + (a1 - a0) * rng.uniform(0.35, 1.0), (a1 - a0).normalized())
+        put(a0 + (a1 - a0) * rng.uniform(lo, 1.0), (a1 - a0).normalized())
 
 
 def ellipsoid(m, role, centre, rx, rz, seg=10, rings=6, rough=0.0, rng=None):
@@ -579,9 +579,9 @@ def light_tree(m, rng, height, clear, crown_r, cards, size, limbs=3, rz_f=1.0, r
         # A limb and one fork of twigs, three-sided: cheap, but the leaves hang on wood.
         grow(m, "bark", rng, top, d, (end - top).length, trunk_r * 0.5, 1, tips, 0.6, 0.3, kids=(1, 2), seg=4, segs=segs, env=env)
     grow(m, "bark", rng, top, Vector((0, 0, 1)), rz * 1.3, trunk_r * 0.5, 1, tips, 0.5, 0.3, kids=(1, 2), seg=4, segs=segs, env=env)
-    total = cards * 1.6
-    per_tip = max(2, round(total * 0.65 / max(1, len(tips))))
-    sprays(m, role, rng, tips, segs, per_tip, size * 0.85, centre, along=total * 0.35 / max(1, len(tips) * per_tip))
+    total = cards * 2.0
+    per_tip = max(2, round(total * 0.5 / max(1, len(tips))))
+    sprays(m, role, rng, tips, segs, per_tip, size * 0.85, centre, along=total * 0.5 / max(1, len(tips) * per_tip), lo=0.12, up=0.15, droop=0.1)
 
 
 def light_conifer(m, rng, height, radius, whorls=8):
@@ -594,11 +594,12 @@ def light_conifer(m, rng, height, radius, whorls=8):
         n = 5 if f < 0.6 else 4
         for k in range(n):
             a = k / n * math.tau + w * 0.7 + rng.random() * 0.3
-            d = Vector((math.cos(a), math.sin(a), -0.3 - 0.2 * (1 - f))).normalized()
-            # A narrow drooping bough from the trunk, rolled a little about
-            # itself so the side view sees needles, not edges.
-            roll = d.cross(Vector((0, 0, 1))).normalized() * rng.uniform(-0.45, 0.45)
-            spray(m, "firs", (0, 0, z), d, R * 1.1, Vector((0, 0, 1)) + d * 0.3 + roll, rng, width=0.6)
+            d = Vector((math.cos(a), math.sin(a), -0.55 - 0.3 * (1 - f))).normalized()
+            # A narrow bough drooping steeply from the trunk, a skirt of
+            # needles: it faces out more than up, so the side view (and the
+            # impostors drawn from it) sees needles, not edges.
+            roll = d.cross(Vector((0, 0, 1))).normalized() * rng.uniform(-0.6, 0.6)
+            spray(m, "firs", (0, 0, z), d, R * 1.25, Vector((0, 0, 0.6)) + Vector((d.x, d.y, 0)) * 0.9 + roll, rng, width=0.75)
     spray(m, "firs", (0, 0, height * 0.86), (0.1, 0, 1), height * 0.16, (1, 0, 0.1), rng, width=0.45)
     spray(m, "firs", (0, 0, height * 0.86), (0, 0.1, 1), height * 0.16, (0, 1, 0.1), rng, width=0.45)
 
