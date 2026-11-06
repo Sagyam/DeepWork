@@ -1407,7 +1407,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
-  const shade = [1, 0.72, 0.42][Math.min(2, damage)];
+  const shade = [1, 0.72, 0.42, 0.36][Math.min(3, damage)];
   const w = (mat: THREE.MeshStandardMaterial, weather = 0) => weathered(mat, ao, weather + damage * 0.8);
   const room = (kind: RoomKind, tint?: number) => {
     const g = glass(kind, damage / 2, tint);
@@ -1424,7 +1424,10 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     glassMats.add(g);
     return g;
   };
+  // A ruin's windows: burnt out, black and empty.
+  if (damage >= 3 && role.endsWith("glass")) role = "gutted";
   switch (role) {
+    case "gutted": m = plain(0x0b0a09, 0.95); break;
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
     // The factory.

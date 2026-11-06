@@ -1169,7 +1169,88 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   return { group: g, info };
 }
 
+/** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1"]);
+
+/**
+ * A ruin (damage 3) of a realistic building: the burnt shell left standing,
+ * about half its storeys with a broken top and no roof, scorched and
+ * blackened, broken masonry heaped against its walls; thin smoke, no fire.
+ * It stands until repairs bring it back (docs/progression.md).
+ */
+function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
+  const g = new THREE.Group();
+  const p = new Parts();
+  const r = rng(s.seed * 7 + 1);
+  // Damage 3: the burnt materials, and black, empty window openings (realMat).
+  const burnt: Spec = { ...s, damage: 3 };
+  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: def.debris };
+  const yp = new Parts(YARD);
+  realYard(yp, p, burnt, def, r);
+  yp.into(g);
+  const floors = s.floors > 1 ? Math.max(1, Math.round(s.floors * (0.5 + r() * 0.12))) : 1;
+  const top = stackReal(p, burnt, def, floors, false, info);
+  info.height = top.top;
+  if (hasReal("civic")) {
+    // The broken top: ragged stumps of wall along each edge (masonry) or
+    // charred joists and rafters standing out of it (timber and glass).
+    const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
+    const y = top.top - 0.15;
+    if (MASONRY.has(def.id)) {
+      const edges: [number, number, number, number][] = [
+        [0, def.d / 2 - 0.2, def.w, 0],
+        [0, -def.d / 2 + 0.2, def.w, Math.PI],
+        [def.w / 2 - 0.2, 0, def.d, Math.PI / 2],
+        [-def.w / 2 + 0.2, 0, def.d, -Math.PI / 2],
+      ];
+      for (const [x, z, len, a] of edges) {
+        const n = Math.max(1, Math.round(len / 3.6));
+        for (let i = 0; i < n; i++) {
+          if (r() < 0.2) continue;
+          const t = (i + 0.5) / n - 0.5;
+          const along = t * (len - 0.6);
+          civic(p, "rubble_wall", x + (a % Math.PI ? 0 : along), y, z + (a % Math.PI ? along : 0), { ry: a + (r() < 0.5 ? Math.PI : 0), scale: new THREE.Vector3(((len - 0.6) / n / 3.2) * 1.02, 0.45 + r() * 0.5, 1), paint, damage: 2 });
+        }
+      }
+    }
+    // Smaller beams on low buildings, where a girder would dwarf the walls.
+    const k = THREE.MathUtils.clamp(top.top / 10, 0.4, 1);
+    for (let i = 0; i < 2 + s.grade; i++) {
+      civic(p, "rubble_beam", (r() - 0.5) * def.w * 0.7, y + 0.2 * k, (r() - 0.5) * def.d * 0.7, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.2, rz: (r() - 0.5) * 1.2, scale: new THREE.Vector3(k, k, k), damage: 2 });
+    }
+    for (let i = 0; i < 2; i++) civic(p, "rubble_slab", (r() - 0.5) * def.w * 0.5, y + 0.1, (r() - 0.5) * def.d * 0.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.8, damage: 1 });
+  } else wreckTop(p, top.w, top.d, top.top, def.debris, r, THREE.MathUtils.clamp(top.top / 14, 0.5, 1.1));
+  // Scorch round the walls, and what fell from above heaped against them.
+  p.add(mat(0x1a1714, { transparent: true, opacity: 0.7, depthWrite: false }), new THREE.CircleGeometry(Math.max(s.w, s.d) * 0.75, 16), 0, KERB + 0.02, 0, -Math.PI / 2);
+  if (hasReal("civic")) {
+    const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
+    const pile = 0.9 + s.grade * 0.4;
+    const sides: [number, number, number][] = [
+      [0, s.d / 2 + 0.6, 0],
+      [s.w / 2 + 0.6, 0, Math.PI / 2],
+      [-s.w / 2 - 0.6, 0, -Math.PI / 2],
+    ];
+    for (const [x, z, a] of sides) {
+      if (r() < 0.25) continue;
+      const along = (r() - 0.5) * (a ? s.d : s.w) * 0.5;
+      const px = x + (a ? 0 : along);
+      const pz = z + (a ? along : 0);
+      const R = 1.6 + r() * 1.2;
+      civic(p, "rubble_heap", px, KERB, pz, { ry: r() * Math.PI * 2, scale: new THREE.Vector3(R / 5, pile / 2.5, R / 5), damage: 1 });
+      civic(p, "rubble_slab", px + (r() - 0.5) * 1.5, KERB + pile * 0.5, pz + (r() - 0.5) * 1.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.1, rz: (r() - 0.5) * 0.9, damage: 1 });
+      if (r() < 0.6) civic(p, "rubble_wall", px, KERB + 0.1, pz, { ry: a + (r() - 0.5) * 0.6, rx: (r() - 0.5) * 0.4, scale: new THREE.Vector3(0.6 + r() * 0.4, 0.5 + r() * 0.4, 1), paint, damage: 2 });
+    }
+  }
+  info.emitters.push({ pos: new THREE.Vector3((r() - 0.5) * s.w * 0.4, top.top, (r() - 0.5) * s.d * 0.4), kind: "smoke", rate: 0.9 });
+  p.into(g);
+  g.position.set(s.x, 0, s.z);
+  g.rotation.y = s.rot;
+  return { group: g, info };
+}
+
 export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
+  const def = realDef(s);
+  if (def) return shell(s, def);
   const g = new THREE.Group();
   const p = new Parts();
   const r = rng(s.seed * 7 + 1);

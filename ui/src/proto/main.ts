@@ -1,7 +1,7 @@
 // Viewer for the realistic models (blender/real, `bun run models`): one
 // building on its lot, built by the app's own code (models.ts), on a street
 // corner. Open /proto.html in the dev server with
-//   ?model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1|p1|f1|e1|h1 &floors=7 &seed=3 &damage=0|1|2
+//   ?model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1|p1|f1|e1|h1 &floors=7 &seed=3 &damage=0|1|2|3 (3: the ruin)
 //   &view=hero|city|detail|roof|back|street &hour=15
 // &count=N is a stress test: N buildings on a grid, drawn instanced (or one
 // mesh each with &draw=separate).
@@ -17,7 +17,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { loadKit } from "../city/kit";
-import { building, fitReal, furniture, KERB, Parts } from "../city/models";
+import { building, fitReal, furniture, KERB, Parts, rubble } from "../city/models";
 import { LOT, PAVEMENT, type Spec } from "../city/plan";
 import { DEFS, hasReal, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
 
@@ -263,9 +263,9 @@ Promise.all([loadKit(), loadReal([id, ...PROPS], renderer)]).then(() => {
   const { kind, style } = DEFS[id];
   const floors = Number(q.get("floors") ?? 7);
   const seed = Number(q.get("seed") ?? 3);
-  const raw: Spec = { index: 0, kind, style, grade: kind === "landmark" ? 4 : kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Number(q.get("damage") ?? 0), rubble: false, model: id };
+  const raw: Spec = { index: 0, kind, style, grade: kind === "landmark" ? 4 : kind === "apartment" ? 2 : kind === "shop" ? 1 : 0, x: 0, z: 0, rot: 0, yard: 0, w: 10, d: 10, floors, floorH: 3, height: 20, wall: seed, accent: seed + 2, seed, damage: Math.min(2, Number(q.get("damage") ?? 0)), rubble: Number(q.get("damage") ?? 0) >= 3, model: id };
   const s = { ...fitReal(raw), x: 0, z: 0, rot: 0 };
-  const { group, info } = building(s);
+  const { group, info } = s.rubble ? rubble(s) : building(s);
   for (const m of info.night) m.emissiveIntensity = night ? (m.userData.night ?? 1) : 0;
   if (stress) grid(group);
   else {

@@ -495,7 +495,7 @@ order (an old ledger, no choices) spends hours 50-98 on six office towers.
 | 6 | City hall | City | L1, also the City's landmark: two identical skyscrapers | L5 |
 | 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
 | 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
-| 9 | Ruins | the first surrender | damage 3 is the rubble heap; scarred shells not drawn | ruins standing (`docs/progression.md`, "Next") |
+| 9 | Ruins | the first surrender | ~~the rubble heap~~ done: burnt shells left standing | |
 | 10 | Shop pictures | the first purchase | ~~one outline per kind~~ done: a render of each model (`city/thumbs.ts`) | |
 | 11 | Square, park | Town, City | assembled in `models.ts` from the civic props | L6 (statue, market stalls), L12 |
 | 12 | Sound | always | none (no chime on completion, nothing at level-up or a fire) | a few short sounds, if wanted |
@@ -511,7 +511,7 @@ buildings stand, so it should come before L5.
 - [x] E1 school (2026-11-06)
 - [x] H1 clinic (2026-11-06)
 - [x] Blueprint pictures in the shop (2026-11-06): `city/thumbs.ts` draws each design's model on its lot with the city's renderer, off screen, once; locked designs show as the model's true silhouette; the outline stays until the pack is loaded
-- [ ] Ruins standing
+- [x] Ruins standing (2026-11-06): `shell()` in `models.ts` draws a realistic model's ruin as about half its storeys, roofless, burnt (damage 3: black empty windows), with ragged brick stumps along the top of masonry models (`civic` rubble walls), charred beams and slabs, debris heaped against the walls and thin smoke; the kit keeps its heap
 - [ ] L5 city hall
 - [ ] O2 or O3
 - [ ] A second workshop
@@ -524,7 +524,7 @@ buildings stand, so it should come before L5.
 | Construction | Floors up to progress, scaffold, crane, blueprint | Same scheme with realistic scaffold, formwork, safety netting, site hoarding; landmarks fenced across their whole ground | 20% |
 | Damage 1 | Darker, smoke | Soot streaks (grime shader), a few broken panes, smoke | 5% (shader) |
 | Damage 2 | Lower ~3/4, no roof, fire | Broken top edge per piece, burnt interiors in the window shader, exposed floors; parks and squares scorched, statues toppled | 15% |
-| Rubble | ~~Heap of chunks~~ | **done** (2026-11-06): a heap of crushed masonry (`civic`) with broken brick walls in the building's brick, slabs with rebar and bent beams, more for bigger buildings | 15% |
+| Rubble | ~~Heap of chunks~~ (the kit's ruins; realistic models stand as burnt shells since 2026-11-06) | **done** (2026-11-06): a heap of crushed masonry (`civic`) with broken brick walls in the building's brick, slabs with rebar and bent beams, more for bigger buildings | 15% |
 | Night | Window atlas lit | Done: the interior shader lights rooms | done |
 
 ## Not buildings, but they must match

@@ -340,7 +340,8 @@ build order. Decisions taken while building are noted inline.
 ### Next
 
 - [ ] Use it for real: install, then tune prices, build hours and odds
-- [ ] Ruins drawn standing (scarred shells) instead of the rubble heap
+- [x] Ruins drawn standing (scarred shells) instead of the rubble heap
+      (2026-11-06, `shell()` in `ui/src/city/models.ts`; the kit keeps the heap)
 - [x] The level-up moment (2026-11-06): the camera backs off to the whole
       city and circles it while fireworks go up over the rooftops (10 + 3
       per level, a finale of three; `Fx.firework`), with the narration line;
