@@ -56,14 +56,13 @@ with a root shell open in another terminal for the PAM checks.
 ## Rendering
 
 - [ ] Measure in the real Tauri window (WebKitGTK is usually slower than
-      Chromium). Target: 30 fps end-game city on a 610M-class iGPU.
-- [ ] Hamlet GPU time rose from ~16 to ~26 ms with the denser terrain and
-      new trees; find what to win back.
-- [ ] 1% lows dip when a building is built (geometry on the main thread,
-      new shaders).
+      Chromium) with `VITE_FPS=1`. Target: 30 fps end-game city on a
+      610M-class iGPU.
+- [ ] Hamlet trees cost ~3.5 ms of its ~21 ms GPU: cut-out leaves at MSAA.
 - [ ] Instancing: one InstancedMesh per piece and material instead of
       merged `Parts`.
-- [ ] Geometry compression (meshopt) to shrink the pack.
+- [ ] Shrink the pack further: the AO bakes are ~90 MB of it, one channel
+      stored as BC7; BC4 (RGTC) would halve them.
 - [ ] Retune lighting: it is still tuned for the flat kit.
 
 ## Packaging

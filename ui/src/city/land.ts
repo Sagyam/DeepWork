@@ -117,6 +117,10 @@ export class Land {
     g.computeVertexNormals();
     const mesh = new THREE.Mesh(g, this.ground);
     mesh.receiveShadow = true;
+    // overdraw: the ground's shader is the dearest in the scene and woods
+    // and buildings hide much of it, so it is drawn after them, where the
+    // depth test skips what they cover.
+    mesh.renderOrder = 1;
     return mesh;
   }
 
@@ -495,22 +499,35 @@ function detail(m: THREE.MeshStandardMaterial) {
           diffuseColor.rgb = mix(diffuseColor.rgb, vc * shade * tint, green);
         }
         if (gNear > 0.0) {
-          vec3 gm = textureLod(tGrass, vec2(0.5), 12.0).rgb;
-          vec2 guv = vGroundP.xz / 2.6;
-          // A second, larger scale breaks up the tiling.
-          vec3 gr = texture2D(tGrass, guv).rgb * mix(0.8, 1.2, texture2D(tGrass, vGroundP.xz / 37.0 + 0.3).g / max(gm.g, 0.01) * 0.5);
-          // The texture is soft: steepen it so blades and bare patches show.
-          vec3 gd = gm.g > 0.01 ? pow(gr / gm, vec3(2.2)) : vec3(1.0);
-          vec3 gw = pow(abs(gn), vec3(4.0));
-          gw /= gw.x + gw.y + gw.z;
-          vec3 sp = vGroundP / 7.0;
-          vec3 st = texture2D(tStone, sp.zy).rgb * gw.x + texture2D(tStone, sp.xz).rgb * gw.y + texture2D(tStone, sp.xy).rgb * gw.z;
-          vec3 sm = textureLod(tStone, vec2(0.5), 12.0).rgb;
-          vec3 sd = sm.g > 0.01 ? st / sm : vec3(1.0);
           vec3 vc = diffuseColor.rgb;
           float hi = max(vc.r, max(vc.g, vc.b));
           float sat = (hi - min(vc.r, min(vc.g, vc.b))) / max(hi, 0.01);
           float rocky = max(1.0 - smoothstep(0.72, 0.9, gn.y), 1.0 - smoothstep(0.12, 0.3, sat));
+          // Most of the ground is all grass or all stone: sample only what
+          // shows (textureGrad, as the branches are not uniform).
+          vec2 guv = vGroundP.xz / 2.6;
+          vec2 gx = dFdx(guv), gy = dFdy(guv);
+          vec3 sp = vGroundP / 7.0;
+          vec3 sx = dFdx(sp), sy = dFdy(sp);
+          vec3 gd = vec3(1.0);
+          if (rocky < 0.999) {
+            vec3 gm = textureLod(tGrass, vec2(0.5), 12.0).rgb;
+            // A second, larger scale breaks up the tiling.
+            vec3 gr = textureGrad(tGrass, guv, gx, gy).rgb * mix(0.8, 1.2, textureGrad(tGrass, guv * (2.6 / 37.0) + 0.3, gx * (2.6 / 37.0), gy * (2.6 / 37.0)).g / max(gm.g, 0.01) * 0.5);
+            // The texture is soft: steepen it so blades and bare patches show.
+            gd = gm.g > 0.01 ? pow(gr / gm, vec3(2.2)) : vec3(1.0);
+          }
+          vec3 sd = vec3(1.0);
+          if (rocky > 0.001) {
+            vec3 gw = pow(abs(gn), vec3(4.0));
+            gw /= gw.x + gw.y + gw.z;
+            vec3 st = vec3(0.0);
+            if (gw.x > 0.02) st += textureGrad(tStone, sp.zy, sx.zy, sy.zy).rgb * gw.x;
+            if (gw.y > 0.02) st += textureGrad(tStone, sp.xz, sx.xz, sy.xz).rgb * gw.y;
+            if (gw.z > 0.02) st += textureGrad(tStone, sp.xy, sx.xy, sy.xy).rgb * gw.z;
+            vec3 sm = textureLod(tStone, vec2(0.5), 12.0).rgb;
+            sd = sm.g > 0.01 ? st / sm : vec3(1.0);
+          }
           diffuseColor.rgb *= mix(vec3(1.0), clamp(mix(gd, sd, rocky), 0.0, 2.5), gNear);
         }`,
       );

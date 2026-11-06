@@ -3,6 +3,10 @@
 // queries, over 240 settled frames. Once they are in, `window.bench` holds
 // the averages and the 99th percentiles (the 1% lows), draw calls and
 // triangles. A dev tool; the app never sets `?bench`.
+//
+// Headless Chromium queues frames and its timer queries count more than the
+// frame (an empty scene reads ~20 ms). `&finish` waits for the GPU before
+// and after each frame instead, so `cpu` is the frame's true cost.
 import * as THREE from "three";
 
 const WARM = 90;
@@ -27,6 +31,7 @@ export class Bench {
   private frame: number[] = [];
   private cpu: number[] = [];
   private gpu: number[] = [];
+  private finish = new URLSearchParams(location.search).has("finish");
 
   constructor(private renderer: THREE.WebGLRenderer) {
     this.gl = renderer.getContext() as WebGL2RenderingContext;
@@ -35,6 +40,7 @@ export class Bench {
   }
 
   begin() {
+    if (this.finish) this.gl.finish();
     this.t0 = performance.now();
     this.renderer.info.reset();
     if (this.ext && this.pending.length < 4) {
@@ -45,6 +51,7 @@ export class Bench {
 
   end() {
     const gl = this.gl;
+    if (this.finish) gl.finish();
     if (this.query) {
       gl.endQuery(this.ext!.TIME_ELAPSED_EXT);
       this.pending.push(this.query);

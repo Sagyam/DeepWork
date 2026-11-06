@@ -158,6 +158,16 @@ export class City {
   models: ModelsStatus = { state: "none" };
   private fpsCount = 0;
   private fpsT = 0;
+  /** Milliseconds between the last drawn frames (under a second apart), for low. */
+  private gaps: number[] = [];
+  private drawnAt = 0;
+
+  /** Frames per second at the slowest 1% of the last 600 drawn frames (the 1% low), for the dev readout. */
+  get low(): number {
+    if (this.gaps.length < 100) return 0;
+    const v = [...this.gaps].sort((a, b) => a - b);
+    return 1000 / v[Math.floor(v.length * 0.99)];
+  }
   private focus: { to: THREE.Vector3; t: number } | null = null;
   /** The camera backing off to a distance and height above the target, e.g. to see a whole city. */
   private pull: { dist: number; rise: number } | null = null;
@@ -218,6 +228,10 @@ export class City {
     // building changes or cut-out textures arrive (shadowsDirty()), not every
     // frame. Moving vehicles cast a blob instead (traffic.ts).
     r.shadowMap.autoUpdate = false;
+    // movers (shadows()): the main pass's shadow map is drawn here, inside
+    // the render call, where three's render state is set up.
+    const draw = r.shadowMap.render.bind(r.shadowMap);
+    r.shadowMap.render = (lights, scene, camera) => (scene === this.scene ? this.shadows(draw, lights, camera) : draw(lights, scene, camera));
     r.toneMapping = THREE.ACESFilmicToneMapping;
     r.outputColorSpace = THREE.SRGBColorSpace;
     el.appendChild(r.domElement);
@@ -1058,6 +1072,89 @@ export class City {
     this.dirty = true;
   }
 
+  /** The static shadow map, without what moves (shadows()). */
+  private staticShadow: THREE.WebGLRenderTarget | null = null;
+  private movers: THREE.Object3D[] = [];
+  /** This frame's shadow work, from shadowPlan(). */
+  private shadowWork = { full: false, move: false };
+
+  /**
+   * shadow, movers: buildings rising, shaking or falling, debris and crane
+   * jibs move through the shadow map, but redrawing all of it each frame
+   * they do (every tree and prop) doubled the frame for the seconds a
+   * building rises. So the static map is drawn without them and kept; while
+   * something moves, each frame copies it back and draws only the movers.
+   */
+  private shadowPlan(): boolean {
+    const sm = this.renderer.shadowMap;
+    let full = sm.needsUpdate || this.staticShadow?.width !== this.sunLight.shadow.mapSize.x;
+    const movers: THREE.Object3D[] = [];
+    let move = false;
+    for (const e of this.entries.values()) {
+      if (e.rise || e.hit !== undefined) {
+        movers.push(e.group);
+        move = true;
+      }
+      if (e.jib) {
+        movers.push(e.jib);
+        if (Math.abs(e.jib.rotation.y - (e.jibShadow ?? 1e9)) > 0.03) {
+          e.jibShadow = e.jib.rotation.y;
+          move = true;
+        }
+      }
+    }
+    for (const d of this.dying) movers.push(d.group);
+    if (this.fx.falling) movers.push(this.fx.group);
+    if (this.dying.length || this.fx.falling) move = true;
+    // What stopped moving and still stands joins the static map.
+    if (this.movers.some((o) => !movers.includes(o))) full = true;
+    this.movers = movers;
+    this.shadowWork = { full, move };
+    return full;
+  }
+
+  /** Draws what shadowPlan() found (see there) with three's `draw`. */
+  private shadows(draw: THREE.WebGLShadowMap["render"], lights: THREE.Light[], camera: THREE.Camera) {
+    const { full, move } = this.shadowWork;
+    this.shadowWork = { full: false, move: false };
+    const sm = this.renderer.shadowMap;
+    const sun = this.sunLight.shadow;
+    const movers = this.movers;
+    sm.needsUpdate = false;
+    if (!full && !move) return;
+
+    if (full) {
+      const shown = [...movers, this.fx.group].filter((o) => o.visible);
+      for (const o of shown) o.visible = false;
+      sm.needsUpdate = true;
+      draw(lights, this.scene, camera);
+      for (const o of shown) o.visible = true;
+      const size = sun.mapSize.x;
+      if (this.staticShadow?.width !== size) {
+        this.staticShadow?.dispose();
+        this.staticShadow = new THREE.WebGLRenderTarget(size, size, { depthTexture: new THREE.DepthTexture(size, size, THREE.UnsignedIntType) });
+        this.renderer.initRenderTarget(this.staticShadow);
+      }
+      this.renderer.copyTextureToTexture(sun.map!.depthTexture!, this.staticShadow.depthTexture!);
+    } else {
+      this.renderer.copyTextureToTexture(this.staticShadow!.depthTexture!, sun.map!.depthTexture!);
+    }
+    if (!movers.length) return;
+    // The movers on top of the static map: three clears the map before it
+    // draws, so clear() is held off for this one call.
+    const root = new THREE.Group();
+    root.children = movers;
+    const clear = this.renderer.clear;
+    this.renderer.clear = () => {};
+    try {
+      sm.needsUpdate = true;
+      draw(lights, root as unknown as THREE.Scene, camera);
+    } finally {
+      this.renderer.clear = clear;
+      sm.needsUpdate = false;
+    }
+  }
+
   /**
    * Readies new objects for the renderer: alpha to coverage on cut-out
    * materials (res), the environment light on glossy ones only (ibl), and
@@ -1245,13 +1342,7 @@ export class City {
           else this.fx.smokeAt(tmp, em.rate > 3, this.night);
         }
       });
-      if (e.jib) {
-        e.jib.rotation.y = Math.sin(this.t * 0.15 + e.spec.index) * 0.9;
-        if (Math.abs(e.jib.rotation.y - (e.jibShadow ?? 1e9)) > 0.03) {
-          e.jibShadow = e.jib.rotation.y;
-          this.shadowsDirty();
-        }
-      }
+      if (e.jib) e.jib.rotation.y = Math.sin(this.t * 0.15 + e.spec.index) * 0.9;
       if (e.ghost) {
         const m = e.ghost.material as THREE.MeshBasicMaterial;
         m.opacity = e.surrendering ? 0.1 + 0.12 * (Math.sin(this.t * 6) * 0.5 + 0.5) : 0.1 + 0.04 * Math.sin(this.t * 1.5);
@@ -1294,15 +1385,12 @@ export class City {
     setSignals(this.t, this.night);
     setWaterTime(this.t);
 
-    // shadow: buildings rising, shaking or falling, and debris, move
-    // through the shadow map: it is drawn every frame while they do.
     let animating = this.dying.length > 0 || this.fx.falling;
     let busy = false;
     for (const e of this.entries.values()) {
       if (e.rise || e.hit !== undefined) animating = true;
       if (e.ghost || e.jib || e.info.emitters.length) busy = true;
     }
-    if (animating) this.shadowsDirty();
     if (this.shadowWait.size && [...this.shadowWait].every(loaded)) {
       this.shadowWait.clear();
       this.shadowsDirty();
@@ -1329,7 +1417,7 @@ export class City {
     // cull and trees: small props out with distance, trees real near the
     // camera and impostors further out (everything in while the shadow map is
     // drawn, so what drops out keeps its shadow).
-    const shadowing = this.renderer.shadowMap.needsUpdate;
+    const shadowing = this.shadowPlan();
     const eye = this.camera.position;
     for (const c of this.chunks) c.group.visible = shadowing || eye.distanceTo(c.centre) < c.far;
     for (const t of this.treeTiles) {
@@ -1340,6 +1428,12 @@ export class City {
     }
     this.land.cull(eye);
     this.fpsCount++;
+    const now = performance.now();
+    if (now - this.drawnAt < 1000) {
+      this.gaps.push(now - this.drawnAt);
+      if (this.gaps.length > 600) this.gaps.shift();
+    }
+    this.drawnAt = now;
     this.bench?.begin();
     this.composer.render(dt);
     this.bench?.end();

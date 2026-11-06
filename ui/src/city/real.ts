@@ -9,7 +9,7 @@
 // library with baked AO and world-space weathering, and window glass that
 // shows a room behind it (interior.ts). models.ts stacks the pieces.
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { KTXLoader } from "three/examples/jsm/loaders/KTXLoader.js";
 import { glass, interiorUniforms, type RoomKind } from "./interior";
 import type { Kind } from "./plan";
@@ -635,6 +635,19 @@ async function fillBc7(t: THREE.CompressedTexture, url: string) {
   t.needsUpdate = true;
 }
 
+/**
+ * A model's glb. The pack ships them gzipped (scripts/pack.ts: a third of
+ * the size); a local build leaves them plain. The first two bytes tell.
+ */
+async function loadGlb(url: string): Promise<GLTF> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`${url}: ${r.status}`);
+  let bytes = await r.arrayBuffer();
+  const head = new Uint8Array(bytes, 0, 2);
+  if (head[0] === 0x1f && head[1] === 0x8b) bytes = await new Response(new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+  return new GLTFLoader().parseAsync(bytes, "");
+}
+
 /** A texture to load: BC7 if it is listed (and this GPU has it), else the PNG. */
 const isBc7 = (url: string) => packed.has(url.slice(BASE.length, -4));
 
@@ -661,7 +674,7 @@ export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?
     ids.map(async (id) => {
       if (loaded.has(id)) return;
       try {
-        const [gltf, ao] = await Promise.all([new GLTFLoader().loadAsync(`${BASE}${id}.glb`), tex.loadAsync(`${BASE}${id}_ao.png`)]);
+        const [gltf, ao] = await Promise.all([loadGlb(`${BASE}${id}.glb`), tex.loadAsync(`${BASE}${id}_ao.png`)]);
         ao.flipY = false;
         ao.channel = 1;
         // Props are small on screen: mipmaps would blend each island of the

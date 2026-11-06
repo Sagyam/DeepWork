@@ -110,7 +110,8 @@ and is compiled into the app, which downloads into
 `~/.local/share/deepwork/assets/<id>/`, refuses any mismatch, and draws the
 kit until the pack is whole. The download is done by the app as the user,
 never by the daemon. `<id>` hashes the file list, so unchanged models
-download nothing. Publishing steps: [DEVELOPMENT.md](DEVELOPMENT.md#model-packs).
+download nothing. The pack's glbs are gzipped (`pack.ts`); the loader
+inflates them, and reads a plain local build as it is. Publishing steps: [DEVELOPMENT.md](DEVELOPMENT.md#model-packs).
 
 ## Performance
 
@@ -128,6 +129,13 @@ behind `&opt=N` before they move to `scene.ts`. What was learned:
   shadow map (redrawn when the sun moves ~0.7° or a building changes), tree
   impostors past 150 m, the sky drawn once into a cube map, environment
   light on glossy materials only.
+- **Moving things draw over a cached shadow map.** The static map is kept
+  without what moves; while a building rises, falls or shakes, debris
+  flies or a crane turns, each frame copies it back and draws only the
+  movers (`shadows()` in `scene.ts`). Redrawing everything doubled those frames.
+- **The ground is the dearest shader**: it draws after woods and buildings
+  so the depth test skips what they cover, and samples grass or stone only
+  where each shows.
 - **Draw only when something changes.** A still city draws no frames; a
   hidden window none at all; an unfocused one ambient motion at `DIM_FPS`
   with traffic and auto-rotate stopped, moments still at full rate.
@@ -145,7 +153,8 @@ behind `&opt=N` before they move to `scene.ts`. What was learned:
 - A shadow map or impostor atlas drawn once must wait for cut-out
   textures, or leaves vanish. Clamp brightness before bloom.
 - Not worth it: lower anisotropic filtering, dropping normal maps, cheap
-  far materials, geometry LODs for buildings.
+  far materials, geometry LODs for buildings, a sine-free hash in the
+  ground's noise.
 
 Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 
@@ -158,3 +167,5 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 - Landmarks include civic buildings, squares, parks and monuments on half
   or whole blocks; the master plan reserves their ground.
 - 30 fps for an end-game city on a weak iGPU is acceptable.
+- Glbs gzipped, not meshopt: lossless meshopt shrank them less (31 MB to 18,
+  gzip to 10) and its decoder needs WebAssembly, which the CSP refuses.

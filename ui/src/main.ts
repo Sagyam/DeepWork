@@ -621,10 +621,10 @@ $("#city").addEventListener("click", (e) => {
 });
 await poll();
 setInterval(poll, 1000);
-// `VITE_FPS=1 bun run build` adds a frame-rate readout, for tuning.
+// `VITE_FPS=1` (dev server or build) adds a frame-rate readout with the 1% low, for tuning.
 if (import.meta.env.VITE_FPS && skyline) {
   const el = document.createElement("div");
   el.style.cssText = "position:fixed;left:8px;bottom:8px;font:12px monospace;color:#9f9;z-index:9";
   document.body.append(el);
-  setInterval(() => (el.textContent = `${skyline!.fps.toFixed(0)} fps`), 500);
+  setInterval(() => (el.textContent = `${skyline!.fps.toFixed(0)} fps · 1% low ${skyline!.low.toFixed(0)}`), 500);
 }
