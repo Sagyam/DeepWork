@@ -298,6 +298,7 @@ function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
       return { top: floors * fh, w: s.w, d: s.d, anchors };
     }
     case "diner":
+    case "substation":
     case "factory": {
       const [g, rf] = s.style === "diner" ? ["shop_ground_d", "shop_roof_d"] : ["factory_ground", "factory_roof"];
       if (floors > 0) place(g, 0);
@@ -606,6 +607,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const k of [-1, 1]) p.box(board, 0.55, 0.95, 0.05, 4.9, KERB, s.d / 2 - 0.4 + k * 0.08, 0, Math.PI / 4 - k * 0.17);
       const bin = mat(0x2a4a34, { roughness: 0.6 });
       for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6, KERB, back + 0.7 + i * 0.85);
+      break;
+    }
+    case "p1": {
+      // Rough grass round the compound, a concrete drive from the gate
+      // (x 0.6 to 4.6, p1_substation.py) to the street, a hedge either side.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const drive = mat(0xa29e96, { roughness: 0.95 });
+      p.box(drive, 4.4, KERB + 0.01, front - s.d / 2, 2.6, 0, (front + s.d / 2) / 2);
+      for (const x of [-5.5, -2.5]) shrub(p, x, front - 0.6, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
     case "s3": {

@@ -59,7 +59,7 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
  */
 export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string }> = {
   water: { kind: "shop", style: "water" },
-  power: { kind: "shop", style: "factory", model: "s4" },
+  power: { kind: "shop", style: "substation", model: "p1" },
   school: { kind: "apartment", style: "classic", model: "a3" },
   clinic: { kind: "apartment", style: "classic", model: "a3" },
   fire_station: { kind: "shop", style: "factory", model: "s4" },
@@ -78,7 +78,7 @@ export function lookOf(design: string | null | undefined, kind: string | undefin
 }
 
 /** How far each type stands back from the street, front wall to lot edge. */
-const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, apartment: 2.2, townhouse: 2.6, office: 2.6 };
+const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, substation: 1.2, apartment: 2.2, townhouse: 2.6, office: 2.6 };
 
 export type ParkKind = "plaza" | "park" | "sports";
 const PARKS: ParkKind[] = ["plaza", "park", "sports", "park"];
@@ -264,7 +264,7 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
   let u = r();
   const style = look?.style ?? STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
   if (style === "diner") floors = 1;
-  if (style === "factory") [floors, floorH] = [1, 5];
+  if (style === "factory" || style === "substation") [floors, floorH] = [1, 5];
   if (style === "townhouse") floors = Math.min(floors, 3 + pick(r, 2));
   return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
 }

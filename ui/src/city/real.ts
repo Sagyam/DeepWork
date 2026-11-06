@@ -87,6 +87,7 @@ const S2_F2 = 3.2;
 const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
 const S4_TOP = 5.3;
+const P1_EAVES = 3.0;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -313,6 +314,21 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 7.85,
     smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
     debris: 0x8a4e3c,
+  },
+  p1: {
+    id: "p1",
+    kind: "shop",
+    style: "substation",
+    // The fenced compound (p1_substation.py); the gate on the street side.
+    w: 14,
+    d: 12,
+    front: 1.2,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: P1_EAVES }] : [])],
+    // The switch house's eaves; the gantry and poles stand to 8.6 m.
+    top: () => P1_EAVES,
+    height: () => 8.6,
+    debris: 0x9a9890,
   },
   o1: {
     id: "o1",
@@ -1642,6 +1658,17 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // The substation (p1_substation.py): a transformer in dark green-grey
+    // paint gone chalky, brown-glazed porcelain, bare aluminium line,
+    // creosoted poles, louvred steel doors in green, enamel signs.
+    case "trafo": m = w(pbr("paintsteel", [2, 2], { rough: true, metalness: 0.2, color: 0x6c7a6c }), 1.2); break;
+    case "porcelain": m = w(plain(0x5a2e1c, 0.22, 0.05), 0.3); break;
+    case "line": m = w(plain(0x8c9094, 0.4, 0.8)); break;
+    case "pole": m = w(pbr("wood", [1.2, 1.2], { roughness: 0.9, color: 0x5a4636 }), 1); break;
+    case "subdoor": m = w(pbr("louvre", [1, 1], { roughness: 0.6, color: 0x4e6a52 }), 1.2); break;
+    case "subframe": m = w(plain(0x41584a, 0.55, 0.3), 1); break;
+    case "danger": m = w(plain(0xe6c22a, 0.45), 0.5); break;
+    case "plate": m = w(plain(0x2c4a7a, 0.4, 0.2), 0.3); break;
     case "rubble": m = w(pbr("rubble", [3, 3], { roughness: 0.97 }), 0.6); break;
     case "char": m = w(plain(0x1d1a18, 0.95), 0.4); break;
     // Scaffold boards: pale, sun-greyed softwood (the plank texture would cut
