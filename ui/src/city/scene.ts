@@ -158,6 +158,16 @@ export class City {
   models: ModelsStatus = { state: "none" };
   private fpsCount = 0;
   private fpsT = 0;
+  /** Milliseconds between the last drawn frames (under a second apart), for low. */
+  private gaps: number[] = [];
+  private drawnAt = 0;
+
+  /** Frames per second at the slowest 1% of the last 600 drawn frames (the 1% low), for the dev readout. */
+  get low(): number {
+    if (this.gaps.length < 100) return 0;
+    const v = [...this.gaps].sort((a, b) => a - b);
+    return 1000 / v[Math.floor(v.length * 0.99)];
+  }
   private focus: { to: THREE.Vector3; t: number } | null = null;
   /** The camera backing off to a distance and height above the target, e.g. to see a whole city. */
   private pull: { dist: number; rise: number } | null = null;
@@ -1418,6 +1428,12 @@ export class City {
     }
     this.land.cull(eye);
     this.fpsCount++;
+    const now = performance.now();
+    if (now - this.drawnAt < 1000) {
+      this.gaps.push(now - this.drawnAt);
+      if (this.gaps.length > 600) this.gaps.shift();
+    }
+    this.drawnAt = now;
     this.bench?.begin();
     this.composer.render(dt);
     this.bench?.end();

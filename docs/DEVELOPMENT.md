@@ -75,6 +75,11 @@ bun scripts/bench-app.ts "mock=metropolis" "mock=city&hour=22&cam=220,120,260,0,
 # LUMA=1 prints mean brightness, SHOTS=dir saves screenshots
 ```
 
+Headless Chromium queues frames and stalls every few, so its 1% lows mean
+nothing: compare GPU ms. `&finish` waits for the GPU around each frame. In
+the real window, `VITE_FPS=1` (dev server or `tauri build`) shows fps and
+the 1% low.
+
 ## Install
 
 From a release: `curl -fsSL https://deepwork.sagyamthapa.com.np/get.sh | sh`
