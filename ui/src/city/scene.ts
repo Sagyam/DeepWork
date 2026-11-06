@@ -1032,6 +1032,26 @@ export class City {
     void done.then(() => (this.dirty = true));
   }
 
+  /**
+   * The orbit's polar limit keeps the camera above the target's level, not
+   * above the land: on the hills round town, or looking along the ground,
+   * it could sink into the terrain. So the eye is held a little above the
+   * ground (or the water) under it, and the target never below it. The
+   * margin grows away from town, where the terrain's triangles are larger
+   * than its height function's bumps.
+   */
+  private keepAboveGround() {
+    const g = this.land.shape;
+    const t = this.controls.target;
+    t.y = Math.max(t.y, g.height(t.x, t.z), WATER);
+    const p = this.camera.position;
+    const floor = Math.max(g.height(p.x, p.z), WATER) + 2.5 + Math.hypot(p.x, p.z) * 0.004;
+    if (p.y < floor) {
+      p.y = floor;
+      this.camera.lookAt(t);
+    }
+  }
+
   /** Bench (`?bench&cam=x,y,z,tx,ty,tz`): a fixed camera, no auto-rotate. */
   private benchCamera() {
     const cam = new URLSearchParams(location.search).get("cam");
@@ -1116,6 +1136,7 @@ export class City {
       }
     }
     this.controls.update(dt);
+    this.keepAboveGround();
 
     const blink = Math.sin(this.t * 2.6) > 0.55;
     this.beaconMat.emissiveIntensity = blink ? 3 + this.night * 3 : 0;
