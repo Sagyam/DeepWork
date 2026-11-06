@@ -1,5 +1,6 @@
 import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, world as getWorld } from "./daemon";
-import { BUILDINGS, TIERS, clock, escapeHtml, hm } from "./format";
+import { TIERS, clock, escapeHtml, hm } from "./format";
+import { deedHtml, deskHtml, nearMiss, shopHtml, tagHtml } from "./desk";
 import { notice } from "./panels";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
 import { openProgress, progressUpdate } from "./progress";
@@ -38,21 +39,24 @@ function banner(text: string | null) {
 }
 
 function renderCity(w: World) {
-  const span = (w.next_tier_secs ?? w.focused_secs) - w.tier_floor_secs;
-  const pct = w.next_tier_secs === null ? 100 : Math.min(100, ((w.focused_secs - w.tier_floor_secs) / Math.max(1, span)) * 100);
+  // Levels graduate by build time (needs met); an older daemon counted focus.
+  const built = w.built_secs ?? w.focused_secs;
+  const span = (w.next_tier_secs ?? built) - w.tier_floor_secs;
+  const pct = w.next_tier_secs === null ? 100 : Math.min(100, ((built - w.tier_floor_secs) / Math.max(1, span)) * 100);
   const next =
     w.next_tier_secs === null
-      ? "Top tier reached"
-      : `${hm(w.next_tier_secs - w.focused_secs)} to ${TIERS[Math.min(3, w.tier + 1)]}`;
+      ? "The plan is finished"
+      : `${hm(Math.max(0, w.next_tier_secs - built))} of building to the ${TIERS[Math.min(3, w.tier + 1)]}`;
   const intact = w.plots.filter((p) => !p.rubble).length;
   const damaged = w.plots.filter((p) => !p.rubble && p.damage > 0).length;
   const rubble = w.plots.length - intact;
   const condition = [
     `${intact} building${intact === 1 ? "" : "s"}`,
     damaged ? `<span class="loss">${damaged} damaged</span>` : "",
-    rubble ? `<span class="loss">${rubble} in rubble</span>` : "",
+    rubble ? `<span class="loss">${rubble} in ruins</span>` : "",
   ].filter(Boolean);
-  const streak = w.streak_days ? ` · streak ${w.streak_days} day${w.streak_days === 1 ? "" : "s"}` : "";
+  const freezes = w.freezes ? ` (${w.freezes} freeze${w.freezes === 1 ? "" : "s"})` : "";
+  const streak = w.streak_days ? ` · streak ${w.streak_days} day${w.streak_days === 1 ? "" : "s"}${freezes}` : "";
   $("#city").innerHTML = `
     <h1>${TIERS[Math.min(3, w.tier)]}${status?.dry_run ? '<span class="badge">dry run</span>' : ""}</h1>
     <div class="muted">${hm(w.focused_secs)} focused${streak}</div>
@@ -61,13 +65,14 @@ function renderCity(w: World) {
     <div class="small muted">${condition.join(" · ")}</div>`;
 }
 
-function building(w: World | null): string {
+function building(w: World | null, s: SessionInfo): string {
   const c = w?.construction;
-  if (!c) return "";
-  const what = BUILDINGS[Math.min(4, c.grade)];
-  if (c.surrendering) return `<div class="loss">The ${what} is about to collapse.</div>`;
-  if (c.progress_permille === null) return `<div class="muted">Building a ${what}; it grows while the stopwatch runs.</div>`;
-  return `<div class="muted">Building a ${what} · ${Math.floor(c.progress_permille / 10)}%</div>`;
+  if (!c) return w?.needs ? `<div class="muted">No site chosen: banking crew hours.</div>` : "";
+  const what = escapeHtml(c.name ?? "the building");
+  if (c.surrendering) return `<div class="loss">The work on ${what} is about to be lost.</div>`;
+  if (c.progress_permille === null) return `<div class="muted">Building ${what}.</div>`;
+  const pct = Math.min(100, Math.floor(c.progress_permille / 10));
+  return `<div class="muted">Building ${what} · ${pct}%${s.state === "active" && pct >= 100 ? ", done when the session completes" : ""}</div>`;
 }
 
 function liveSession(s: SessionInfo): string {
@@ -85,7 +90,7 @@ function liveSession(s: SessionInfo): string {
     s.kind.type === "stopwatch" && s.state === "active" && s.stop_locked_secs > 0
       ? `<div class="small muted">Can stop in ${clock(s.stop_locked_secs)}</div>`
       : "";
-  return main + building(world) + distracted + stop;
+  return main + building(world, s) + distracted + stop;
 }
 
 function liveIdle(st: Status): string {
@@ -95,6 +100,9 @@ function liveIdle(st: Status): string {
     parts.push(`<div class="nudge level-${level}">No focus for ${hm(st.nudge.idle_secs)}. Start a session.</div>`);
   } else {
     parts.push(`<div class="muted">No session running.</div>`);
+  }
+  if (world?.needs && !world.auto && !world.sites?.some((s) => s.active) && world.needs.some((n) => n.lots_done < n.lots)) {
+    parts.push(`<div class="small muted">Nothing is under construction: pick a need on the desk first, or this session banks crew hours.</div>`);
   }
   const next = st.upcoming.find((u) => !u.skipped);
   if (next) {
@@ -188,7 +196,12 @@ function controls(st: Status): string {
   }
   if (s.state !== "active") return "";
   const stop = s.kind.type === "stopwatch" ? `<button data-action="stop" ${s.stop_locked_secs > 0 ? "disabled" : ""}>Stop</button>` : "";
-  return `<div class="row">${stop}<button class="link" data-action="surrender">Surrender…</button></div>`;
+  const nm = nearMiss(world, s);
+  const prompt = nm
+    ? `<div class="near-miss">${Math.round(nm.secs / 60)} more minutes finishes ${escapeHtml(nm.name)}.
+        <button class="primary" data-action="extend" data-secs="${nm.secs}">Extend</button></div>`
+    : "";
+  return `${prompt}<div class="row">${stop}<button class="link" data-action="surrender">Surrender…</button></div>`;
 }
 
 function freeControls(st: Status): string {
@@ -205,7 +218,7 @@ function renderSession(st: Status) {
   card.querySelector(".live")!.innerHTML = st.session ? liveSession(st.session) : liveIdle(st);
   // Rebuilt only when its shape changes, so typing in it survives polls.
   const s = st.session;
-  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}:${st.free?.spending}:${Math.floor((st.free?.balance_secs ?? 0) / 60)}`;
+  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}:${nearMiss(world, s)?.secs ?? 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}:${st.free?.spending}:${Math.floor((st.free?.balance_secs ?? 0) / 60)}`;
   if (key !== controlsKey) {
     controlsKey = key;
     card.querySelector(".controls")!.innerHTML = controls(st);
@@ -271,8 +284,123 @@ sessionCard.addEventListener("click", (ev) => {
       return act(() => call({ type: "free_stop" }));
     case "surrender":
       return openSurrender();
+    case "extend":
+      return act(() => call({ type: "extend", secs: Number(btn.dataset.secs) }));
   }
 });
+
+// ---------------------------------------------------------------------------
+// The mayor's desk, the shop and the deed.
+
+let deskKey = "";
+function renderDesk(force = false) {
+  if (!world) return;
+  const s = status?.session ?? null;
+  // Rebuilt when what it shows changes, so an open blueprint pick survives polls.
+  const key = JSON.stringify([world.needs, world.sites, world.coins, world.idle_secs, world.construction?.index, s?.state, s ? Math.floor(s.elapsed_secs / 30) : 0]);
+  if (!force && key === deskKey) return;
+  deskKey = key;
+  $("#desk").innerHTML = deskHtml(world, s);
+}
+
+const shopDialog = $("#shop") as HTMLDialogElement;
+const deedDialog = $("#deed") as HTMLDialogElement;
+let deedIndex: number | null = null;
+
+function renderShop() {
+  if (!world) return;
+  $("#shop-coins").textContent = `You have ${world.coins ?? 0} coins.`;
+  $("#shop-main").innerHTML = shopHtml(world, status?.session != null);
+}
+
+function openShop() {
+  $("#shop-error").textContent = "";
+  renderShop();
+  if (!shopDialog.open) shopDialog.showModal();
+}
+
+function renderDeed() {
+  const p = world?.plots.find((p) => p.index === deedIndex);
+  if (!p) {
+    deedDialog.close();
+    return;
+  }
+  $("#deed-main").innerHTML = deedHtml(world!, p, Math.floor(Date.now() / 1000));
+}
+
+function openDeed(index: number) {
+  if (!world?.plots.some((p) => p.index === index)) return;
+  deedIndex = index;
+  $("#deed-error").textContent = "";
+  renderDeed();
+  if (!deedDialog.open) deedDialog.showModal();
+}
+
+/** A decision for the daemon; errors show where it was asked. */
+async function decide(req: Parameters<typeof call>[0], errorEl: string, after?: () => void) {
+  $(errorEl).textContent = "";
+  try {
+    const r = await call(req);
+    if (r.type === "world") {
+      world = r;
+      renderCity(world);
+      renderDesk(true);
+      skyline?.update(world, localHour(), status?.session?.elapsed_secs ?? 0);
+    }
+    after?.();
+  } catch (e) {
+    $(errorEl).textContent = e instanceof Error ? e.message : String(e);
+  }
+}
+
+$("#desk").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest("button");
+  if (!btn) return;
+  switch (btn.dataset.action) {
+    case "choose": {
+      const need = btn.dataset.need!;
+      const pick = $("#desk").querySelector<HTMLSelectElement>(`select[data-need-design="${CSS.escape(need)}"]`);
+      return decide({ type: "choose", need, blueprint: pick?.value ?? null }, "#action-error");
+    }
+    case "pause":
+      return decide({ type: "pause" }, "#action-error");
+    case "shop":
+      return openShop();
+  }
+});
+
+for (const d of [shopDialog, deedDialog]) {
+  d.addEventListener("click", (ev) => {
+    if (ev.target === d || (ev.target as HTMLElement).closest("[data-action=close]")) d.close();
+  });
+}
+shopDialog.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-action=buy]");
+  if (btn) void decide({ type: "buy", blueprint: btn.dataset.blueprint! }, "#shop-error", renderShop);
+});
+deedDialog.addEventListener("click", (ev) => {
+  if ((ev.target as HTMLElement).closest("[data-action=rename-open]")) {
+    const form = deedDialog.querySelector<HTMLFormElement>("form.rename")!;
+    form.hidden = false;
+    form.querySelector("input")!.select();
+  }
+});
+deedDialog.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target as HTMLFormElement;
+  const name = (form.elements.namedItem("name") as HTMLInputElement).value;
+  void decide({ type: "rename", lot: form.dataset.lot!, name }, "#deed-error", renderDeed);
+});
+
+const tag = $("#tag");
+function hover(index: number | null, x: number, y: number) {
+  const html = index === null || !world ? "" : tagHtml(world, index);
+  tag.hidden = !html;
+  if (!html) return;
+  tag.innerHTML = html;
+  tag.style.left = `${Math.min(x + 14, innerWidth - 260)}px`;
+  tag.style.top = `${y + 14}px`;
+}
 
 sessionCard.addEventListener("change", (ev) => {
   const el = ev.target as HTMLSelectElement;
@@ -401,9 +529,12 @@ async function poll() {
       lastWorldFetch = now;
       world = await getWorld();
       renderCity(world);
+      if (deedDialog.open) renderDeed();
+      if (shopDialog.open) renderShop();
       $("#notice").innerHTML = notice(await pendingConfig());
     }
     renderSession(status);
+    renderDesk();
     hudUpdate(status);
     progressUpdate(world);
     banner(rendererError);
@@ -422,6 +553,11 @@ window.addEventListener("unhandledrejection", (e) => banner(`UI error: ${e.reaso
 // The HUD works without the skyline, so a renderer failure only costs the picture.
 try {
   skyline = await City.create($("#stage"), story);
+  skyline.onHover = hover;
+  skyline.onPick = (i) => {
+    skyline?.look(i);
+    openDeed(i);
+  };
   if (!("__TAURI_INTERNALS__" in window)) Object.assign(window, { city: skyline });
 } catch (e) {
   console.error(e);

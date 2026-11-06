@@ -18,7 +18,12 @@ export type Request =
   | { type: "export" }
   | { type: "import"; backup: unknown }
   | { type: "free"; secs: number | null }
-  | { type: "free_stop" };
+  | { type: "free_stop" }
+  | { type: "buy"; blueprint: string }
+  | { type: "choose"; need: string; blueprint: string | null }
+  | { type: "pause" }
+  | { type: "rename"; lot: string; name: string }
+  | { type: "extend"; secs: number };
 
 export type SessionState = "active" | "surrendering" | "completed" | "surrendered";
 
@@ -186,27 +191,72 @@ export interface Status {
 }
 
 export interface Plot {
+  /** The lot's index in the plan. */
   index: number;
   district: number;
+  /** Size class from the lot's kind: 0 cottage to 4 landmark. */
   grade: number;
+  /** 0 intact, up to MAX_DAMAGE (a ruin, still standing). */
   damage: number;
   rubble: boolean;
   /** A u64 on the wire; JSON numbers round it, which is still stable. */
   seed: number;
+  /** The session that finished it, and when (unix seconds). */
   session_id: number;
   built_at: number;
+  // Progression v2; absent from an older daemon.
+  lot?: string;
+  /** `cottage`, `shop`, `water`, `school`, ... */
+  kind?: string;
+  /** The blueprint (a model id); null for buildings the town provides. */
+  design?: string | null;
+  name?: string;
+  address?: string;
+  need?: string;
+  shiny?: boolean;
+  memory?: Memory;
+}
+
+export interface Memory {
+  started_at: number;
+  parts: BuildPart[];
+  focused_secs: number;
+  streak_at_finish: number;
+  scars: Scar[];
+  first: boolean;
+}
+
+export interface BuildPart {
+  session_id: number;
+  ts: number;
+  secs: number;
+  session_secs: number;
+}
+
+export interface Scar {
+  ts: number;
+  cause: WorldCause;
+  damage: number;
+  repaired: boolean;
 }
 
 export interface Construction {
   session_id: number;
   index: number;
   grade: number;
+  /** Counting this session so far. */
   progress_permille: number | null;
   surrendering: boolean;
   seed: number;
+  lot?: string;
+  kind?: string;
+  design?: string | null;
+  name?: string;
+  /** Build time the site still needed when the session started. */
+  remaining_secs?: number;
 }
 
-export type WorldEventKind = "built" | "repaired" | "collapsed" | "quake" | "damaged";
+export type WorldEventKind = "built" | "repaired" | "collapsed" | "quake" | "damaged" | "graduated";
 export type WorldCause = "completed" | "surrendered" | "tamper" | "escalation_denied" | "clock_jump" | "tunnel";
 
 export interface WorldEvent {
@@ -218,17 +268,88 @@ export interface WorldEvent {
   ruined: number[];
 }
 
+export interface NeedInfo {
+  id: string;
+  title: string;
+  /** What the residents say. */
+  words: string;
+  kind: string;
+  district: string;
+  build_secs: number;
+  lots: number;
+  lots_done: number;
+  next_lot: string | null;
+  site: boolean;
+  designed: boolean;
+  /** Owned blueprints that fit, and ones that would if bought. */
+  fits: string[];
+  fits_locked: string[];
+}
+
+export interface BlueprintInfo {
+  id: string;
+  name: string;
+  kind: string;
+  districts: string[];
+  level: number;
+  price: number;
+  owned: boolean;
+  unlocked: boolean;
+  built: number;
+}
+
+export interface SiteInfo {
+  index: number;
+  lot: string;
+  need: string;
+  name: string;
+  kind: string;
+  design: string | null;
+  done_secs: number;
+  build_secs: number;
+  active: boolean;
+  seed: number;
+}
+
+export interface Award {
+  session_id: number;
+  ts: number;
+  coins: number;
+  length_bonus: number;
+  streak_bonus: number;
+  rested_bonus: number;
+  build_secs: number;
+  finished: number[];
+  freeze_earned: boolean;
+  freezes_used: number;
+}
+
 export interface World {
   tier: number;
   focused_secs: number;
+  /** Build time of the plan up to this level and the next. */
   tier_floor_secs: number;
   next_tier_secs: number | null;
+  /** Build time put into the plan; progress between the two above. */
+  built_secs?: number;
   streak_days: number;
   plots: Plot[];
   construction: Construction | null;
   history: WorldEvent[];
+  coins?: number;
+  coins_earned?: number;
+  needs?: NeedInfo[];
+  next_needs?: string[];
+  blueprints?: BlueprintInfo[];
+  sites?: SiteInfo[];
+  idle_secs?: number;
+  freezes?: number;
+  /** The plan builds itself until the mayor first chooses. */
+  auto?: boolean;
+  last_award?: Award | null;
 }
 
+export const MAX_PAUSED = 3;
 export const MAX_DAMAGE = 3;
 export const DISTRICT_SIZE = 8;
 

@@ -256,64 +256,93 @@ build order. Decisions taken while building are noted inline.
 
 ### Daemon: the plan and the fold (`plan.rs`, `world.rs`)
 
-- [ ] The plan as data: levels (Hamlet, Town, City, Metropolis), needs in
+- [x] The plan as data: levels (Hamlet, Town, City, Metropolis), needs in
       the residents' words, lots with an id, kind, district, build hours,
       default name and address; blueprints with kind, districts, level and
-      price. Lots only appended; a test pins the ids
-- [ ] Coins folded from completed sessions: 100 / h by the minute, length
+      price. Lots are generated from the needs in order (`<need>-<n>`) and
+      only appended; `lot_ids_are_pinned` holds the shipped list (71 lots:
+      Hamlet 10 h, Town 39.5 h, City 147 h, Metropolis 153 h)
+- [x] Coins folded from completed sessions: 100 / h by the minute, length
       bonus 1.5x past 50 min and 2x past 90 min, back to 1x past 3 h; day
       streak +10% a day from day 3 (cap +50%); streak days need a 25 min
       session
-- [ ] Rested bonus: the first session after a broken streak earns double
-- [ ] Build hours: completed sessions at face value into the active site;
-      overflow into the next lot of the same need, else idle crew hours
-      that pour into the next site chosen
-- [ ] Needs and lots: the mayor picks a need, the fold takes its next lot;
+- [x] Rested bonus: double coins for the first session after at least one
+      whole missed day (not when a freeze saved the streak)
+- [x] Build hours: completed sessions at face value into the active site;
+      overflow goes to the next lot of the same need (same blueprint), else
+      waits as crew hours, which pour into the next site chosen and stay
+      credited to the sessions that earned them
+- [x] Needs and lots: the mayor picks a need, the fold takes its next lot;
       graduation when every need of a level is met; level gates blueprints
-- [ ] Blueprints: bought once, built many times; the farmhouse free;
-      infrastructure and public buildings (water, power, school, clinic,
-      ...) need none for now (no models yet)
-- [ ] Sites: one active, up to 3 paused, half built
-- [ ] Old ledgers: until the mayor's first choice the fold builds in the
-      plan's default order, buying the default design when coins allow
-- [ ] Penalties on plan lots: surrender loses the session's work and burns
-      the 3 buildings nearest the site, tamper quakes a district, minor hits
-      the newest; damage 3 is a ruin that stays standing; automatic repairs
-      as before
-- [ ] Shiny buildings: a seeded roll on completion, better odds after
-      longer sessions
-- [ ] Streak freeze: one earned per 7 streak days (at most 2 held), spent by
-      itself on a missed day (until loot boxes exist)
-- [ ] Building memories: sessions, focused time, calendar span, damage and
-      repairs, streak at finish; renames (`building_renamed`)
+- [x] Blueprints: bought once, built many times; the farmhouse free.
+      Decided while building: water, power and the public buildings
+      (school, clinic, fire station, square, police, library, park,
+      hospital, city hall) need no blueprint until they have models
+- [x] Sites: one active, up to 3 paused, half built; resuming a need
+      resumes its site
+- [x] Old ledgers: until the mayor's first decision the fold builds in the
+      plan's default order, buying the cheapest fitting design when coins
+      allow (and skipping a need it cannot afford yet)
+- [x] Penalties on plan lots: surrender earns and builds nothing (the
+      site keeps what earlier sessions put in) and burns the 3 buildings
+      nearest the site; tamper quakes a district (8 lots by index for now);
+      minor hits the newest; damage 3 is a ruin that stays on its lot until
+      repaired; automatic repairs as before (ruins included)
+- [x] Shiny buildings: a seeded roll on completion, 5% rising to 25% with
+      the length of the session that finished it
+- [x] Streak freeze: one earned per 7 streak days (at most 2 held), spent
+      by itself on missed days (until loot boxes exist)
+- [x] Building memories: sessions and the time each gave, focused time,
+      started and finished, streak at finish, damage and repairs, the first
+      building; renames (`building_renamed`, trimmed, at most 40
+      characters, no control characters; empty restores the plan's name)
 
 ### Daemon: requests and ledger events
 
-- [ ] Events `blueprint_bought`, `need_chosen`, `site_paused`,
-      `building_renamed`, folded with the rest and carried by backups
-- [ ] `Buy`, `Choose`, `Pause`, `Rename` requests, checked by the daemon
-      (balance, level, open need, fitting design, paused limit); shop and
-      choices refused while a session runs
-- [ ] `Extend`: add minutes to a running countdown (for the near-miss
-      prompt), never past `MAX_SESSION`
-- [ ] Proto: coins, level, needs, blueprints, sites, idle hours, freezes,
-      last award, memories in `World`; `ui/src/proto.ts` mirrored
+- [x] Events `blueprint_bought`, `need_chosen`, `site_paused`,
+      `building_renamed` (JSON detail), folded with the rest in ledger
+      order and carried by backups
+- [x] `Buy`, `Choose`, `Pause`, `Rename` requests, checked by the same
+      code the fold uses (balance, level, open need, fitting owned design,
+      paused limit), so the daemon refuses exactly what the fold would
+      ignore; buying, choosing and pausing are refused while a session runs
+      ("the mayor's desk opens when the session ends"), renaming is not
+- [x] `Extend`: add time to a running countdown, never past `MAX_SESSION`
+- [x] Proto: coins, needs, blueprints, sites, crew hours, freezes, last
+      award, memories and `built_secs` in `World` (`tier` is the level);
+      `ui/src/proto.ts` mirrored
 
 ### Clients
 
-- [ ] CLI: `deepwork world` shows coins, needs and sites; `deepwork buy`,
+- [x] CLI: `deepwork world` shows coins, needs and sites; `deepwork buy`,
       `build`, `pause`, `rename`, `extend`
-- [ ] Agent: the "Session complete" note says what was earned and built
-- [ ] App: renderer reads lots, kinds and designs from the world (design
-      picks the realistic model); paused sites drawn half built; shiny look
-- [ ] App: the mayor's desk: needs cards in the residents' words, design
-      picker, coins, "What next?" after a completion and at session start
-- [ ] App: blueprint shop, current level for sale, next level as locked
-      silhouettes; closed during sessions
-- [ ] App: active site board, hover tag and click card (the deed) with the
-      memory and rename
-- [ ] App: near-miss prompt when a countdown ends close to a finish line
-- [ ] Mock daemon (`ui/src/mock.ts`) speaks all of it
+- [x] Agent: a "+N coins" note after a session (what it finished, the
+      site's progress or "pick what to build next", comeback and freezes);
+      loss notes name the buildings
+- [x] App: renderer reads lots, kinds and designs from the world (a
+      blueprint picks its realistic model; public buildings get stand-ins:
+      a water tower, a square and a park drawn in `models.ts`, the rest
+      borrowed models); lots fill out of order; paused sites drawn half
+      built; a gilded finial on shiny buildings. Ruins still draw as the
+      rubble heap
+- [x] App: the mayor's desk card: needs in the residents' words, a design
+      pick when more than one fits, coins, paused sites, "What next?" when
+      nothing is under construction (and on the start card)
+- [x] App: blueprint shop, current level for sale, later ones as locked
+      silhouettes; buying disabled during sessions
+- [x] App: active site board during a session, hover tag, click card (the
+      deed) with the memory and rename; clicking also eases the camera to
+      the building. Picking tests the ground against lot rectangles
+- [x] App: near-miss prompt when a countdown has 5 minutes or less left and
+      at most 20 more minutes would finish the site
+- [x] Mock daemon (`ui/src/mockcity.ts`) speaks all of it
+
+### Next
+
+- [ ] Use it for real: install, then tune prices, build hours and odds
+- [ ] Ruins drawn standing (scarred shells) instead of the rubble heap
+- [ ] The level-up moment: a graduation animation and note
+- [ ] Before-and-after picture on the deed
 
 ### Later (designed, not in this build)
 
@@ -322,6 +351,5 @@ build order. Decisions taken while building are noted inline.
 - [ ] Models for water, power and the public buildings, with blueprints
 - [ ] Metropolis and beyond: open-ended needs in expansion districts
 - [ ] Endowed progress, collection sets, staking coins, seasons and quests,
-      residents' letters and move-outs, before-and-after pictures
+      residents' letters and move-outs
 - [ ] Diamonds and loot boxes (with the pity counter); freezes move there
-- [ ] Tune the numbers on real use

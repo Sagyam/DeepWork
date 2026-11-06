@@ -105,5 +105,7 @@ is checked against this rule.
   cannot reroll it, and the illusion stays fair.
 - First progression v2 build, most effect for least work: shiny
   buildings, the near-miss prompt, the streak freeze, the rested bonus.
+  Built 2026-11-06 (details in the checklist of `docs/progression.md`);
+  the freeze is earned per 7 streak days until loot boxes exist.
 - Later: seasons, quests, staking, residents' letters and move-outs,
   collection sets.

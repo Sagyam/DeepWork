@@ -13,6 +13,7 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { Sky } from "three/examples/jsm/objects/Sky.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { World, WorldEvent } from "../proto";
+import { namesOf } from "../format";
 import { Bench } from "./bench";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
@@ -23,7 +24,7 @@ import { Land } from "./land";
 import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
 import { building, fitReal, furniture, KERB, kitLook, mat, park, Parts, rubble, site, SPECIES, tree, type ModelInfo } from "./models";
-import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
+import { BLOCK_X, BLOCK_Z, LOT, lot, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
 
@@ -144,6 +145,42 @@ export class City {
   /** Buildings sinking into their own dust. */
   private dying: { group: THREE.Group; t: number; h: number; w: number; x: number; z: number; tilt: number }[] = [];
 
+  /** A building or site under the pointer (`null`: none), with the pointer's place. */
+  onHover: ((index: number | null, x: number, y: number) => void) | null = null;
+  /** A building or site clicked (not dragged). */
+  onPick: ((index: number) => void) | null = null;
+  private ray = new THREE.Raycaster();
+
+  /**
+   * The building or site under a screen point. Lots are known rectangles, so
+   * the ray is met with the ground, not with the buildings' meshes: cheap,
+   * and a tall tower is picked at its foot. Good enough looking down.
+   */
+  pickAt(clientX: number, clientY: number): number | null {
+    const p = this.plan;
+    if (!p) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.camera);
+    const hit = new THREE.Vector3();
+    if (!this.ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), -KERB), hit)) return null;
+    const all = [...p.buildings, ...p.paused, ...(p.site ? [p.site] : [])];
+    for (const s of all) {
+      const l = lot(s.index);
+      if (Math.abs(hit.x - l.x) <= LOT / 2 && Math.abs(hit.z - l.z) <= LOT / 2) return s.index;
+    }
+    return null;
+  }
+
+  /** Eases the camera to a lot. */
+  look(index: number) {
+    const p = this.plan;
+    const s = p && [...p.buildings, ...p.paused, ...(p.site ? [p.site] : [])].find((b) => b.index === index);
+    if (!s) return;
+    this.controls.autoRotate = false;
+    this.focusOn(s, this.entries.get(index)?.info.height ?? s.height);
+  }
+
   private constructor(private el: HTMLElement, story: (text: string) => void) {
     this.story = story;
     // res: one pixel per CSS pixel (1.5x cost double), antialiased by MSAA 4x
@@ -235,6 +272,26 @@ export class City {
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
 
+    // Picking: a click that did not drag the camera, and hover for a tag.
+    let down: { x: number; y: number } | null = null;
+    let hoverAt = 0;
+    r.domElement.addEventListener("pointerdown", (e) => (down = { x: e.clientX, y: e.clientY }));
+    r.domElement.addEventListener("pointerup", (e) => {
+      const moved = down ? Math.hypot(e.clientX - down.x, e.clientY - down.y) : 99;
+      down = null;
+      if (moved > 5) return;
+      const i = this.pickAt(e.clientX, e.clientY);
+      if (i !== null) this.onPick?.(i);
+    });
+    r.domElement.addEventListener("pointermove", (e) => {
+      if (down || !this.onHover) return;
+      const now = performance.now();
+      if (now - hoverAt < 60) return;
+      hoverAt = now;
+      this.onHover(this.pickAt(e.clientX, e.clientY), e.clientX, e.clientY);
+    });
+    r.domElement.addEventListener("pointerleave", () => this.onHover?.(null, 0, 0));
+
     new ResizeObserver(() => this.resize()).observe(el);
     this.resize();
     r.setAnimationLoop(() => this.frame());
@@ -304,7 +361,7 @@ export class City {
 
   private keyOf(s: Spec | SiteSpec): string {
     if ("progress" in s) return `site:${s.grade}:${s.seed}:${Math.floor(s.floors * s.progress)}:${s.surrendering}`;
-    return `${s.rubble ? "rubble" : "b"}:${s.grade}:${s.seed}:${s.rubble ? 0 : s.damage}`;
+    return `${s.rubble ? "rubble" : "b"}:${s.grade}:${s.seed}:${s.rubble ? 0 : s.damage}:${s.shiny ? 1 : 0}`;
   }
 
   private make(s: Spec | SiteSpec): Entry {
@@ -350,6 +407,7 @@ export class City {
   private specs(p: CityPlan): Map<number, Spec | SiteSpec> {
     const m = new Map<number, Spec | SiteSpec>();
     for (const b of p.buildings) m.set(b.index, b);
+    for (const s of p.paused) m.set(s.index, s);
     if (p.site) m.set(p.site.index, p.site);
     return m;
   }
@@ -495,7 +553,7 @@ export class City {
   // ---- static ground ------------------------------------------------------
 
   private buildBase(p: CityPlan) {
-    const key = `${p.blocks.length}:${p.tier}:${p.emptyLots.length}`;
+    const key = `${p.blocks.length}:${p.tier}:${p.emptyLots.map((l) => l.seed).join(",")}`;
     if (key === this.baseKey) return;
     this.baseKey = key;
     this.scene.remove(this.base);
@@ -1091,21 +1149,21 @@ export class City {
 }
 
 function describeLive(ev: WorldEvent, w: World): string {
-  const plots = (l: number[]) => (l.length === 1 ? `plot ${l[0] + 1}` : `plots ${l.map((i) => i + 1).join(", ")}`);
+  const names = (l: number[]) => namesOf(w, l);
   switch (ev.kind) {
-    case "built": {
-      const p = w.plots[ev.plots[0]];
-      return `A session built ${["a house", "a shop", "a tower block", "a high-rise", "a landmark tower"][Math.min(4, p?.grade ?? 0)]} on ${plots(ev.plots)}.`;
-    }
+    case "built":
+      return `${names(ev.plots)} was finished.`;
     case "repaired":
-      return `Focus repaired ${plots(ev.plots)}.`;
+      return `Focus repaired ${names(ev.plots)}.`;
+    case "graduated":
+      return "Every need was met. The settlement grew.";
     case "collapsed":
-      return `You surrendered. Plot ${ev.plots[0] + 1} collapsed${ev.plots.length > 1 ? ` and fire spread to ${plots(ev.plots.slice(1))}` : ""}.`;
+      return `You surrendered. The session built nothing${ev.plots.length > 1 ? `, and fire spread to ${names(ev.plots.slice(1))}` : ""}.`;
     case "quake":
-      return ev.plots.length ? `Tampering set off an earthquake: ${plots(ev.plots)} damaged.` : "Tampering set off an earthquake.";
+      return ev.plots.length ? `Tampering set off an earthquake: ${names(ev.plots)} damaged.` : "Tampering set off an earthquake.";
     case "damaged": {
       const why = { clock_jump: "A wall clock jump", tunnel: "A proxy around the throttle" }[ev.cause as string] ?? "A refused root attempt";
-      return `${why} damaged ${plots(ev.plots)}.`;
+      return `${why} damaged ${names(ev.plots)}.`;
     }
   }
 }

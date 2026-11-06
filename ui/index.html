@@ -37,6 +37,7 @@
             </svg>
           </button>
         </nav>
+        <section id="desk" class="card"></section>
       </div>
       <div id="side">
         <section id="session" class="card"></section>
@@ -44,13 +45,33 @@
       </div>
       <div id="banner" hidden></div>
       <div id="story"></div>
+      <div id="tag" hidden></div>
     </div>
+    <dialog id="shop" class="panel">
+      <header class="panel-head">
+        <div>
+          <h2>Blueprints</h2>
+          <p class="small muted">Bought once with coins, built as often as the residents ask. <span id="shop-coins"></span></p>
+        </div>
+        <button class="close" data-action="close" title="Close (Esc)">×</button>
+      </header>
+      <div id="shop-main" class="panel-main"></div>
+      <p class="error" id="shop-error"></p>
+    </dialog>
+    <dialog id="deed" class="panel narrow">
+      <header class="panel-head">
+        <div></div>
+        <button class="close" data-action="close" title="Close (Esc)">×</button>
+      </header>
+      <div id="deed-main" class="panel-main"></div>
+      <p class="error" id="deed-error"></p>
+    </dialog>
     <dialog id="surrender">
       <form method="dialog">
         <h2>Surrender this session?</h2>
         <p>
-          Enforcement stays on for 10 more minutes, then the session ends. The building
-          under construction collapses and fire spreads to its neighbours.
+          Enforcement stays on for 10 more minutes, then the session ends. It builds
+          and earns nothing, and fire spreads to the buildings near the site.
         </p>
         <p>Type this exactly (no pasting):</p>
         <blockquote id="phrase"></blockquote>
