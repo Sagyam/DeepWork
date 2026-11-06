@@ -49,7 +49,7 @@ fold, so buying, building, pausing and renaming work in the browser too; `&hour=
 `city.demo("collapse" | "build" | "damage" | "graduate")` plays one transition.
 
 The realistic models (`docs/models.md`) are built with Blender into the
-git-ignored `ui/public/models/` (~60 MB); without them the app draws the
+git-ignored `ui/public/models/` (~200 MB with the PNGs); without them the app draws the
 low-poly kit instead:
 
 ```sh
@@ -68,9 +68,14 @@ The viewer shows one model on its lot with the app's own code: `model=a1|a2|a3|c
 lays out a props model's pieces instead (`&only=suv,hatch` picks and orders
 them, `&gap=` spaces them, `&ry=` turns them, `view=hero|close|low|far`);
 `&cam=x,y,z&at=x,y,z&fov=` places the camera anywhere and `&signal=s` fixes
-the traffic signals' cycle. Until models are downloaded on
-first run, a local `tauri build` embeds whatever `bun run models` produced and
-CI builds ship without them.
+the traffic signals' cycle.
+
+The dev server serves `ui/public/models/` as it is, but builds leave it out
+of `dist/` (`vite.config.ts`): the app downloads the published pack on first
+run (`ui/src-tauri/src/models.rs`, see "Model packs" under Releases) and
+draws the kit until it is there. To try a release build on local models
+without publishing them:
+`DEEPWORK_MODELS=$PWD/ui/public/models target/release/deepwork-ui`.
 
 The showcase town, `http://localhost:5173/town.html`, puts every model
 together in a hand-laid 3 x 3 block town (downtown towers, main street,
@@ -180,6 +185,26 @@ changelog" compare link.
 # a tag that doesn't match Cargo.toml
 git tag v2026.11.1 && git push origin v2026.11.1
 ```
+
+### Model packs
+
+The realistic models ship apart from the app, as a GitHub release of their
+own, `models-<id>` (a prerelease, never "latest", so `get.sh` is not
+affected and no workflow runs). `ui/src-tauri/models.json` lists every file
+with its size and SHA-256 and is compiled into the app, which downloads the
+files into `~/.local/share/deepwork/assets/<id>/` and refuses any that do not
+match. After changing models:
+
+```sh
+cd ui
+bun run models               # or just the models that changed
+bun run pack --upload        # writes src-tauri/models.json, publishes models-<id>
+# commit src-tauri/models.json; the next app build downloads the new pack
+```
+
+`<id>` hashes the file list, so an unchanged pack keeps its release and an
+app update downloads nothing. Old `models-*` releases can be deleted once no
+app release still points at them.
 
 `/get.sh` on the landing site (repo `Sagyam/deepwork-site`) is a Vercel
 rewrite to `dist/get.sh` on `main` here, so changes to the script go live

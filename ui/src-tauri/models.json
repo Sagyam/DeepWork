@@ -1,0 +1,702 @@
+{
+ "id": "14c9325ec6d74ab5",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-14c9325ec6d74ab5/",
+ "files": [
+  {
+   "path": "a1.glb",
+   "size": 2295744,
+   "sha256": "7f10ea71400fafe865b246ef7ff490446dcbdfae8dd781fcef920992f03379e7",
+   "asset": "a1.glb"
+  },
+  {
+   "path": "a2.glb",
+   "size": 1705728,
+   "sha256": "b2d2e0622fc183a10978c06f28773bf58ba30ea2350134e575176bee73a2f470",
+   "asset": "a2.glb"
+  },
+  {
+   "path": "a3.glb",
+   "size": 783492,
+   "sha256": "6ee69574543a73d150b1766e2ac02045d3119d614178e29c6804e140862a03aa",
+   "asset": "a3.glb"
+  },
+  {
+   "path": "bridge.glb",
+   "size": 481984,
+   "sha256": "75624adf5b5064d0c479e42dd179c7253dd31e6a5264385718c64be7a6ab7f80",
+   "asset": "bridge.glb"
+  },
+  {
+   "path": "c1.glb",
+   "size": 634804,
+   "sha256": "ec11678bc87f9fc025bd385b64f982699c84d75e10ab243feecaef3b078dfb5b",
+   "asset": "c1.glb"
+  },
+  {
+   "path": "c2.glb",
+   "size": 597452,
+   "sha256": "8172c48f31dd1121633e4ebab0f38d9a1b91ca4de05ca32062c8a77184e2e5dc",
+   "asset": "c2.glb"
+  },
+  {
+   "path": "c3.glb",
+   "size": 287764,
+   "sha256": "75ceec9d6acbe2e8ab31e88d08134444e2f012dec551c1d4d6a1ac4225eabb7b",
+   "asset": "c3.glb"
+  },
+  {
+   "path": "c4.glb",
+   "size": 314340,
+   "sha256": "9db57809f18b61a9fb0f4081238d4ab2231852aa569ec9afebb248b3f069e437",
+   "asset": "c4.glb"
+  },
+  {
+   "path": "cars.glb",
+   "size": 3792304,
+   "sha256": "85d5067a6e4626e6099678dc8061491a710d69585dbfb1f60dfeaef9d1fa2367",
+   "asset": "cars.glb"
+  },
+  {
+   "path": "l1.glb",
+   "size": 901916,
+   "sha256": "f98503f8d95b4cd5b7307dbc16ce3997b701868504222e22b3f3de775fc2644c",
+   "asset": "l1.glb"
+  },
+  {
+   "path": "o1.glb",
+   "size": 684424,
+   "sha256": "98d934c42e31d2b8620e2b528699f33feb3e54576817b5e4dc025cdf94e3ce20",
+   "asset": "o1.glb"
+  },
+  {
+   "path": "s1.glb",
+   "size": 471564,
+   "sha256": "caaef414e7331f80133d8ddd022f2e0475759180912135654c537bf60df15c10",
+   "asset": "s1.glb"
+  },
+  {
+   "path": "s2.glb",
+   "size": 1249096,
+   "sha256": "250c6686fa83f18e8becba8d7e18362a31bb49b3ba61f2fdb661f9b80dc43111",
+   "asset": "s2.glb"
+  },
+  {
+   "path": "s3.glb",
+   "size": 544796,
+   "sha256": "0edb9c5c9405c9e063c5664dde0f09c31f577d89ac21f2e6b97adecf697a91df",
+   "asset": "s3.glb"
+  },
+  {
+   "path": "s4.glb",
+   "size": 891932,
+   "sha256": "e6093f216643b89561f59245747dc152f5842998a3eae748bd0090b678b3e291",
+   "asset": "s4.glb"
+  },
+  {
+   "path": "street.glb",
+   "size": 220728,
+   "sha256": "87ce9068569df9c5c27a75419d65947bbf124dd32e3e694c77f6f66f1b6afb31",
+   "asset": "street.glb"
+  },
+  {
+   "path": "trees.glb",
+   "size": 1222108,
+   "sha256": "d91cdf2ff8a0aa28188f9491dd85239f9efef3f1c9595711dc9008bccde77627",
+   "asset": "trees.glb"
+  },
+  {
+   "path": "bc7.json",
+   "size": 1525,
+   "sha256": "e653c1eaad8bb54ad95fe8e1a704a427d34a710d1102cbb10944c2b76e0c13ea",
+   "asset": "bc7.json"
+  },
+  {
+   "path": "a1_ao.bc7",
+   "size": 2471726,
+   "sha256": "b5344083be3aec29031f31b92ddd2ba03d03f58edddaeb62c97aa2333ae9f6d8",
+   "asset": "a1_ao.bc7"
+  },
+  {
+   "path": "a2_ao.bc7",
+   "size": 3064808,
+   "sha256": "0c492ae28dd64b9046d26ce8edda5ab36a3a4d57f52c7c9df9e4f7a17530bf30",
+   "asset": "a2_ao.bc7"
+  },
+  {
+   "path": "a3_ao.bc7",
+   "size": 2908605,
+   "sha256": "052d9fd9031933a1aa14f75b65ebf521f8dccdb36b981499cbeebff7836041fd",
+   "asset": "a3_ao.bc7"
+  },
+  {
+   "path": "bridge_ao.bc7",
+   "size": 2920660,
+   "sha256": "bea31a97f2b5a31c3fd837c21aa2f97ded27282637862a48e0b68b4d3d9ac732",
+   "asset": "bridge_ao.bc7"
+  },
+  {
+   "path": "c1_ao.bc7",
+   "size": 3029825,
+   "sha256": "ebf3591e07f83a82bac0eefdb0024119dd1f0908da05ef8b73a68c3fd32abd0f",
+   "asset": "c1_ao.bc7"
+  },
+  {
+   "path": "c2_ao.bc7",
+   "size": 2485907,
+   "sha256": "ac72da567af134a8616cf413efac644c07a33e1e184f56b08f9b31edae6d47c2",
+   "asset": "c2_ao.bc7"
+  },
+  {
+   "path": "c3_ao.bc7",
+   "size": 3048128,
+   "sha256": "805cf2004d1e9f897a73a8445b3418baf264e6d85c380f3f76744651c9b09719",
+   "asset": "c3_ao.bc7"
+  },
+  {
+   "path": "c4_ao.bc7",
+   "size": 2894323,
+   "sha256": "2985bb4df21cfed19b693beba07c016a6d149ce4177ecc347d3e9df5c2a6c727",
+   "asset": "c4_ao.bc7"
+  },
+  {
+   "path": "cars_ao.bc7",
+   "size": 3277233,
+   "sha256": "24caf215c89b202c57a50dd9d3b67fe1c09b56995cd716fc2ab6f29d6a63385b",
+   "asset": "cars_ao.bc7"
+  },
+  {
+   "path": "l1_ao.bc7",
+   "size": 3270353,
+   "sha256": "1ab8b175799fd5ec2258b00a01a98f12bb544c7822c80343d2d2452d64d7e5c1",
+   "asset": "l1_ao.bc7"
+  },
+  {
+   "path": "o1_ao.bc7",
+   "size": 3381856,
+   "sha256": "48250f6aeb725b7bd22d884bec0081c7096e8fbd18db022bef0ff9ade4493c57",
+   "asset": "o1_ao.bc7"
+  },
+  {
+   "path": "s1_ao.bc7",
+   "size": 2924695,
+   "sha256": "ac91367096e79bd9437c4c1248ef3efd7e7a32cc6d6d64b8fe551ba9c0633457",
+   "asset": "s1_ao.bc7"
+  },
+  {
+   "path": "s2_ao.bc7",
+   "size": 2753357,
+   "sha256": "2a40dee799b41f92873f162b9be738fce77af01572c27ed4fc8f6cf2b97ab142",
+   "asset": "s2_ao.bc7"
+  },
+  {
+   "path": "s3_ao.bc7",
+   "size": 2373640,
+   "sha256": "e89e496e9c62d05785d537ed6b6be0850330df4250b24595421777ce16b5d5c9",
+   "asset": "s3_ao.bc7"
+  },
+  {
+   "path": "s4_ao.bc7",
+   "size": 3022735,
+   "sha256": "9b59c7fc193f253969e61fcf61437bd82b72145ab2d3ac3da4f7c46527b05a89",
+   "asset": "s4_ao.bc7"
+  },
+  {
+   "path": "street_ao.bc7",
+   "size": 2970478,
+   "sha256": "71f0eb3fd15d6a7acc11435065738dece706d6f8ddde2bc04f2d7b38cd6281ee",
+   "asset": "street_ao.bc7"
+  },
+  {
+   "path": "tex/ashlar_col.bc7",
+   "size": 375947,
+   "sha256": "aa49ed907427bb37e448fd4b5ed162f26f0d51041278dff064f30b4c59075f8f",
+   "asset": "tex.ashlar_col.bc7"
+  },
+  {
+   "path": "tex/ashlar_nrm.bc7",
+   "size": 817552,
+   "sha256": "de7ebe2a90e0070f8ac63f86d98217ed84aa53f847631dde051fb4c428ce4b8e",
+   "asset": "tex.ashlar_nrm.bc7"
+  },
+  {
+   "path": "tex/asphalt_col.bc7",
+   "size": 842798,
+   "sha256": "4482bc76994fa912c184cd7bdf9bbc4be0830b5d33a8e1e002f4d3093c2baeb1",
+   "asset": "tex.asphalt_col.bc7"
+  },
+  {
+   "path": "tex/asphalt_nrm.bc7",
+   "size": 1094999,
+   "sha256": "9d24862bc3507d52d4f3be812412bdf3a6deddec859830b4d8c7476eb3bf7b4f",
+   "asset": "tex.asphalt_nrm.bc7"
+  },
+  {
+   "path": "tex/awning_col.bc7",
+   "size": 218431,
+   "sha256": "50aa659ed2f09dc4d8853e06a0d96caee7135f73a69eea56ce12a27027b884f1",
+   "asset": "tex.awning_col.bc7"
+  },
+  {
+   "path": "tex/bark_col.bc7",
+   "size": 225220,
+   "sha256": "a9a8f57ac4daa643ebf33ef6746016804580d99ef2ecc1ebff43aabaf6c47b96",
+   "asset": "tex.bark_col.bc7"
+  },
+  {
+   "path": "tex/bark_nrm.bc7",
+   "size": 283460,
+   "sha256": "10e29e766e05a8b7a31405f21e698083e11a4b40dc7c2c061beda94aab5d4ab1",
+   "asset": "tex.bark_nrm.bc7"
+  },
+  {
+   "path": "tex/bars.bc7",
+   "size": 3872,
+   "sha256": "a2dfd1550351ec99d52669fa57b7a470f3ec6497f07a6f7b5b6ced723c4cb221",
+   "asset": "tex.bars.bc7"
+  },
+  {
+   "path": "tex/battens_col.bc7",
+   "size": 627737,
+   "sha256": "8348d21e977fa455f9ebbbf5bf741172136384b8250a59960c65218371b51cf8",
+   "asset": "tex.battens_col.bc7"
+  },
+  {
+   "path": "tex/battens_nrm.bc7",
+   "size": 321146,
+   "sha256": "788ba9dba93f9bfde3f22f537c3eeeb8739e784a703400e318ec6798e76fad61",
+   "asset": "tex.battens_nrm.bc7"
+  },
+  {
+   "path": "tex/birch_col.bc7",
+   "size": 143328,
+   "sha256": "8a5bbedb7711f571dd07dd4fe381af175e32485de021e8a3ee9c9a846700cb6e",
+   "asset": "tex.birch_col.bc7"
+  },
+  {
+   "path": "tex/blades_col.bc7",
+   "size": 127044,
+   "sha256": "6ba6f5396746be76e70585b17727b6bed6c8ec2cc38b2d4e9622bb8e40cf710f",
+   "asset": "tex.blades_col.bc7"
+  },
+  {
+   "path": "tex/blades_nrm.bc7",
+   "size": 2060,
+   "sha256": "c64744c4f87f643362b5450c6d468f82faf7db3e356d76dabdae4028e3c4e644",
+   "asset": "tex.blades_nrm.bc7"
+  },
+  {
+   "path": "tex/bloom_col.bc7",
+   "size": 171343,
+   "sha256": "f4c36ad4d22eaf59d655520e583a3a266156df26ec248b27c42f36f1d700d708",
+   "asset": "tex.bloom_col.bc7"
+  },
+  {
+   "path": "tex/bloom_nrm.bc7",
+   "size": 138735,
+   "sha256": "774cd58092cf47ae70901d1a5ee3596fad62a06ed90c66769182f39fc02d2ad6",
+   "asset": "tex.bloom_nrm.bc7"
+  },
+  {
+   "path": "tex/blossom_col.bc7",
+   "size": 169222,
+   "sha256": "cb41ac323de01e6f59528de8684501d3e745b625d97605c7db021c7dd9db3610",
+   "asset": "tex.blossom_col.bc7"
+  },
+  {
+   "path": "tex/blossom_nrm.bc7",
+   "size": 100659,
+   "sha256": "535aacd847aba796e3930275a36d091017fcfb57845b052d88dba9caaa967128",
+   "asset": "tex.blossom_nrm.bc7"
+  },
+  {
+   "path": "tex/boards_col.bc7",
+   "size": 831626,
+   "sha256": "df93daae11203a5a0edace4124aee401ec01f24a525286edae39f2a75036887c",
+   "asset": "tex.boards_col.bc7"
+  },
+  {
+   "path": "tex/boards_nrm.bc7",
+   "size": 320203,
+   "sha256": "1bd5ae8b6d36edee00abda0e1e07723aba627426d85b43dcc9048d8214425482",
+   "asset": "tex.boards_nrm.bc7"
+  },
+  {
+   "path": "tex/brick_col.bc7",
+   "size": 1041815,
+   "sha256": "b0a307b9d70311d4c89c545e0db7e73d9d56bc1cb71f6fa7bf91801afcea344b",
+   "asset": "tex.brick_col.bc7"
+  },
+  {
+   "path": "tex/brick_nrm.bc7",
+   "size": 908854,
+   "sha256": "d77e368ed6260374a07c8e887d98fd6d8cd608859bce702c2602e79c52656e50",
+   "asset": "tex.brick_nrm.bc7"
+  },
+  {
+   "path": "tex/brick_rgh.bc7",
+   "size": 651273,
+   "sha256": "bdfb4355fbd9ffce9a0c933eaece172634870b5d7f1667546194150c610e4f1b",
+   "asset": "tex.brick_rgh.bc7"
+  },
+  {
+   "path": "tex/brownstone_col.bc7",
+   "size": 881531,
+   "sha256": "643b4b05778d5e9ec93730077b2c7a78fd6c870340b624d43ae6890012fe73a2",
+   "asset": "tex.brownstone_col.bc7"
+  },
+  {
+   "path": "tex/brownstone_nrm.bc7",
+   "size": 832797,
+   "sha256": "59414f5430913971d84ec82c81f9d836f2e74662677dd97499031111afebe1dc",
+   "asset": "tex.brownstone_nrm.bc7"
+  },
+  {
+   "path": "tex/brownstone_rgh.bc7",
+   "size": 368105,
+   "sha256": "d2c4f9cc82b2e3edfca3cd134f3cc32bf7aa50eae4f3403029be8bb6f2a9cc97",
+   "asset": "tex.brownstone_rgh.bc7"
+  },
+  {
+   "path": "tex/chevron_col.bc7",
+   "size": 237202,
+   "sha256": "92763863f17c7278343dbe226155fdce01a02ee37adef97a62861e4473a44684",
+   "asset": "tex.chevron_col.bc7"
+  },
+  {
+   "path": "tex/chevron_nrm.bc7",
+   "size": 233551,
+   "sha256": "e2d0fe02b066e3d59365fcf73be33cf6ea7a35c458a72b73a9e1600ca091d51b",
+   "asset": "tex.chevron_nrm.bc7"
+  },
+  {
+   "path": "tex/cladstone_col.bc7",
+   "size": 414591,
+   "sha256": "b2c615c1c6c49c2e4b7f480fe0915d6b5c1afc0237c0f8ac879feb6ae6777e8e",
+   "asset": "tex.cladstone_col.bc7"
+  },
+  {
+   "path": "tex/cladstone_nrm.bc7",
+   "size": 449452,
+   "sha256": "23850861c0c5ab8157c2bd1f284114bf1f29622ae29dc1dc9208dc89c4096731",
+   "asset": "tex.cladstone_nrm.bc7"
+  },
+  {
+   "path": "tex/corrugated_col.bc7",
+   "size": 1903667,
+   "sha256": "1baf0b7ea06d972ff8eae671050a777033fa48eb8ee74850a46bbaa8f4483540",
+   "asset": "tex.corrugated_col.bc7"
+  },
+  {
+   "path": "tex/corrugated_nrm.bc7",
+   "size": 1658936,
+   "sha256": "141645e9b0e37539e15b65c7f1646143a1e40f33f42e8230fe0b7bb9a074bf02",
+   "asset": "tex.corrugated_nrm.bc7"
+  },
+  {
+   "path": "tex/corrugated_rgh.bc7",
+   "size": 655547,
+   "sha256": "dac5696af5f417ca0fa81ba75cb5e697145daeef6b7022d7639b2711b0229c38",
+   "asset": "tex.corrugated_rgh.bc7"
+  },
+  {
+   "path": "tex/firs_col.bc7",
+   "size": 200293,
+   "sha256": "71d621644a5547f3043ca0022b5cee9c0895c238ef7296f5ed13baa9f57fd309",
+   "asset": "tex.firs_col.bc7"
+  },
+  {
+   "path": "tex/fluted_col.bc7",
+   "size": 506716,
+   "sha256": "d283b618d8cdd072cb479725721aa11b573b19defe58344e1c5462ea8322037d",
+   "asset": "tex.fluted_col.bc7"
+  },
+  {
+   "path": "tex/fluted_nrm.bc7",
+   "size": 98536,
+   "sha256": "ff59ba12b95cdaa79cbea7664519597f4ea4e0c8c34f88afe57f7e314bd689ee",
+   "asset": "tex.fluted_nrm.bc7"
+  },
+  {
+   "path": "tex/fluted_rgh.bc7",
+   "size": 414738,
+   "sha256": "3f41e70183f97ff200870c1d20194c572fefcdb9dcdcf4c9ac818433dbc535d6",
+   "asset": "tex.fluted_rgh.bc7"
+  },
+  {
+   "path": "tex/glassblock_col.bc7",
+   "size": 479651,
+   "sha256": "6a0e334706dc5d8962ed0abc41a1304810f77620b17b3e5e10cdab66d1d390db",
+   "asset": "tex.glassblock_col.bc7"
+  },
+  {
+   "path": "tex/glassblock_nrm.bc7",
+   "size": 42778,
+   "sha256": "29274169671072d9410624fc3628850875bd80da0786af827ad3a84a586d0758",
+   "asset": "tex.glassblock_nrm.bc7"
+  },
+  {
+   "path": "tex/granite_col.bc7",
+   "size": 181609,
+   "sha256": "1bfaf3fd6908cec1c50977ab958c954be86f3d9f96da3d2cfba30acf02c32e32",
+   "asset": "tex.granite_col.bc7"
+  },
+  {
+   "path": "tex/grass_col.bc7",
+   "size": 973277,
+   "sha256": "5803c9dc35e45823759441cda5e8a3632819c90c8b3f481c9d1e7885232aa01b",
+   "asset": "tex.grass_col.bc7"
+  },
+  {
+   "path": "tex/grass_nrm.bc7",
+   "size": 1057991,
+   "sha256": "9282cb129c4b327a0a75ff7d1e4fa30713e3f965f278b9df32c98b7569b99882",
+   "asset": "tex.grass_nrm.bc7"
+  },
+  {
+   "path": "tex/grate.bc7",
+   "size": 4820,
+   "sha256": "2c7501d3913f3460f71c84ac845616d11ea275e0433887b5761574dfb55ca349",
+   "asset": "tex.grate.bc7"
+  },
+  {
+   "path": "tex/gravel_col.bc7",
+   "size": 1086325,
+   "sha256": "90f1091ba0e176b7012fedcd55303682d7e576bdd4c3c55b4b08d2885f0736f3",
+   "asset": "tex.gravel_col.bc7"
+  },
+  {
+   "path": "tex/gravel_nrm.bc7",
+   "size": 1055616,
+   "sha256": "b25a76e127ff94cef2e9be6253e9ab4901980bc01d02ee49045607c4ce25cb45",
+   "asset": "tex.gravel_nrm.bc7"
+  },
+  {
+   "path": "tex/grime.bc7",
+   "size": 248750,
+   "sha256": "5b300e55c3c3d303bc03ff39df99a95c34b6cdb8798c7049dd51b1684e407045",
+   "asset": "tex.grime.bc7"
+  },
+  {
+   "path": "tex/hedge_col.bc7",
+   "size": 882553,
+   "sha256": "2dbc8cb68d4c17b37d8e9698220dd41d5512c21fa3c2263713c5b8245cbaaf78",
+   "asset": "tex.hedge_col.bc7"
+  },
+  {
+   "path": "tex/hedge_nrm.bc7",
+   "size": 1005729,
+   "sha256": "84b08779ffe6afd89e9c668673ba4a31c23f055de8e53f91c73bcc51b50ff3a0",
+   "asset": "tex.hedge_nrm.bc7"
+  },
+  {
+   "path": "tex/leaf_col.bc7",
+   "size": 169261,
+   "sha256": "aa889fb0a58ebc77c6f2172a7f20b3aeed52a4ddacc36991b08d141b7f036794",
+   "asset": "tex.leaf_col.bc7"
+  },
+  {
+   "path": "tex/leaf_nrm.bc7",
+   "size": 169712,
+   "sha256": "3c35d424df9e014d34710df5d4d8dd95d0315e1bbf0aafe955e6a8124f06e29f",
+   "asset": "tex.leaf_nrm.bc7"
+  },
+  {
+   "path": "tex/louvre_col.bc7",
+   "size": 96482,
+   "sha256": "241bdede075c58d7f9a8edf55a6662d52e8e753d063d1b8a63b89ad04c22e84c",
+   "asset": "tex.louvre_col.bc7"
+  },
+  {
+   "path": "tex/louvre_nrm.bc7",
+   "size": 7311,
+   "sha256": "c3a86d19d3154c4ff8f8ed2a3e60261f0d0eeab152234be6aa96bd12547f0182",
+   "asset": "tex.louvre_nrm.bc7"
+  },
+  {
+   "path": "tex/needles_col.bc7",
+   "size": 167227,
+   "sha256": "02db9d9a8ae6726427da7a96130f06bfaa01190195bc12c9d1dc358049eb1d48",
+   "asset": "tex.needles_col.bc7"
+  },
+  {
+   "path": "tex/needles_nrm.bc7",
+   "size": 230760,
+   "sha256": "2862710935c09c5b14453cb71dd205621fca953421db09ccf5deb5a6d7399700",
+   "asset": "tex.needles_nrm.bc7"
+  },
+  {
+   "path": "tex/pave_col.bc7",
+   "size": 548606,
+   "sha256": "a30e82ca39055d170c62f9e54e96034123229d2144d011e4bf826e2d6172c7ce",
+   "asset": "tex.pave_col.bc7"
+  },
+  {
+   "path": "tex/pave_nrm.bc7",
+   "size": 821886,
+   "sha256": "dc57811baec8e37ac49ac1c74fa81103c2e6839c0ae682c58fc2d94d2b64c8a7",
+   "asset": "tex.pave_nrm.bc7"
+  },
+  {
+   "path": "tex/render_col.bc7",
+   "size": 829063,
+   "sha256": "0ee3e3e5905fae4f75cc72228df645d072aa3f05b6408a84d3f96f22e2254401",
+   "asset": "tex.render_col.bc7"
+  },
+  {
+   "path": "tex/render_nrm.bc7",
+   "size": 1031819,
+   "sha256": "962a477d1ac9b41592d3e37fb48fb52d7da86f3e47e35b9c7074b222a4a836d1",
+   "asset": "tex.render_nrm.bc7"
+  },
+  {
+   "path": "tex/roof_col.bc7",
+   "size": 806717,
+   "sha256": "7a8fac6d8bdedd6de3f6e7000f6bf9ac44bb79d8ad80b248e9ac48d1af79428b",
+   "asset": "tex.roof_col.bc7"
+  },
+  {
+   "path": "tex/roof_nrm.bc7",
+   "size": 1041634,
+   "sha256": "c3e1ee652bd9a10981b0c7a7f7320c3603640601693a707aeec74a7d6cb68f96",
+   "asset": "tex.roof_nrm.bc7"
+  },
+  {
+   "path": "tex/rustic_col.bc7",
+   "size": 848784,
+   "sha256": "cc7e75d39ae97f7ae22f65454a9fbcdf3695fecc2256c65617bb1456f97844fe",
+   "asset": "tex.rustic_col.bc7"
+  },
+  {
+   "path": "tex/rustic_nrm.bc7",
+   "size": 887209,
+   "sha256": "cf31ee0e1a4a5ac5faf7ff285498b50e9fd006748d5f0398f157551befa6d343",
+   "asset": "tex.rustic_nrm.bc7"
+  },
+  {
+   "path": "tex/sedum_col.bc7",
+   "size": 1124562,
+   "sha256": "9dac414a70c8cfe5cfbd34e61d2ebf0fe5612303619113575c6e79eee15ffde7",
+   "asset": "tex.sedum_col.bc7"
+  },
+  {
+   "path": "tex/sedum_nrm.bc7",
+   "size": 1138029,
+   "sha256": "baa0020bffc1775dff92b161fc46a65b69401728472b0ba9e0d4554b7464d4f5",
+   "asset": "tex.sedum_nrm.bc7"
+  },
+  {
+   "path": "tex/shake_col.bc7",
+   "size": 973456,
+   "sha256": "7cf1f39855f50709665d48b4e4b11c518cc1a6caa15cfa209b4a95882e2dd7b1",
+   "asset": "tex.shake_col.bc7"
+  },
+  {
+   "path": "tex/shake_nrm.bc7",
+   "size": 825149,
+   "sha256": "06d0b588359b41638d4ecb174e5230865bca15fdf322d7454c087823cd8d5c94",
+   "asset": "tex.shake_nrm.bc7"
+  },
+  {
+   "path": "tex/shingle_col.bc7",
+   "size": 1053750,
+   "sha256": "fd2484904a4e84245de8440ee2e8f031c4f09e2cae0235cebe62f06b84651d62",
+   "asset": "tex.shingle_col.bc7"
+  },
+  {
+   "path": "tex/shingle_nrm.bc7",
+   "size": 922461,
+   "sha256": "5346031b933e13d09c9a32b1004b0e6e9c43e03a660c2d10b39c433d325be80f",
+   "asset": "tex.shingle_nrm.bc7"
+  },
+  {
+   "path": "tex/siding_col.bc7",
+   "size": 665136,
+   "sha256": "e97fa9704eb4966c556d6031fe8e15360478741204311cf1b0c7a29929c0892a",
+   "asset": "tex.siding_col.bc7"
+  },
+  {
+   "path": "tex/siding_nrm.bc7",
+   "size": 321394,
+   "sha256": "2f92a5632e758694f29eaa3659361138569308b279329a3975bf1bc542ccb773",
+   "asset": "tex.siding_nrm.bc7"
+  },
+  {
+   "path": "tex/siding_rgh.bc7",
+   "size": 383213,
+   "sha256": "b4777f48654c4ec05904ddab7deabe401037441763b3eca642a9dac79689e37f",
+   "asset": "tex.siding_rgh.bc7"
+  },
+  {
+   "path": "tex/slate_col.bc7",
+   "size": 961866,
+   "sha256": "1f8c6ef125ddab69a6aa73361bbf951bd42ae24b493f71ac7b173cb7c78722a7",
+   "asset": "tex.slate_col.bc7"
+  },
+  {
+   "path": "tex/slate_nrm.bc7",
+   "size": 898058,
+   "sha256": "64f3a82957bebdbf69cfb6bd116589ede47a75b8f305d413cdc95851ed720250",
+   "asset": "tex.slate_nrm.bc7"
+  },
+  {
+   "path": "tex/slate_rgh.bc7",
+   "size": 715069,
+   "sha256": "76f654115ddadc589bfc02a3668f6986911bceb45c503a4fd8abcd7ba3d5ace4",
+   "asset": "tex.slate_rgh.bc7"
+  },
+  {
+   "path": "tex/smallleaf_col.bc7",
+   "size": 136241,
+   "sha256": "1259f174111fef388bf2bb006bf644e7519b986a0dc03fa8151c7d726520d00f",
+   "asset": "tex.smallleaf_col.bc7"
+  },
+  {
+   "path": "tex/smallleaf_nrm.bc7",
+   "size": 149809,
+   "sha256": "acd6ea09c8fd5f9e07ffb2e69766355a7a59174978f1fdf20ab01f51fcff0a9a",
+   "asset": "tex.smallleaf_nrm.bc7"
+  },
+  {
+   "path": "tex/solar_col.bc7",
+   "size": 299417,
+   "sha256": "175511f79c11d20ec0bd8c364ed6644c4aa2986f8faf388c4c62d4a095fa27c8",
+   "asset": "tex.solar_col.bc7"
+  },
+  {
+   "path": "tex/stone_col.bc7",
+   "size": 708717,
+   "sha256": "b5500009e5bd9a357262a076f256581b286b6af240dabd372d46379d733ae754",
+   "asset": "tex.stone_col.bc7"
+  },
+  {
+   "path": "tex/stone_nrm.bc7",
+   "size": 1034581,
+   "sha256": "8090417fc0341491ac06c5fdca2fa285478bf1aa18bd7fbdda81e046dfcea6d4",
+   "asset": "tex.stone_nrm.bc7"
+  },
+  {
+   "path": "tex/wood_col.bc7",
+   "size": 217067,
+   "sha256": "8740dc01afeae10bcb88a66da60fb58b0867656b3aa3d5f2d27266bf7cce0981",
+   "asset": "tex.wood_col.bc7"
+  },
+  {
+   "path": "tex/wood_nrm.bc7",
+   "size": 180693,
+   "sha256": "7cde98f015458f92840dbb38a268d6221bac95f334260b662ec1a219ea2b987b",
+   "asset": "tex.wood_nrm.bc7"
+  },
+  {
+   "path": "tex/woods_col.bc7",
+   "size": 192175,
+   "sha256": "932a52f64a8f79823da9bec458bdc3698aea3065dd1cd0d490aa1ae7d8343a83",
+   "asset": "tex.woods_col.bc7"
+  },
+  {
+   "path": "trees_ao.bc7",
+   "size": 2774351,
+   "sha256": "8dc546545bddd7a4dad57f5d8ac6c86b21ae0ba5447392ce37554c7bcf4ba541",
+   "asset": "trees_ao.bc7"
+  }
+ ]
+}

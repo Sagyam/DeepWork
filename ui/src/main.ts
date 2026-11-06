@@ -6,6 +6,7 @@ import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./p
 import { openProgress, progressUpdate } from "./progress";
 import { confirmSkip, hudUpdate, openSettings, type SettingsSection } from "./settings";
 import { City } from "./city/scene";
+import { modelsStatus, type ModelsStatus } from "./models";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const hourOverride = new URLSearchParams(location.search).get("hour");
@@ -65,6 +66,23 @@ function banner(text: string | null) {
   el.textContent = text ?? "";
 }
 
+/** The realistic city's download, while there is one to report (models.ts). */
+let models: ModelsStatus | null = null;
+
+function modelsLine(): string {
+  const mb = (n: number) => (n / 1e6).toFixed(0);
+  switch (models?.state) {
+    case "downloading":
+      return `<div class="small muted">Realistic city: ${mb(models.done)} of ${mb(models.total)} MB downloaded</div>`;
+    case "retrying":
+      return `<div class="small muted" title="${escapeHtml(models.error)}">Realistic city: download stalled, retrying in ${models.retry_secs < 60 ? `${models.retry_secs} s` : hm(models.retry_secs)}</div>`;
+    case "ready":
+      return `<div class="small muted models-ready">Realistic city downloaded. <button class="link" data-action="show-models">Show it</button></div>`;
+    default:
+      return "";
+  }
+}
+
 function renderCity(w: World) {
   // Levels graduate by build time (needs met); an older daemon counted focus.
   const built = w.built_secs ?? w.focused_secs;
@@ -89,7 +107,8 @@ function renderCity(w: World) {
     <div class="muted">${hm(w.focused_secs)} focused${streak}</div>
     <div class="bar"><div style="width:${pct.toFixed(1)}%"></div></div>
     <div class="small muted">${next}</div>
-    <div class="small muted">${condition.join(" · ")}</div>`;
+    <div class="small muted">${condition.join(" · ")}</div>
+    ${modelsLine()}`;
 }
 
 function building(w: World | null, s: SessionInfo): string {
@@ -547,6 +566,7 @@ async function poll() {
   if (busy) return;
   busy = true;
   try {
+    if (models && models.state !== "ready") models = await modelsStatus();
     status = await getStatus();
     const s = status.session;
     const key = s ? `${s.id}:${s.state}` : "none";
@@ -584,6 +604,7 @@ window.addEventListener("unhandledrejection", (e) => banner(`UI error: ${e.reaso
 try {
   skyline = await City.create($("#stage"), story);
   skyline.onHover = hover;
+  if (skyline.models.state === "downloading" || skyline.models.state === "retrying") models = skyline.models;
   skyline.onGraduate = levelUp;
   skyline.onPick = (i) => {
     skyline?.look(i);
@@ -594,6 +615,10 @@ try {
   console.error(e);
   rendererError = `Skyline unavailable: ${e}`;
 }
+// The city was drawn with the kit while the models downloaded; a reload draws it again with them.
+$("#city").addEventListener("click", (e) => {
+  if ((e.target as Element).closest('[data-action="show-models"]')) location.reload();
+});
 await poll();
 setInterval(poll, 1000);
 // `VITE_FPS=1 bun run build` adds a frame-rate readout, for tuning.
