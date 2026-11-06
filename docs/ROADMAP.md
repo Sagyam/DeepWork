@@ -67,7 +67,6 @@ with a root shell open in another terminal for the PAM checks.
 
 ## Packaging
 
-- [ ] Publish the gzipped pack: `bun run pack --upload`, commit `models.json`.
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
       user is creating the accounts.
 
