@@ -1,6 +1,6 @@
 [Unit]
 Description=DeepWork focus daemon
-Documentation=file:///usr/local/share/doc/deepwork/PLAN.md
+Documentation=file:///usr/local/share/doc/deepwork/ARCHITECTURE.md
 After=network-pre.target
 Wants=network-pre.target
 # RefuseManualStop=yes is added at runtime, only while a session runs
