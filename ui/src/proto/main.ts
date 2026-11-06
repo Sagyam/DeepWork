@@ -245,7 +245,7 @@ function lineup() {
       if (night && mm.userData.night) mm.emissiveIntensity = mm.userData.night;
       m.position.set(x, 0.01, 0);
       m.rotation.y = ry;
-      m.castShadow = q.get("shadow") !== "0";
+      m.castShadow = q.get("shadow") !== "0" && !(m.material as THREE.Material).userData.noShadow;
       m.receiveShadow = true;
       g.add(m);
     }

@@ -22,7 +22,7 @@
 #                  the app colours each one)
 # Roles: tankpaint, tankband, crane, scaffboard, char, galv, dark, grate, concrete, trim, carglass,
 # wood, brick, rubble, iron, steel, stone, water (animated by the app),
-# lead, paint, brass, deck, chair, corrugated, net (cut-out), skin, hair,
+# spray (falling water), zinc, castiron, debris (dusty broken concrete), lead, paint, brass, deck, chair, corrugated, net (cut-out), skin, hair,
 # shirt, pants.
 import math
 import random
@@ -82,7 +82,74 @@ def net_tex(t, n=256):
     t.save("net_col", col, alpha)
 
 
-TEXTURES = (rubble_tex, net_tex)
+def paintsteel_tex(t, n=1024):
+    """Painted steel out in the weather for years (tile 2 m, row 0 up): near
+    white, so the app tints it (tank silver, crane yellow). Chalky fading in
+    blotches, dirt run down by the rain, chips to the dark primer and rust
+    spots that bleed long orange streaks down the plate."""
+    rng = np.random.default_rng(301)
+    big = fbm(n, 3, 5, 302)
+    mid = fbm(n, 12, 4, 303)
+    peel = fbm(n, 24, 4, 304)
+    rain = fbm(n, 6, 5, 305, stretch=(6, 0.5))
+    col = np.ones((n, n, 3), np.float32) * srgb(226, 226, 220)
+    col *= (0.88 + 0.16 * (big - 0.5) + 0.07 * (mid - 0.5))[..., None]
+    # Rain carries grime down the plate in long vertical runs.
+    dirt = np.clip((rain - 0.45) / 0.35, 0, 1) ** 1.5
+    col *= (1 - 0.22 * dirt)[..., None]
+    col = col * (1 - 0.12 * dirt[..., None]) + srgb(120, 108, 88) * 0.12 * dirt[..., None]
+    # Chips to the primer, where the peel field peaks.
+    chip = np.clip((peel - 0.76) / 0.04, 0, 1)
+    col = col * (1 - chip[..., None]) + srgb(92, 74, 64) * chip[..., None]
+    # Rust spots and their streaks: each spot bleeds straight down (rows grow downward).
+    rust = np.zeros((n, n), np.float32)
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    for _ in range(26):
+        cx, cy = rng.random() * n, rng.random() * n
+        r = n * (0.002 + 0.006 * rng.random() ** 2)
+        length = n * (0.05 + 0.35 * rng.random() ** 1.5)
+        width = r * (0.6 + 0.8 * rng.random())
+        dx = np.abs(((x - cx + n / 2) % n) - n / 2)
+        dy = (y - cy) % n
+        spot = np.exp(-((dx / r) ** 2 + (np.minimum(dy, n - dy) / r) ** 2))
+        run = np.exp(-((dx / (width * (1 + dy / length * 1.5))) ** 2)) * np.clip(1 - dy / length, 0, 1) ** 1.3 * (dy < length)
+        rust = np.maximum(rust, np.maximum(spot * 0.8, run * (0.25 + 0.35 * rng.random())))
+    # Rust also gathers in broad faint patches where the paint has gone thin.
+    rust = np.maximum(rust, np.clip((big - 0.62) / 0.2, 0, 1) * np.clip((mid - 0.4) / 0.3, 0, 1) * 0.45)
+    rust = np.clip(rust * (0.7 + 0.6 * mid), 0, 1)
+    rc = srgb(128, 66, 34) * (0.75 + 0.4 * peel)[..., None]
+    col = col * (1 - 0.85 * rust[..., None]) + rc * 0.85 * rust[..., None]
+    hgt = 0.04 * mid + 0.5 * np.clip(rust - 0.5, 0, 1) - 0.25 * chip
+    t.save("paintsteel_col", col)
+    t.save("paintsteel_nrm", normals(hgt, 5.0))
+    t.save("paintsteel_rgh", np.clip(0.42 + 0.2 * dirt + 0.45 * rust + 0.25 * chip + 0.08 * (big - 0.5), 0, 1))
+
+
+def zinc_tex(t, n=1024):
+    """Standing-seam zinc, the bandstand's roof (tile 2 m, row 0 up): seams
+    every 0.4 m running up the slope, a blue-grey patina mottled lighter and
+    darker, pale run-off below the seams and dark dirt at the eaves."""
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    u, v = x / n * 2.0, 1.0 - y / n
+    big = fbm(n, 3, 5, 311)
+    mot = fbm(n, 16, 4, 312)
+    rain = fbm(n, 10, 4, 313, stretch=(5, 0.5))
+    ds = np.abs(((u + 0.2) % 0.4) - 0.2)
+    seam = np.exp(-((ds / 0.008) ** 2))
+    pan = np.clip(1 - ds / 0.2, 0, 1)
+    col = np.ones((n, n, 3), np.float32) * srgb(150, 158, 162)
+    col *= (0.86 + 0.18 * (big - 0.5) + 0.1 * (mot - 0.5))[..., None]
+    # White zinc carbonate run-off and grey streaks down each pan.
+    runs = np.clip((rain - 0.5) / 0.3, 0, 1)
+    col = col * (1 - 0.25 * runs[..., None]) + srgb(206, 210, 208) * 0.25 * runs[..., None]
+    col *= (1 - 0.1 * (1 - pan) * (1 - seam))[..., None]
+    col *= (1.08 * seam + (1 - seam))[..., None]
+    hgt = seam * 1.0 + 0.03 * mot
+    t.save("zinc_col", col)
+    t.save("zinc_nrm", normals(hgt, 8.0))
+
+
+TEXTURES = (rubble_tex, net_tex, paintsteel_tex, zinc_tex)
 
 
 # ---- helpers ------------------------------------------------------------------------
@@ -139,12 +206,18 @@ def hoop(m, role, c, R, r, seg=32, rseg=6, a0=0.0, a1=math.tau):
     m.tube(role, pts, r, Z, closed=closed, seg=rseg)
 
 
-def lathe(m, role, prof, seg=32, c=(0, 0), z0=0.0, uv=True, smooth=True):
+def lathe(m, role, prof, seg=32, c=(0, 0), z0=0.0, uv=True, smooth=True, ur=None, slant=False):
     """A surface of revolution about the vertical through c: `prof` is (r, z)
     from bottom to top, drawn as the outside (normals away from the axis
-    where the profile rises)."""
+    where the profile rises). `ur` maps each face on its own: u in metres
+    across it from its centre line (placed at radius ur), so lines along v
+    run parallel within a facet and meet the hips, as roof pans do; `slant`
+    maps v along the profile (metres up the slope) instead of height."""
     cx, cy = c
+    vs = [prof[0][1]]
     for (r0, za), (r1, zb) in zip(prof, prof[1:]):
+        vs.append(vs[-1] + math.hypot(r1 - r0, zb - za))
+    for k, ((r0, za), (r1, zb)) in enumerate(zip(prof, prof[1:])):
         dr, dz = r1 - r0, zb - za
         for i in range(seg):
             a0, a1 = i / seg * math.tau, (i + 1) / seg * math.tau
@@ -160,9 +233,16 @@ def lathe(m, role, prof, seg=32, c=(0, 0), z0=0.0, uv=True, smooth=True):
                 pts = [pts[0], pts[1], pts[2]]
             uvs = None
             if uv:
-                rr = max(r0, r1, 0.05)
-                u0, u1 = a0 * rr, a1 * rr
-                full = [(u0, za), (u1, za), (u1, zb), (u0, zb)]
+                va, vb = (vs[k], vs[k + 1]) if slant else (za, zb)
+                if ur:
+                    # Chord half-widths, so each flat face maps without distortion.
+                    h0, h1 = r0 * math.sin((a1 - a0) / 2), r1 * math.sin((a1 - a0) / 2)
+                    um = mid * ur
+                    full = [(um - h0, va), (um + h0, va), (um + h1, vb), (um - h1, vb)]
+                else:
+                    rr = max(r0, r1, 0.05)
+                    u0, u1 = a0 * rr, a1 * rr
+                    full = [(u0, va), (u1, va), (u1, vb), (u0, vb)]
                 uvs = full if len(pts) == 4 else ([full[0], full[2], full[3]] if r0 < 1e-6 else full[:3])
             m.poly(role, pts, out=out, uvs=uvs, smooth=smooth)
 
@@ -595,7 +675,7 @@ def rubble_heap(m, rng):
             Lb, role, t, t2 = rng.uniform(0.6, 1.4), "char", 0.08, 0.18
         c = Vector((x, y, z + t2 * 0.2))
         if role == "concrete":
-            chunk(m, role, c, (Lb, t, t2), rng)
+            chunk(m, "debris", c, (Lb, t, t2), rng)
         else:
             m.strut(role, c - dirv * Lb / 2, c + dirv * Lb / 2, t, t2)
 
@@ -632,13 +712,13 @@ def rubble_slab(m, rng):
     edge = [(W / 2 - abs(math.sin(i * 1.7)) * 0.35 * (0 < i < 8), y, 0) for i, (x, y, _) in enumerate(edge)]
     outline = [(-W / 2, -D / 2), *[(x, y) for x, y, _ in edge], (-W / 2, D / 2)]
     for z, out in ((0, (0, 0, -1)), (T, (0, 0, 1))):
-        m.poly("concrete", [(x, y, z) for x, y in outline], out=out, uvs=[(x, y) for x, y in outline])
+        m.poly("debris", [(x, y, z) for x, y in outline], out=out, uvs=[(x, y) for x, y in outline])
     k = len(outline)
     cen = Vector((0, 0, T / 2))
     for i in range(k):
         (x0, y0), (x1, y1) = outline[i], outline[(i + 1) % k]
         mid = Vector(((x0 + x1) / 2, (y0 + y1) / 2, T / 2))
-        m.poly("concrete", [(x0, y0, 0), (x1, y1, 0), (x1, y1, T), (x0, y0, T)], out=mid - cen)
+        m.poly("debris", [(x0, y0, 0), (x1, y1, 0), (x1, y1, T), (x0, y0, T)], out=mid - cen)
     for i in range(1, 8):
         x, y, _ = edge[i]
         for z in (0.05, 0.17):
@@ -688,18 +768,15 @@ def fountain(m):
     lathe(m, "stone", [(0.0, 2.3), (0.2, 2.3), (0.13, 2.6), (0.17, 2.85), (0.11, 3.0), (0.15, 3.05)], seg=24)
     lathe(m, "stone", [(0.15, 3.05), (0.42, 3.15), (0.52, 3.22), (0.52, 3.27), (0.46, 3.28)], seg=32)
     disc(m, "water", (0, 0, 3.25), 0.47, seg=32)
-    lathe(m, "water", [(0.07, 3.25), (0.05, 3.7), (0.025, 4.2), (0.0, 4.4)], seg=10, uv=False)
-    # Sheets falling from the bowls' lips.
-    for i in range(12):
-        a = i / 12 * math.tau
-        c, s = math.cos(a), math.sin(a)
-        pts = [Vector((c * r, s * r, z)) for r, z in ((1.33, 2.3), (1.45, 2.0), (1.55, 1.4), (1.6, 0.62))]
-        m.tube("water", pts, 0.035, Vector((-s, c, 0)), closed=False, seg=5)
-    for i in range(8):
-        a = i / 8 * math.tau + 0.2
-        c, s = math.cos(a), math.sin(a)
-        pts = [Vector((c * r, s * r, z)) for r, z in ((0.53, 3.25), (0.6, 3.0), (0.66, 2.6), (0.7, 2.31))]
-        m.tube("water", pts, 0.025, Vector((-s, c, 0)), closed=False, seg=4)
+
+
+def fountain_spray(m):
+    """The fountain's falling water, in the cut-out mesh so it neither takes
+    nor casts baked AO: the jet, and curtains spilling over the bowls' lips
+    all round, curving out as they fall (the app draws them clear, streaked)."""
+    lathe(m, "spray", [(0.07, 3.25), (0.05, 3.7), (0.025, 4.2), (0.0, 4.4)], seg=10)
+    lathe(m, "spray", [(1.6, 0.62), (1.57, 1.1), (1.52, 1.6), (1.44, 2.05), (1.36, 2.28), (1.33, 2.33)], seg=64)
+    lathe(m, "spray", [(0.7, 2.31), (0.68, 2.6), (0.63, 2.95), (0.56, 3.2), (0.53, 3.27)], seg=40)
 
 
 def bandstand(m):
@@ -718,13 +795,13 @@ def bandstand(m):
     Rc = R - 0.25
     cols = [Vector((math.cos(a) * Rc, math.sin(a) * Rc, 0.6)) for a in ang]
     for ci, c in enumerate(cols):
-        lathe(m, "iron", [(0.13, 0), (0.13, 0.12), (0.08, 0.2), (0.07, 2.35), (0.11, 2.45), (0.13, 2.6)], seg=12, c=(c.x, c.y), z0=c.z)
+        lathe(m, "castiron", [(0.13, 0), (0.13, 0.12), (0.08, 0.2), (0.07, 2.35), (0.11, 2.45), (0.13, 2.6)], seg=12, c=(c.x, c.y), z0=c.z)
         # Brackets curving out to the eaves on both sides.
         for d in (-1, 1):
             k = cols[(ci + d) % n]
             t = (k - c).normalized()
             pts = [c + Vector((0, 0, 2.1)) + t * (0.6 * (1 - math.cos(u))) + Vector((0, 0, 0.5 * math.sin(u))) for u in np.linspace(0, math.pi / 2, 6)]
-            m.tube("iron", pts, 0.025, t.cross(Z), closed=False, seg=4)
+            m.tube("castiron", pts, 0.025, t.cross(Z), closed=False, seg=4)
     # Railing between the columns, but the entrance bay at the steps.
     entry = min(range(n), key=lambda i: (cols[i] + cols[(i + 1) % n]).y)
     for i in range(n):
@@ -732,10 +809,10 @@ def bandstand(m):
             continue
         a, b = cols[i], cols[(i + 1) % n]
         for z in (0.1, 0.95):
-            rod(m, "iron", a + Vector((0, 0, z)), b + Vector((0, 0, z)), 0.025, seg=5)
+            rod(m, "castiron", a + Vector((0, 0, z)), b + Vector((0, 0, z)), 0.025, seg=5)
         for k in range(1, 12):
             p = a + (b - a) * (k / 12)
-            rod(m, "iron", p + Vector((0, 0, 0.1)), p + Vector((0, 0, 0.95)), 0.012, seg=4, caps=False)
+            rod(m, "castiron", p + Vector((0, 0, 0.1)), p + Vector((0, 0, 0.95)), 0.012, seg=4, caps=False)
     lathe(m, "deck", [(R - 0.02, 0.6), (R - 0.02, 0.62), (0.0, 0.62)], seg=n, smooth=False)
     # Frieze and eaves.
     zf = 3.2
@@ -752,7 +829,7 @@ def bandstand(m):
     Re = R + 0.35
     prof = [(Re, zf + 0.38), (Re - 0.05, zf + 0.5)] + [(Re * (0.92 - 0.82 * u) - 0.6 * math.sin(u * math.pi) * 0.5, zf + 0.5 + 1.6 * (u ** 0.85)) for u in np.linspace(0.05, 1.0, 9)]
     prof[-1] = (0.12, zf + 2.1)
-    lathe(m, "lead", prof, seg=n, smooth=False)
+    lathe(m, "zinc", prof, seg=n, smooth=False, ur=Re, slant=True)
     lathe(m, "brass", [(0.12, zf + 2.1), (0.18, zf + 2.25), (0.08, zf + 2.4), (0.14, zf + 2.55), (0.0, zf + 2.95)], seg=12)
 
 
@@ -897,6 +974,7 @@ def person(m):
 
 def build(out, bake=True):
     M = Model(ID)
+    M.cut_shades = False
     rng = random.Random(31)
     pieces = [
         ("water_tower", lambda m: water_tower(m), 12.0),
@@ -927,5 +1005,7 @@ def build(out, bake=True):
         make(Shift(M.m, (x, 0, 0)))
         if name == "goal":
             goal_net(Shift(M.cut, (x, 0, 0)))
+        if name == "fountain":
+            fountain_spray(Shift(M.cut, (x, 0, 0)))
         x += width / 2 + 2.0
     M.export(out, bake, size=4096, samples=96, smooth=1.5)
