@@ -698,6 +698,23 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Visual fixes (2026-11-06), from the user's complaints: (1) white things
+glowed: the day bloom threshold (0.9) sat below a sunlit white wall (about
+1.3), so it is now 6 by day and 1.5 by night; (2) trees looked like sheets
+of leaves held by an invisible force: `trees.py` grows a level of twigs cut
+short at the crown's surface and hangs smaller leaf sprays from them by
+their stems (spruce boughs in a herringbone, the woods' light trees and fir
+too), and the foliage shader thins cards seen edge-on; (3) the faceted
+terrain is now smooth and three times denser, with grass and stone detail
+near the eye, and the kit's rocks are hi-poly boulders of their own
+(`land.ts`, light LOD beyond 350 m); (4) the camera is held above the
+ground and the water. The new trees need `bun run models -- trees`, and
+releases need a new pack for them (`bun run pack --upload`, commit
+`models.json`).
+Checked headless (`scripts/bench-app.ts`, the props viewer), day and night;
+the far broadleaf clumps still read flat-topped from above (land.ts scales
+them about 3:1 wide so the canopy closes).
+
 Model pack (2026-11-06): releases never carried the realistic models (they
 are git-ignored and CI has no Blender), so installs from `get.sh` drew the
 low-poly kit. Now the app downloads them on first run from the release
@@ -990,7 +1007,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB);
-      downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them
+      downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them;
+      visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)
