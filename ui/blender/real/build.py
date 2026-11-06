@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import lib  # noqa: E402
 
-MODELS = {"a1": "a1_apartment", "a2": "a2_brownstone", "c1": "c1_farmhouse", "c2": "c2_cottage", "c3": "c3_modern", "c4": "c4_aframe", "s1": "s1_shop", "s2": "s2_cafe", "s3": "s3_diner", "s4": "s4_factory", "o1": "o1_tower", "l1": "l1_deco", "a3": "a3_balcony", "cars": "vehicles", "trees": "trees", "street": "street", "bridge": "bridge", "civic": "civic", "p1": "p1_substation", "f1": "f1_fire", "e1": "e1_school", "h1": "h1_clinic"}
+MODELS = {"a1": "a1_apartment", "a2": "a2_brownstone", "c1": "c1_farmhouse", "c2": "c2_cottage", "c3": "c3_modern", "c4": "c4_aframe", "s1": "s1_shop", "s2": "s2_cafe", "s3": "s3_diner", "s4": "s4_factory", "o1": "o1_tower", "l1": "l1_deco", "a3": "a3_balcony", "cars": "vehicles", "trees": "trees", "street": "street", "bridge": "bridge", "civic": "civic", "p1": "p1_substation", "f1": "f1_fire", "e1": "e1_school", "h1": "h1_clinic", "l5": "l5_cityhall"}
 
 argv = sys.argv[sys.argv.index("--") + 1 :] if "--" in sys.argv else []
 flags = {a for a in argv if a.startswith("--")}

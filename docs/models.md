@@ -13,7 +13,7 @@ factory, C2, the brick cottage (sharing the classic cottages with C1), and
 S2, the corner café (sharing the classic shops with S1), O1, the
 curtain-wall office tower, A2, the brownstone row (the townhouse
 apartments), L1, the art deco skyscraper, and A3, the balcony block
-(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, E1, the school, and H1, the clinic;
+(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, E1, the school, and H1, the clinic, and L5, city hall;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -439,7 +439,7 @@ Civic buildings, squares, parks and monuments (new):
 
 | ID | Model | Look | Size | Effort | Priority |
 |---|---|---|---|---|---|
-| L5 | City hall | Classical front with columns and steps, dome or clock tower, flagpoles, forecourt | half block | 30% | P1 |
+| L5 | City hall | Classical front with columns and steps, dome or clock tower, flagpoles, forecourt | half block (lot size for now) | **done at lot size** (2026-11-06, `l5_cityhall.py`): a Beaux-Arts city hall of about 1910, 14.4 x 10 m, limestone over a rusticated podium; a portico of four giant Ionic columns (entasis over the full height) up five steps between lamp plinths, three bronze doors under fanlights, CITY HALL in gilt on the frieze, a pediment with the city's shield; pedimented windows on the main floor, eared above, pilasters; a modillioned cornice and a balustrade round the roof; a clock tower with four dials (lit at night), an open drum of eight columns, a ribbed copper dome, a lantern and a flagpole; the model moves itself back so its footprint is centred; pieces ground / floor / roof; 21.1 k triangles. Grows to its half block with the master plan's layout | 30% | P1 |
 | L6 | Town square | Paving, a fountain, a statue on a plinth, trees, café tables, a bandstand or market stalls | half block | 20% | P1 |
 | L7 | Monument | Triumphal arch or obelisk on a plaza, steps, lamps, flowerbeds | half block | 15% | P1 |
 | L8 | Museum or library | Portico, broad steps, stone lions, banners | half block | 25% | P2 |
@@ -487,12 +487,12 @@ order (an old ledger, no choices) spends hours 50-98 on six office towers.
 
 | # | Gap | First seen | Drawn today | Fix |
 |---|---|---|---|---|
-| 1 | Power | ~10 h (Hamlet) | S4, the brick factory with its 17 m stack, beside the hamlet's real works | P1 substation (Hamlet, Town); P2 power station (City) |
-| 2 | Fire station | Town | S4 again: by 50 h up to six S4s (3 works, 2 power, the fire station) | F1 |
-| 3 | School, clinic | Town | A3, the balcony block, the same model as the town's flats | E1, H1 |
+| 1 | Power | ~10 h (Hamlet) | ~~S4, the brick factory~~ done: P1 substation | P2 power station for the City |
+| 2 | Fire station | Town | ~~S4 again~~ done: F1 | |
+| 3 | School, clinic | Town | ~~A3, the balcony block~~ done: E1, H1 | |
 | 4 | Works: one design | ~8 h | S4 is the only workshop blueprint, so the mayor never chooses | a second workshop (a timber mill or a brewery) |
 | 5 | Water, three times | 10 h, ~45 h, ~100 h | the civic water tower each time | W2 pumping station for the City's mains |
-| 6 | City hall | City | L1, also the City's landmark: two identical skyscrapers | L5 |
+| 6 | City hall | City | ~~L1, also the City's landmark~~ done: L5 | |
 | 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
 | 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
 | 9 | Ruins | the first surrender | ~~the rubble heap~~ done: burnt shells left standing | |
@@ -512,7 +512,7 @@ buildings stand, so it should come before L5.
 - [x] H1 clinic (2026-11-06)
 - [x] Blueprint pictures in the shop (2026-11-06): `city/thumbs.ts` draws each design's model on its lot with the city's renderer, off screen, once; locked designs show as the model's true silhouette; the outline stays until the pack is loaded
 - [x] Ruins standing (2026-11-06): `shell()` in `models.ts` draws a realistic model's ruin as about half its storeys, roofless, burnt (damage 3: black empty windows), with ragged brick stumps along the top of masonry models (`civic` rubble walls), charred beams and slabs, debris heaped against the walls and thin smoke; the kit keeps its heap
-- [ ] L5 city hall
+- [x] L5 city hall (2026-11-06, at lot size until the plan reserves its half block)
 - [ ] O2 or O3
 - [ ] A second workshop
 - [ ] H2 hospital, E2 police station, E3 library

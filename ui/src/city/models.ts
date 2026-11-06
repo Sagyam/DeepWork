@@ -1170,7 +1170,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1"]);
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1", "l5"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

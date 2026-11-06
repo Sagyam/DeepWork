@@ -93,6 +93,8 @@ const F1_FL = 3.4;
 const E1_G = 4.6;
 const E1_FL = 3.9;
 const H1_H = 3.6;
+const L5_G = 1.4 + 4.8;
+const L5_FL = 4.4;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -391,6 +393,26 @@ export const DEFS: Record<string, RealDef> = {
     // The fascia; the plant screen and flue stand to 5.5 m.
     height: () => H1_H + 0.5,
     debris: 0xd8d4c8,
+  },
+  l5: {
+    id: "l5",
+    kind: "landmark",
+    style: "cityhall",
+    // The block with its cornice, the portico and its steps (l5_cityhall.py
+    // moves itself back so this is centred).
+    w: 15.3,
+    d: 14.3,
+    front: 0.6,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: L5_G }] : []),
+      ...(roof ? [{ piece: "roof", y: L5_G + L5_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? L5_G + L5_FL : L5_G),
+    // The balustrade; the clock tower's dome and flagpole reach 25 m.
+    height: () => L5_G + L5_FL + 2.0,
+    debris: 0xc8bca4,
   },
   o1: {
     id: "o1",
@@ -1723,6 +1745,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // City hall's clock dials (l5_cityhall.py): white enamel, lit from behind at night.
+    case "clock":
+      m = plain(0xf2efe6, 0.35, 0, { emissive: 0xfff0c8, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.2;
+      break;
     // The clinic (h1_clinic.py): sea-green spandrels, frosted glass, the green cross lit at night.
     case "clinicpanel": m = w(plain(0x5f9c94, 0.5), 0.6); break;
     case "frosted": m = w(plain(0xdfe6e8, 0.3, 0.05), 0.2); break;
