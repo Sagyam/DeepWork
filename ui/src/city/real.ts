@@ -88,6 +88,8 @@ const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
 const S4_TOP = 5.3;
 const P1_EAVES = 3.0;
+const F1_G = 5.0;
+const F1_FL = 3.4;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -329,6 +331,27 @@ export const DEFS: Record<string, RealDef> = {
     top: () => P1_EAVES,
     height: () => 8.6,
     debris: 0x9a9890,
+  },
+  f1: {
+    id: "f1",
+    kind: "shop",
+    style: "firestation",
+    // The engine house with the hose tower proud of its back right corner.
+    w: 11.4,
+    d: 13.3,
+    // A concrete apron before the bays.
+    front: 3.4,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: F1_G }] : []),
+      ...(roof ? [{ piece: "roof", y: F1_G + F1_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? F1_G + F1_FL : F1_G),
+    // The parapet; the hose tower's finial is at 20.5 m.
+    height: () => F1_G + F1_FL + 1.3,
+    smoke: () => new THREE.Vector3(-5.12, F1_G + F1_FL + 3.0, -1.0),
+    debris: 0x8a4e3c,
   },
   o1: {
     id: "o1",
@@ -1658,6 +1681,13 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // The fire station (f1_fire.py): engine-house red, gilt letters, red lamps lit at night.
+    case "firedoor": m = w(plain(0x9c1c16, 0.42), 1.2); break;
+    case "fireletter": m = w(plain(0xd8b45a, 0.3, 0.8), 0.4); break;
+    case "redlamp":
+      m = plain(0xa01810, 0.25, 0, { emissive: 0xff2a14, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
     // The substation (p1_substation.py): a transformer in dark green-grey
     // paint gone chalky, brown-glazed porcelain, bare aluminium line,
     // creosoted poles, louvred steel doors in green, enamel signs.

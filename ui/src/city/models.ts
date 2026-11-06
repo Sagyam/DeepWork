@@ -618,6 +618,22 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-5.5, -2.5]) shrub(p, x, front - 0.6, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "f1": {
+      // A concrete apron from the bays to the kerb, KEEP CLEAR hatched in
+      // yellow before each door; a paved yard behind, walled.
+      const concrete = mat(0xa29e96, { roughness: 0.95 });
+      p.box(concrete, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const yellow = mat(0xd8b83a, { roughness: 0.7 });
+      for (const x of [-2.95, 2.95]) {
+        for (const dx of [-1.7, 1.7]) p.box(yellow, 0.12, KERB + 0.01, front - s.d / 2 - 0.3, x + dx, 0, (front + s.d / 2) / 2);
+        for (let i = 0; i < 4; i++) p.box(yellow, 3.3, KERB + 0.01, 0.14, x, 0, s.d / 2 + 0.5 + i * 0.75);
+      }
+      if (hasReal("street")) {
+        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, -s.d / 2, 1.8);
+      }
+      break;
+    }
     case "s3": {
       // An asphalt forecourt to the pavement with a car drawn up beside the
       // steps and shrubs either side of them; behind, a concrete service yard
