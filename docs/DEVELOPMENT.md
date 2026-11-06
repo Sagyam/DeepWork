@@ -77,7 +77,10 @@ draws the kit until it is there. To try a release build on local models
 without publishing them:
 `DEEPWORK_MODELS=$PWD/ui/public/models target/release/deepwork-ui`.
 
-The showcase town, `http://localhost:5173/town.html`, puts every model
+The showcase town, `http://localhost:5173/town.html`, shows for now only the
+City's five newest public buildings (H2, E2, E3, P2, W2) on its through road,
+seen from `view=new` (the default); other lots are left empty, so add codes
+back to `BLOCKS` to bring the rest of the town back. It put every model
 together in a hand-laid 3 x 3 block town (downtown towers, main street,
 apartments, cottages, works, the public buildings and the City's services
 and utilities, a park and a plaza, the river and bridge,
