@@ -496,7 +496,7 @@ order (an old ledger, no choices) spends hours 50-98 on six office towers.
 | 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
 | 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
 | 9 | Ruins | the first surrender | damage 3 is the rubble heap; scarred shells not drawn | ruins standing (`docs/progression.md`, "Next") |
-| 10 | Shop pictures | the first purchase | one outline per kind (`silhouette` in `desk.ts`), so C1, C2 and C4 look alike | a small render per blueprint, made from the models |
+| 10 | Shop pictures | the first purchase | ~~one outline per kind~~ done: a render of each model (`city/thumbs.ts`) | |
 | 11 | Square, park | Town, City | assembled in `models.ts` from the civic props | L6 (statue, market stalls), L12 |
 | 12 | Sound | always | none (no chime on completion, nothing at level-up or a fire) | a few short sounds, if wanted |
 
@@ -510,7 +510,7 @@ buildings stand, so it should come before L5.
 - [x] F1 fire station (2026-11-06)
 - [x] E1 school (2026-11-06)
 - [x] H1 clinic (2026-11-06)
-- [ ] Blueprint pictures in the shop
+- [x] Blueprint pictures in the shop (2026-11-06): `city/thumbs.ts` draws each design's model on its lot with the city's renderer, off screen, once; locked designs show as the model's true silhouette; the outline stays until the pack is loaded
 - [ ] Ruins standing
 - [ ] L5 city hall
 - [ ] O2 or O3

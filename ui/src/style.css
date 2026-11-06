@@ -415,6 +415,11 @@ dialog.panel > .error { margin: 0 20px 14px; }
 .bp .sil { flex: none; fill: color-mix(in oklab, var(--brand) 25%, transparent); stroke: var(--brand); stroke-width: 1.2; }
 .bp.locked { opacity: 0.6; }
 .bp.locked .sil { fill: var(--muted); stroke: var(--muted-foreground); }
+.bp:has(.bp-pic) { flex-direction: column; }
+.bp .bp-pic { flex: none; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 6px; background: color-mix(in oklab, var(--brand) 6%, transparent); }
+/* A locked design shows as its true silhouette: the model's outline in shadow. */
+.bp.locked .bp-pic { filter: brightness(0); opacity: 0.28; }
+.dark .bp.locked .bp-pic { filter: brightness(0) invert(1); opacity: 0.22; }
 .bp.locked strong { color: var(--muted-foreground); }
 .bp-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bp-state { margin-top: 6px; }
