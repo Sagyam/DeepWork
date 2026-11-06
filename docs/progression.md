@@ -341,7 +341,14 @@ build order. Decisions taken while building are noted inline.
 
 - [ ] Use it for real: install, then tune prices, build hours and odds
 - [ ] Ruins drawn standing (scarred shells) instead of the rubble heap
-- [ ] The level-up moment: a graduation animation and note
+- [x] The level-up moment (2026-11-06): the camera backs off to the whole
+      city and circles it while fireworks go up over the rooftops (10 + 3
+      per level, a finale of three; `Fx.firework`), with the narration line;
+      then a card: "Hamlet → Town", the new level's needs and the
+      blueprints that went on sale, with a button to the shop. Live after
+      the finishing building rises, and in the replay of unseen events.
+      The agent sends "Level up: Town" with the needs. By day the bursts
+      are faint, as real ones are
 - [ ] Before-and-after picture on the deed
 
 ### Later (designed, not in this build)

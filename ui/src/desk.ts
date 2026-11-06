@@ -211,3 +211,34 @@ export function nearMiss(w: World | null, s: SessionInfo | null): { secs: number
   if (short <= 0 || short > 20 * 60) return null;
   return { secs: Math.ceil(short / 60) * 60, name: c.name ?? "the building" };
 }
+
+/**
+ * The level-up card: what the settlement became, what its residents ask for
+ * now and the blueprints that went on sale. `tier` is the level reached; the
+ * needs and blueprints are only named when it is the world's current level
+ * (a replay can pass through an earlier one).
+ */
+export function levelUpHtml(w: World, tier: number): string {
+  const from = TIERS[Math.max(0, Math.min(3, tier - 1))];
+  const to = TIERS[Math.min(3, tier)];
+  const current = tier === w.tier;
+  const needs = current ? (w.needs ?? []) : [];
+  const fresh = current ? (w.blueprints ?? []).filter((b) => b.level === tier) : [];
+  const asks = needs.length
+    ? `<p class="small muted">Its residents ask for:</p><ul class="levelup-needs">${needs
+        .map((n) => `<li><span>${escapeHtml(n.title)}</span>${n.lots > 1 ? `<span class="num">${n.lots}</span>` : ""}</li>`)
+        .join("")}</ul>`
+    : "";
+  const shop = fresh.length
+    ? `<p class="small muted">${plural(fresh.length, "new blueprint")} for sale: ${fresh.map((b) => escapeHtml(b.name)).join(", ")}.</p>`
+    : "";
+  return `
+    <div class="eyebrow">Level up</div>
+    <h2>${from} <span class="arrow" aria-hidden="true">→</span> ${to}</h2>
+    <p>Every need was met. Your ${from.toLowerCase()} is a ${to.toLowerCase()} now.</p>
+    ${asks}${shop}
+    <div class="row">
+      ${fresh.length ? '<button class="primary" data-action="levelup-shop">See the blueprints</button>' : ""}
+      <button data-action="levelup-close">${fresh.length ? "Later" : "Back to the city"}</button>
+    </div>`;
+}

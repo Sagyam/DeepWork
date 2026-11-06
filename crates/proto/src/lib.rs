@@ -386,7 +386,7 @@ pub struct Scar {
     pub repaired: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NeedInfo {
     pub id: String,
     pub title: String,

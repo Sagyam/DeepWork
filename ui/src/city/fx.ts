@@ -171,6 +171,44 @@ export class Fx {
     }
   }
 
+  /**
+   * A firework: a faint trail up to `v`, a shell of sparks that droops as it
+   * falls, and a few late crackles. `size` scales the burst to the city.
+   */
+  firework(v: THREE.Vector3, color: [number, number, number], size = 1) {
+    const [r, g, b] = color;
+    for (let i = 0; i < 14; i++) {
+      const k = i / 14;
+      this.glow.emit({
+        x: v.x + (Math.random() - 0.5) * 0.4, y: v.y - (1 - k) * 30 * size, z: v.z + (Math.random() - 0.5) * 0.4,
+        vy: -1, max: 0.25 + k * 0.5, size: 0.5 * size, r: 1, g: 0.85, b: 0.6, a: 0.6 * k,
+      });
+    }
+    const n = Math.round(150 + 90 * size);
+    for (let i = 0; i < n; i++) {
+      // Even over the sphere: uniform height, uniform angle.
+      const y = Math.random() * 2 - 1;
+      const a = Math.random() * Math.PI * 2;
+      const rr = Math.sqrt(1 - y * y);
+      const s = (14 + Math.random() * 3) * size;
+      const white = Math.random() < 0.15;
+      this.glow.emit({
+        x: v.x, y: v.y, z: v.z,
+        vx: Math.cos(a) * rr * s, vy: y * s + 2, vz: Math.sin(a) * rr * s,
+        max: 1.6 + Math.random() * 1.2, size: (0.8 + Math.random() * 0.5) * size, grow: -0.5,
+        r: white ? 1 : r, g: white ? 0.95 : g, b: white ? 0.85 : b, a: 1, lift: -6, drag: 1.6,
+      });
+    }
+    for (let i = 0; i < 30; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = (8 + Math.random() * 10) * size;
+      this.glow.emit({
+        x: v.x + Math.cos(a) * d, y: v.y - Math.random() * 8 * size, z: v.z + Math.sin(a) * d,
+        vy: -2, max: 0.15 + Math.random() * 0.2, life: -(0.9 + Math.random() * 0.8), size: 0.6 * size, r: 1, g: 0.95, b: 0.8, a: 1,
+      });
+    }
+  }
+
   /** Building chunks that fall, tumble and settle. */
   collapse(v: THREE.Vector3, w: number, h: number, color: number, burning: boolean) {
     const mats = [

@@ -165,7 +165,19 @@ impl Watch {
                 }
             },
         };
-        notes.extend(new.iter().filter_map(|e| loss_note(w, e)));
+        // Each level reached, counted back from the world's.
+        let mut later = new
+            .iter()
+            .filter(|e| e.kind == WorldEventKind::Graduated)
+            .count() as u32;
+        for e in new {
+            if e.kind == WorldEventKind::Graduated {
+                later -= 1;
+                notes.push(level_note(w, w.tier.saturating_sub(later)));
+            } else if let Some(n) = loss_note(w, e) {
+                notes.push(n);
+            }
+        }
         notes
     }
 
@@ -393,6 +405,40 @@ fn award_note(w: &World, a: &deepwork_proto::Award) -> Note {
         body.push("A streak freeze saved your streak.".into());
     }
     Note::new(Urgency::Low, format!("+{} coins", a.coins), body.join(" "))
+}
+
+const LEVELS: [&str; 4] = ["hamlet", "town", "city", "metropolis"];
+
+/// The settlement reached `tier`. Its needs are named only when it is the
+/// world's level (two levels in one fold: the first note stays general).
+fn level_note(w: &World, tier: u32) -> Note {
+    let name = |t: u32| LEVELS[t.min(World::MAX_TIER) as usize];
+    let mut body = format!(
+        "Every need was met: your {} is a {} now.",
+        name(tier.saturating_sub(1)),
+        name(tier)
+    );
+    if tier == w.tier && !w.needs.is_empty() {
+        let titles: Vec<String> = w.needs.iter().map(|n| n.title.to_lowercase()).collect();
+        let shown = match titles.len() {
+            0..=4 => titles.join(", "),
+            n => format!("{} and {} more", titles[..3].join(", "), n - 3),
+        };
+        body.push_str(&format!(" The residents ask for {shown}."));
+    }
+    let fresh = w.blueprints.iter().filter(|b| b.level == tier).count();
+    if tier == w.tier && fresh > 0 {
+        body.push_str(&format!(
+            " {} for sale.",
+            match fresh {
+                1 => "A new blueprint is".into(),
+                n => format!("{n} new blueprints are"),
+            }
+        ));
+    }
+    let mut title = name(tier).to_string();
+    title[..1].make_ascii_uppercase();
+    Note::new(Urgency::Normal, format!("Level up: {title}"), body)
 }
 
 fn loss_note(w: &World, e: &WorldEvent) -> Option<Note> {
@@ -650,6 +696,30 @@ mod tests {
         let quake2 = world_event(6, WorldEventKind::Quake, WorldCause::Tamper, vec![1]);
         let notes = w.on_world(&world(vec![rebuilt, quake2]));
         assert_eq!(summaries(&notes), ["Earthquake"]);
+    }
+
+    #[test]
+    fn levels_are_announced() {
+        let mut w = Watch::default();
+        let built = world_event(1, WorldEventKind::Built, WorldCause::Completed, vec![0]);
+        assert!(w.on_world(&world(vec![built.clone()])).is_empty());
+        let up = world_event(2, WorldEventKind::Graduated, WorldCause::Completed, vec![]);
+        let mut town = world(vec![built, up]);
+        town.tier = 1;
+        town.needs = ["Homes", "Flats", "Shops", "Work", "A school"]
+            .iter()
+            .map(|t| deepwork_proto::NeedInfo {
+                title: (*t).into(),
+                ..Default::default()
+            })
+            .collect();
+        let notes = w.on_world(&town);
+        assert_eq!(summaries(&notes), ["Level up: Town"]);
+        assert_eq!(
+            notes[0].body,
+            "Every need was met: your hamlet is a town now. The residents ask for homes, flats, \
+             shops and 2 more."
+        );
     }
 
     #[test]

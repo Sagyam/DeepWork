@@ -129,6 +129,21 @@ code { font-family: var(--font-mono); }
   opacity: 0; transition: opacity 0.6s, transform 0.6s; pointer-events: none; text-align: center; max-width: 70%;
 }
 #story.show { opacity: 1; transform: translate(-50%, 0); }
+/* The level-up card: top centre, clear of the side cards, the city visible below. */
+#levelup {
+  left: 50%; top: 16px; width: min(380px, calc(100vw - 32px)); transform: translateX(-50%);
+  border-color: color-mix(in oklab, var(--brand) 45%, var(--border)); padding: 16px 18px;
+}
+#levelup[hidden] { display: none; }
+#levelup.show { animation: levelup-in 0.7s cubic-bezier(0.2, 0.9, 0.3, 1.2); }
+@keyframes levelup-in { from { opacity: 0; transform: translate(-50%, -14px) scale(0.96); } }
+#levelup h2 { margin: 6px 0 4px; font: 600 26px var(--font-display); color: var(--brand); }
+#levelup h2 .arrow { color: var(--muted-foreground); font-weight: 400; }
+#levelup p { margin: 6px 0; }
+.levelup-needs { list-style: none; margin: 4px 0 8px; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 14px; font-size: 13px; }
+.levelup-needs li { display: flex; justify-content: space-between; gap: 6px; padding: 2px 0; border-bottom: 1px solid var(--border); }
+.levelup-needs .num { color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { #levelup.show { animation: none; } }
 
 .bar { height: 6px; background: var(--muted); border-radius: 3px; margin: 8px 0 4px; overflow: hidden; }
 .bar > div { height: 100%; background: var(--brand); border-radius: 3px; }
