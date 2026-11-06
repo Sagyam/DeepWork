@@ -479,6 +479,9 @@ pub struct Construction {
     pub design: Option<String>,
     #[serde(default)]
     pub name: String,
+    /// The need the lot meets (`city-power`, ...).
+    #[serde(default)]
+    pub need: String,
     /// Build time the site still needed when the session started.
     #[serde(default)]
     pub remaining_secs: u64,

@@ -322,7 +322,8 @@ build order. Decisions taken while building are noted inline.
 - [x] App: renderer reads lots, kinds and designs from the world (a
       blueprint picks its realistic model; public buildings get stand-ins:
       a water tower, a square and a park drawn in `models.ts`, the rest
-      borrowed models until their own: P1, F1, E1, H1 on 2026-11-06); lots fill out of order; paused sites drawn half
+      borrowed models until their own: P1, F1, E1, H1 and L5, then H2, E2, E3,
+      P2 and W2 for the City, all on 2026-11-06, so none borrows now); lots fill out of order; paused sites drawn half
       built; a gilded finial on shiny buildings. Ruins drew as the rubble
       heap (burnt shells since 2026-11-06, see "Next")
 - [x] App: the mayor's desk card: needs in the residents' words, a design

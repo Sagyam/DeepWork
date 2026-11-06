@@ -262,7 +262,7 @@ export class MockCity {
     return {
       session_id: sessionId, index: site, grade: GRADE[n.kind], seed: site * 7919 + 13, surrendering,
       progress_permille: Math.floor((Math.min(total, done + elapsed) * 1000) / total),
-      lot: LOTS[site].id, kind: n.kind, design, name: LOTS[site].name, remaining_secs: total - done,
+      lot: LOTS[site].id, kind: n.kind, design, name: LOTS[site].name, need: n.id, remaining_secs: total - done,
     };
   }
 

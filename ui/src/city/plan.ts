@@ -65,20 +65,31 @@ export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string 
   fire_station: { kind: "shop", style: "firestation", model: "f1" },
   square: { kind: "shop", style: "square" },
   park: { kind: "shop", style: "park" },
-  police: { kind: "apartment", style: "classic", model: "a1" },
-  library: { kind: "apartment", style: "townhouse", model: "a2" },
-  hospital: { kind: "office", style: "classic", model: "o1" },
+  police: { kind: "apartment", style: "police", model: "e2" },
+  library: { kind: "apartment", style: "library", model: "e3" },
+  hospital: { kind: "office", style: "hospital", model: "h2" },
   city_hall: { kind: "landmark", style: "cityhall", model: "l5" },
 };
 
-/** The look a lot gets from its blueprint or kind; none from an older daemon. */
-export function lookOf(design: string | null | undefined, kind: string | undefined): { kind: Kind; style: string; model?: string } | undefined {
+/**
+ * Needs whose building outgrows its kind's model: the City's power station
+ * and pumping station, where the Hamlet and Town make do with a substation
+ * and the water tower.
+ */
+export const NEED_LOOKS: Record<string, { kind: Kind; style: string; model: string }> = {
+  "city-power": { kind: "shop", style: "powerstation", model: "p2" },
+  "city-water": { kind: "shop", style: "pumping", model: "w2" },
+};
+
+/** The look a lot gets from its blueprint, its need or its kind; none from an older daemon. */
+export function lookOf(design: string | null | undefined, kind: string | undefined, need?: string): { kind: Kind; style: string; model?: string } | undefined {
   if (design && DESIGNS[design]) return { ...DESIGNS[design], model: design };
+  if (need && NEED_LOOKS[need]) return NEED_LOOKS[need];
   return kind ? PUBLIC[kind] : undefined;
 }
 
 /** How far each type stands back from the street, front wall to lot edge. */
-const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, substation: 1.2, firestation: 3.4, school: 1.0, clinic: 0.6, cityhall: 0.6, apartment: 2.2, townhouse: 2.6, office: 2.6 };
+const FRONT: Record<string, number> = { cottage: 3.4, shop: 1.2, diner: 1.4, factory: 1.0, substation: 1.2, firestation: 3.4, school: 1.0, clinic: 0.6, cityhall: 0.6, police: 1.0, library: 0.6, hospital: 0.4, powerstation: 0.3, pumping: 1.0, apartment: 2.2, townhouse: 2.6, office: 2.6 };
 
 export type ParkKind = "plaza" | "park" | "sports";
 const PARKS: ParkKind[] = ["plaza", "park", "sports", "park"];
@@ -264,10 +275,12 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
   let u = r();
   const style = look?.style ?? STYLES[kind].find(([, p]) => (u -= p) < 0)?.[0] ?? STYLES[kind][0][0];
   if (style === "diner") floors = 1;
-  if (style === "factory" || style === "substation") [floors, floorH] = [1, 5];
+  if (style === "factory" || style === "substation" || style === "powerstation" || style === "pumping") [floors, floorH] = [1, 5];
   if (style === "townhouse") floors = Math.min(floors, 3 + pick(r, 2));
   if (style === "school") floors = 2;
   if (style === "clinic") floors = 1;
+  if (style === "police") floors = 2;
+  if (style === "library") floors = 1;
   if (style === "cityhall") [w, d, floors] = [10.4, 10.4, 4];
   return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
 }
@@ -281,7 +294,7 @@ function placed(index: number, s: ReturnType<typeof shape>) {
 }
 
 function spec(p: Plot): Spec {
-  const look = lookOf(p.design, p.kind);
+  const look = lookOf(p.design, p.kind, p.need);
   const s = shape(p.grade, p.seed, look);
   return {
     index: p.index,
@@ -296,7 +309,7 @@ function spec(p: Plot): Spec {
 }
 
 function siteSpec(c: Construction, elapsedSecs: number): SiteSpec {
-  const look = lookOf(c.design, c.kind);
+  const look = lookOf(c.design, c.kind, c.need);
   const s = shape(c.grade, c.seed, look);
   const progress = c.progress_permille === null ? 0.8 + 0.2 * ((elapsedSecs % 900) / 900) : c.progress_permille / 1000;
   return {
@@ -314,7 +327,7 @@ function siteSpec(c: Construction, elapsedSecs: number): SiteSpec {
 }
 
 function pausedSpec(site: SiteInfo): SiteSpec {
-  const look = lookOf(site.design, site.kind);
+  const look = lookOf(site.design, site.kind, site.need);
   const s = shape(KINDS.indexOf(look?.kind ?? "cottage"), site.seed, look);
   return {
     index: site.index,

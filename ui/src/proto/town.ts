@@ -50,15 +50,18 @@ const on = (o: Opt) => OPTS.indexOf(o) < level;
 type Block = { bx: number; bz: number; north?: string[]; south?: string[]; park?: "park" | "plaza" | "sports" };
 // "id:floors"; north row faces -z, south row faces +z.
 const BLOCKS: Block[] = [
-  { bx: 0, bz: 0, south: ["s2", "o1:12", "l1:16", "a1:7"], north: ["a3:6", "o1:18", "o1:9", "s2"] },
-  { bx: 1, bz: 0, south: ["s1", "s2", "s1", "s3"], north: ["a2", "a1:5", "s1", "a2"] },
-  { bx: -1, bz: 0, south: ["a3:5", "a2", "a2", "a1:6"], north: ["a2", "a3:8", "s1", "a3:4"] },
-  { bx: 0, bz: -1, south: ["c1", "c2", "c3", "c4"], north: ["c2", "c1", "c4", "c3"] },
-  { bx: -1, bz: -1, south: ["c3", "c4", "c1", "c2"], north: ["c4", "c3", "c2", "c1"] },
+  // Only the City's newest public buildings for now (2026-11-06), along the
+  // through road: hospital, police station and library, then across the
+  // side street the power station and pumping station. The other blocks
+  // keep their streets and parks, their lots empty.
+  { bx: 0, bz: 0, south: [], north: [] },
+  { bx: 1, bz: 0, south: [], north: [] },
+  { bx: -1, bz: 0, south: [], north: [] },
+  { bx: 0, bz: -1, south: [], north: [] },
+  { bx: -1, bz: -1, south: [], north: [] },
   { bx: 1, bz: -1, park: "park" },
-  { bx: 0, bz: 1, south: ["o1:7", "s1", "a1:4", "s3"], north: ["s3", "a2", "s2", "a3:5"] },
-  // The public buildings (2026-11-06): fire station, school, clinic, city hall; the substation by the works.
-  { bx: 1, bz: 1, south: ["f1", "e1", "h1", "l5"], north: ["s4", "p1", "s4", "s1"] },
+  { bx: 0, bz: 1, south: [], north: ["", "h2:11", "e2", "e3"] },
+  { bx: 1, bz: 1, south: [], north: ["p2", "w2", "", ""] },
   { bx: -1, bz: 1, park: "plaza" },
 ];
 const ROAD_Z = PITCH_Z / 2; // the through road, between the middle and south block rows
@@ -96,14 +99,17 @@ const VIEWS: Record<string, [number[], number[], number]> = {
   homes: [[-20, 26, -PITCH_Z - 50], [-20, 2, -PITCH_Z], 46],
   works: [[PITCH_X + 60, 30, PITCH_Z + 70], [PITCH_X, 4, PITCH_Z], 44],
   civic: [[PITCH_X - 2, 22, PITCH_Z + 78], [PITCH_X - 2, 5, PITCH_Z + 6], 50],
+  new: [[PITCH_X / 2 - 2, 44, ROAD_Z - 72], [PITCH_X / 2 - 8, 12, PITCH_Z - LOT / 2], 50],
+  services: [[PITCH_X / 2 + 4, 22, ROAD_Z - 2], [0, 7, PITCH_Z - 8], 50],
+  utilities: [[PITCH_X - 4, 32, ROAD_Z - 16], [PITCH_X - 14, 9, PITCH_Z - 8], 50],
   bridge: [[RX + 40, 6, ROAD_Z + 34], [RX - 10, 3, ROAD_Z], 50],
   plaza: [[-PITCH_X + 10, 14, PITCH_Z + 48], [-PITCH_X, 2, PITCH_Z], 50],
   skyline: [[-260, 40, 120], [0, 30, 0], 32],
   fountain: [[-PITCH_X + 8, 2.6, PITCH_Z + 8.5], [-PITCH_X, 2.6, PITCH_Z], 50],
   pond: [[PITCH_X - 4, 5, -PITCH_Z + 15], [PITCH_X - 12, 0.2, -PITCH_Z + 1], 50],
 };
-const view = q.get("view") ?? "overview";
-const [pos, at, fov] = VIEWS[view] ?? VIEWS.overview;
+const view = q.get("view") ?? "new";
+const [pos, at, fov] = VIEWS[view] ?? VIEWS.new;
 camera.position.fromArray(pos);
 camera.fov = fov;
 camera.updateProjectionMatrix();
@@ -340,6 +346,7 @@ function treeAt(t: Trees, x: number, z: number, s: number, seed: number, y = 0) 
 const KIND_GRADE: Record<string, number> = { landmark: 4, office: 3, apartment: 2, shop: 1, cottage: 0 };
 
 function place(code: string, lx: number, lz: number, rot: number, seed: number) {
+  if (!code) return; // an empty lot
   const [id, fl] = code.split(":");
   const def = DEFS[id];
   if (!def || !hasReal(id)) return console.warn("missing model", id);

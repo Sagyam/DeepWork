@@ -765,6 +765,70 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.0, 1.2, 0.5, -half + 1.0 + i * 1.1, KERB, back + 0.3);
       break;
     }
+    case "e2": {
+      // Paved to the pavement, the steps and the blue lamp on it; down the
+      // sides narrow paved passages to the yard behind, where the patrol
+      // cars stand (white and dark blue) by a brick wall.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const yardZ = -s.d / 2;
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, LOT - 0.4, KERB + 0.01, yardZ - back, 0, 0, (yardZ + back) / 2);
+      const line = mat(0xe8e4d8, { roughness: 0.7 });
+      for (const x of [-4.6, -1.6, 1.4, 4.4]) p.box(line, 0.1, KERB + 0.02, 2.2, x, 0, (yardZ + back) / 2);
+      parked(p, -3.1, (yardZ + back) / 2, Math.PI / 2, s.seed + 3, KERB, { name: "estate", paint: 0 });
+      parked(p, 2.9, (yardZ + back) / 2, Math.PI / 2, s.seed + 4, KERB, { name: "sedan", paint: 5 });
+      if (hasReal("street")) {
+        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+        for (const sx of [-1, 1]) furniture(p, "bollard", sx * 1.8, KERB, front - 0.45);
+      }
+      break;
+    }
+    case "e3": {
+      // A paved forecourt before the steps with lamps and benches facing
+      // it; lawns down the sides and behind, a tree at each back corner.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(mat(0x9c9890, { roughness: 0.7 }), LOT - 0.4, KERB + 0.01, front - 4.0, 0, 0, (front + 4.0) / 2);
+      if (hasReal("street")) for (const sx of [-1, 1]) {
+        furniture(p, "lamp_heritage", sx * 6.4, KERB, front - 0.5, 0);
+        furniture(p, "bench", sx * 5.6, KERB, 4.6, 0);
+      }
+      for (const sx of [-1, 1]) tree(p, sx * 6.6, back + 1.6, 0.8, s.seed + (sx > 0 ? 1 : 2), KERB, ["linden", "oak"]);
+      break;
+    }
+    case "h2": {
+      // Paved to the pavement before the main entrance; the asphalt drive
+      // under the emergency canopy (h2_hospital.py, x 2.3 to 7.8) with an
+      // ambulance drawn up, a drop-off line; a service road behind.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const dz = 1.5; // the podium's front, building-local (CAN / 2)
+      p.box(asphalt, half - 2.2, KERB + 0.012, front - dz, (half + 2.2) / 2, 0, (front + dz) / 2);
+      p.box(mat(0xd8382a, { roughness: 0.7 }), half - 2.4, KERB + 0.02, 0.12, (half + 2.4) / 2, 0, dz + 0.3);
+      parked(p, 5.2, (front + dz) / 2 + 0.2, 0, s.seed + 3, KERB, { name: "van", paint: 0 });
+      p.box(asphalt, LOT - 0.4, KERB + 0.01, Math.max(0.5, -s.d / 2 - back), 0, 0, (-s.d / 2 + back) / 2);
+      if (hasReal("street")) for (const x of [-6.6, -4.6]) furniture(p, "bench", x, KERB, front - 1.2, 0);
+      break;
+    }
+    case "p2": {
+      // Concrete to the pavement; behind, the coal yard: a black heap by
+      // the conveyor's hopper, a palisade along the back.
+      p.box(mat(0xa29e96, { roughness: 0.95 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const coal = mat(0x1c1c1e, { roughness: 0.95 });
+      p.add(coal, new THREE.ConeGeometry(2.2, 1.6, 9), -4.5, KERB + 0.8, -s.d / 2 + 0.2);
+      p.add(coal, new THREE.ConeGeometry(1.6, 1.1, 8), -1.8, KERB + 0.55, -s.d / 2 + 0.6);
+      if (hasReal("street")) fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      break;
+    }
+    case "w2": {
+      // The railed yard (w2_pumping.py) paved in setts, lawns round the
+      // engine house with shrubs, a tree behind.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(mat(0x8e8a84, { roughness: 0.9 }), LOT - 0.4, KERB + 0.01, 3.2, 0, 0, front - 1.6);
+      p.box(mat(0x8e8a84, { roughness: 0.9 }), 3.2, KERB + 0.01, 2.0, 0, 0, front - 4.2);
+      for (const [x, z] of [[-6.8, 0], [-6.8, -3], [7.0, 3.0]]) shrub(p, x, z, s.seed * 5 + x * 3 + z, KERB, 0.8);
+      tree(p, -5.2, back + 1.4, 0.9, s.seed + 1, KERB);
+      break;
+    }
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.
@@ -916,11 +980,11 @@ export function tree(p: Parts, x: number, z: number, s: number, seed: number, y 
 const PARKED = ["hatch", "sedan", "estate", "suv", "hatch", "sedan", "suv", "coupe", "pickup", "van", "estate", "hatch"];
 
 /** A parked car, nose toward +z before ry: a realistic one if they are loaded, else from the traffic kit. */
-export function parked(p: Parts, x: number, z: number, ry: number, seed: number, y = KERB) {
+export function parked(p: Parts, x: number, z: number, ry: number, seed: number, y = KERB, pick?: { name?: string; paint?: number }) {
   const r = rng(seed);
   if (hasReal("cars")) {
-    const name = PARKED[Math.floor(r() * PARKED.length)];
-    const paint: Paint = { wall: Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
+    const name = pick?.name ?? PARKED[Math.floor(r() * PARKED.length)];
+    const paint: Paint = { wall: pick?.paint ?? Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
     for (const { role, geo } of realPiece("cars", name)) p.add(realMat("cars", role, paint, 0), geo, x, y, z, 0, ry, 0);
     return;
   }
@@ -1147,7 +1211,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   // Heavy damage takes the top quarter off, roof and all.
   const floors = broken ? Math.max(1, Math.round(s.floors * (0.72 + r() * 0.1))) : s.floors;
   const top = def ? stackReal(p, s, def, floors, !broken, info) : stack(p, s, look, floors, !broken);
-  if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" ? 1.4 : 0.25 });
+  if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" || s.style === "powerstation" ? 1.4 : 0.25 });
   if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
   if (broken) wreckTop(p, top.w, top.d, top.top, def?.debris ?? (s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall]), r, def ? THREE.MathUtils.clamp(top.top / 20, 0.4, 1) : 1);
   if (s.shiny && !broken) finial(p, top.top);
@@ -1170,7 +1234,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1", "l5"]);
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,
@@ -1196,12 +1260,13 @@ function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
     // charred joists and rafters standing out of it (timber and glass).
     const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
     const y = top.top - 0.15;
+    const [ww, wd, wx, wz] = def.walls ?? [def.w, def.d, 0, 0];
     if (MASONRY.has(def.id)) {
       const edges: [number, number, number, number][] = [
-        [0, def.d / 2 - 0.2, def.w, 0],
-        [0, -def.d / 2 + 0.2, def.w, Math.PI],
-        [def.w / 2 - 0.2, 0, def.d, Math.PI / 2],
-        [-def.w / 2 + 0.2, 0, def.d, -Math.PI / 2],
+        [wx, wz + wd / 2 - 0.2, ww, 0],
+        [wx, wz - wd / 2 + 0.2, ww, Math.PI],
+        [wx + ww / 2 - 0.2, wz, wd, Math.PI / 2],
+        [wx - ww / 2 + 0.2, wz, wd, -Math.PI / 2],
       ];
       for (const [x, z, len, a] of edges) {
         const n = Math.max(1, Math.round(len / 3.6));
@@ -1216,9 +1281,9 @@ function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
     // Smaller beams on low buildings, where a girder would dwarf the walls.
     const k = THREE.MathUtils.clamp(top.top / 10, 0.4, 1);
     for (let i = 0; i < 2 + s.grade; i++) {
-      civic(p, "rubble_beam", (r() - 0.5) * def.w * 0.7, y + 0.2 * k, (r() - 0.5) * def.d * 0.7, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.2, rz: (r() - 0.5) * 1.2, scale: new THREE.Vector3(k, k, k), damage: 2 });
+      civic(p, "rubble_beam", wx + (r() - 0.5) * ww * 0.7, y + 0.2 * k, wz + (r() - 0.5) * wd * 0.7, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.2, rz: (r() - 0.5) * 1.2, scale: new THREE.Vector3(k, k, k), damage: 2 });
     }
-    for (let i = 0; i < 2; i++) civic(p, "rubble_slab", (r() - 0.5) * def.w * 0.5, y + 0.1, (r() - 0.5) * def.d * 0.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.8, damage: 1 });
+    for (let i = 0; i < 2; i++) civic(p, "rubble_slab", wx + (r() - 0.5) * ww * 0.5, y + 0.1, wz + (r() - 0.5) * wd * 0.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.8, damage: 1 });
   } else wreckTop(p, top.w, top.d, top.top, def.debris, r, THREE.MathUtils.clamp(top.top / 14, 0.5, 1.1));
   // Scorch round the walls, and what fell from above heaped against them.
   p.add(mat(0x1a1714, { transparent: true, opacity: 0.7, depthWrite: false }), new THREE.CircleGeometry(Math.max(s.w, s.d) * 0.75, 16), 0, KERB + 0.02, 0, -Math.PI / 2);

@@ -58,12 +58,12 @@ bun run models               # every model, a few minutes; or: bun run models c1
 # then http://localhost:5173/proto.html?model=c1&view=hero&hour=15
 ```
 
-Models: the buildings `a1 a2 a3 c1 c2 c3 c4 s1 s2 s3 s4 o1 l1` and the props `cars trees street bridge`
+Models: the buildings `a1 a2 a3 c1 c2 c3 c4 s1 s2 s3 s4 o1 l1`, the public ones `p1 f1 e1 h1 l5 e2 e3 h2 p2 w2` and the props `cars trees street bridge`
 (`--no-tex` skips the shared texture library; a model's own textures, such
 as the leaves, are always made with it).
 
-The viewer shows one model on its lot with the app's own code: `model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1`,
-`floors`, `seed` (paint), `damage=0|1|2`, `view=hero|city|detail|roof|back|street`,
+The viewer shows one model on its lot with the app's own code: `model=a1|a2|a3|c1|c2|c3|c4|s1|s2|s3|s4|o1|l1|p1|f1|e1|h1|l5|e2|e3|h2|p2|w2`,
+`floors`, `seed` (paint), `damage=0|1|2|3` (3: the ruin), `view=hero|city|detail|roof|back|street`,
 `hour`; `&count=N` is the instanced stress test. `?props=cars|trees|street|bridge`
 lays out a props model's pieces instead (`&only=suv,hatch` picks and orders
 them, `&gap=` spaces them, `&ry=` turns them, `view=hero|close|low|far`);
@@ -77,10 +77,14 @@ draws the kit until it is there. To try a release build on local models
 without publishing them:
 `DEEPWORK_MODELS=$PWD/ui/public/models target/release/deepwork-ui`.
 
-The showcase town, `http://localhost:5173/town.html`, puts every model
+The showcase town, `http://localhost:5173/town.html`, shows for now only the
+City's five newest public buildings (H2, E2, E3, P2, W2) on its through road,
+seen from `view=new` (the default); other lots are left empty, so add codes
+back to `BLOCKS` to bring the rest of the town back. It put every model
 together in a hand-laid 3 x 3 block town (downtown towers, main street,
-apartments, cottages, works, a park and a plaza, the river and bridge,
-moving traffic) without earning anything. `view=overview|downtown|main|homes|works|civic|bridge|plaza|skyline|fountain|pond`,
+apartments, cottages, works, the public buildings and the City's services
+and utilities, a park and a plaza, the river and bridge,
+moving traffic) without earning anything. `view=overview|downtown|main|homes|works|civic|services|utilities|bridge|plaza|skyline|fountain|pond`,
 `hour`, `&still` parks the traffic, `&fps=30` caps the frame rate (off by
 default). Map controls: left drag pans, right drag turns, the wheel zooms,
 WASD pans; the camera stays above ground, out of buildings and in the map,

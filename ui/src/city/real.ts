@@ -65,6 +65,12 @@ export interface RealDef {
   smoke?: (floors: number) => THREE.Vector3;
   /** The colour debris takes when it collapses. */
   debris: number;
+  /**
+   * The main walls' box [w, d, x, z], building-local, where it is smaller than
+   * the footprint (a portico, steps or a canopy in front): the ruin's
+   * stumps of wall stand on it.
+   */
+  walls?: [number, number, number, number];
 }
 
 const A1_G = 4.5;
@@ -95,6 +101,13 @@ const E1_FL = 3.9;
 const H1_H = 3.6;
 const L5_G = 1.4 + 4.8;
 const L5_FL = 4.4;
+const E2_G = 4.4;
+const E2_FL = 3.7;
+const E3_TOP = 1.3 + 6.0;
+const P2_HT = 10.5;
+const W2_EAV = 7.4;
+const H2_PH = 4.8;
+const H2_FL = 3.5;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -413,6 +426,102 @@ export const DEFS: Record<string, RealDef> = {
     // The balustrade; the clock tower's dome and flagpole reach 25 m.
     height: () => L5_G + L5_FL + 2.0,
     debris: 0xc8bca4,
+    walls: [14.4, 10, 0, -1.675],
+  },
+  e2: {
+    id: "e2",
+    kind: "apartment",
+    style: "police",
+    // The station with its cornice; the doorcase steps and the lamp reach 1.4 m out.
+    w: 12.9,
+    d: 11.4,
+    front: 1.0,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "floor", y: E2_G }] : []),
+      ...(roof ? [{ piece: "roof", y: E2_G + E2_FL }] : []),
+    ],
+    top: (floors) => (floors > 1 ? E2_G + E2_FL : E2_G),
+    // The parapet; the hip's ridge and chimneys reach 5.6 m above it, the flagpole 8 m.
+    height: () => E2_G + E2_FL + 1.5,
+    smoke: () => new THREE.Vector3(3.2, E2_G + E2_FL + 0.78 + 2.6 + 1.8, 2.2),
+    debris: 0xc8c0b0,
+    walls: [12, 10, 0, 0],
+  },
+  e3: {
+    id: "e3",
+    kind: "apartment",
+    style: "library",
+    // The library with its portico, steps and lions (e3_library.py moves
+    // itself back so this is centred).
+    w: 14.2,
+    d: 14.3,
+    front: 0.6,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "ground", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: E3_TOP }] : [])],
+    top: () => E3_TOP,
+    // The parapet; the dome's lantern reaches 14.6 m.
+    height: () => E3_TOP + 1.9,
+    debris: 0x8a4e3c,
+    walls: [14, 10, 0, -2.05],
+  },
+  h2: {
+    id: "h2",
+    kind: "office",
+    style: "hospital",
+    // The podium with the stair tower and the emergency canopy (h2_hospital.py
+    // moves itself so this is centred); wards stacked on it.
+    w: 15.5,
+    d: 15.0,
+    front: 0.4,
+    floors: (plan) => Math.max(4, Math.min(6, plan - 6)),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: "ward", y: H2_PH + (f - 1) * H2_FL });
+      if (roof) out.push({ piece: "roof", y: H2_PH + Math.max(0, floors - 1) * H2_FL });
+      return out;
+    },
+    top: (floors) => H2_PH + Math.max(0, floors - 1) * H2_FL,
+    // The parapet; the helipad's net and the H sign reach 3.5 m above it.
+    height: (floors) => H2_PH + Math.max(0, floors - 1) * H2_FL + 1.0,
+    debris: 0xd0ccc0,
+    walls: [14, 12, 0.35, -1.5],
+  },
+  p2: {
+    id: "p2",
+    kind: "shop",
+    style: "powerstation",
+    // The turbine hall in front, the boiler house and the conveyor behind.
+    w: 15.8,
+    d: 15.6,
+    front: 0.3,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: P2_HT }] : [])],
+    top: () => P2_HT,
+    // The boiler house's parapet; the chimneys reach 34 m.
+    height: () => 16.2,
+    smoke: () => new THREE.Vector3(3.0, 34.2, -4.0),
+    debris: 0x8a4e3c,
+    walls: [14, 14, 0, 0],
+  },
+  w2: {
+    id: "w2",
+    kind: "shop",
+    style: "pumping",
+    // The engine house and boiler house, the railed yard in front
+    // (w2_pumping.py moves itself so this is centred).
+    w: 14.0,
+    d: 14.4,
+    front: 0.5,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: W2_EAV }] : [])],
+    top: () => W2_EAV,
+    // The ridge; the lantern reaches 12.7 m, the chimney 24 m.
+    height: () => W2_EAV + 3.6,
+    smoke: () => new THREE.Vector3(4.6, 24.2, -5.4),
+    debris: 0x8a4e3c,
+    walls: [9, 11, -1.9, -1.3],
   },
   o1: {
     id: "o1",
@@ -1725,7 +1834,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room(id === "e1" || id === "h1" ? "office" : "home"); break;
+    case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
@@ -1750,6 +1859,31 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0xf2efe6, 0.35, 0, { emissive: 0xfff0c8, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 1.2;
       break;
+    // The police station (e2_police.py): the blue lamp, lit at night; the flag.
+    case "bluelamp":
+      m = plain(0x1d3f8a, 0.2, 0, { emissive: 0x3a6cff, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
+    case "flag": m = w(plain(0x24406e, 0.85), 0.3); break;
+    // The hospital (h2_hospital.py): white precast, blue-grey panels, red for
+    // casualty, the helideck and its lights, the blue H sign lit at night.
+    case "precast": m = w(pbr("render", [3, 3], { roughness: 0.88, normal: 0.8, color: 0xeeebe4 }), 0.9); break;
+    case "hosppanel": m = w(plain(0x5d7d96, 0.45), 0.5); break;
+    case "redpanel": m = w(plain(0xb0201c, 0.4), 0.4); break;
+    case "hospname": m = w(plain(0x1e3c6e, 0.4, 0.3), 0.3); break;
+    case "helideck": m = w(plain(0x3e4642, 0.85, 0.2), 1); break;
+    case "windsock": m = w(plain(0xe8701e, 0.8), 0.3); break;
+    case "stairglass": m = room("lobby"); break;
+    case "helilight":
+      m = plain(0x2a8a3a, 0.3, 0, { emissive: 0x40ff60, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.2;
+      break;
+    case "hospsign":
+      m = plain(0x1d4f9a, 0.3, 0, { emissive: 0x2a6aff, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.5;
+      break;
+    // The library's banners (e3_library.py): deep red cloth.
+    case "banner": m = w(plain(0x8a1f26, 0.9), 0.4); break;
     // The clinic (h1_clinic.py): sea-green spandrels, frosted glass, the green cross lit at night.
     case "clinicpanel": m = w(plain(0x5f9c94, 0.5), 0.6); break;
     case "frosted": m = w(plain(0xdfe6e8, 0.3, 0.05), 0.2); break;
