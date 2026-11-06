@@ -3,9 +3,13 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod models;
+
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use deepwork_proto::{Request, Response};
+use models::Models;
 
 /// Backups are small; refuse anything that could be a mistake.
 const MAX_BACKUP_BYTES: u64 = 32 * 1024 * 1024;
@@ -56,10 +60,28 @@ async fn write_file(path: String, contents: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Whether the realistic city's models are on disk yet, and where to read them.
+#[tauri::command]
+fn models(state: tauri::State<Arc<Models>>) -> models::Status {
+    state.status()
+}
+
 fn main() {
+    let pack = Models::start();
+    let serving = pack.clone();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![daemon, read_file, write_file])
+        .manage(pack)
+        .register_asynchronous_uri_scheme_protocol(
+            models::SCHEME,
+            move |_ctx, request, responder| {
+                let m = serving.clone();
+                std::thread::spawn(move || responder.respond(m.serve(&request)));
+            },
+        )
+        .invoke_handler(tauri::generate_handler![
+            daemon, read_file, write_file, models
+        ])
         .run(tauri::generate_context!())
         .expect("error while running DeepWork");
 }

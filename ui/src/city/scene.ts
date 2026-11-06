@@ -18,7 +18,8 @@ import { Bench } from "./bench";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime, useModels } from "./real";
+import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { piece } from "./kit";
@@ -139,6 +140,8 @@ export class City {
   private t = 0;
   /** Frames per second over the last second, for the dev readout. */
   fps = 0;
+  /** The realistic models as they were when the city was made (models.ts). */
+  models: ModelsStatus = { state: "none" };
   private fpsCount = 0;
   private fpsT = 0;
   private focus: { to: THREE.Vector3; t: number } | null = null;
@@ -304,7 +307,9 @@ export class City {
   static async create(el: HTMLElement, story: (text: string) => void): Promise<City> {
     // The renderer first: it picks the format compressed textures transcode to (real.ts).
     const city = new City(el, story);
-    await Promise.all([loadKit(), loadReal(undefined, city.renderer)]);
+    const models = (city.models = await modelsStatus());
+    if (models.state === "ready") useModels(models.base, models.png ?? false);
+    await Promise.all([loadKit(), models.state === "ready" ? loadReal(undefined, city.renderer) : null]);
     return city;
   }
 

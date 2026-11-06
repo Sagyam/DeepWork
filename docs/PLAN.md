@@ -698,6 +698,20 @@ TypeScript + three.js frontend, built with bun.
 
 ## Next session: start here
 
+Model pack (2026-11-06): releases never carried the realistic models (they
+are git-ignored and CI has no Blender), so installs from `get.sh` drew the
+low-poly kit. Now the app downloads them on first run from the release
+`models-14c9325ec6d74ab5` (113 MB), checks each file against the compiled-in
+`ui/src-tauri/models.json`, keeps them in `~/.local/share/deepwork/assets/`
+and reads them over `models://`; the kit draws until then, and the city card
+shows the progress. Checked in the real Tauri window (on a headless Hyprland
+output): local override, download from a slow local server, a refused
+tampered file, a relaunch from the pack, and a real download from GitHub.
+After changing models: `bun run pack --upload`, commit `models.json`
+(`docs/DEVELOPMENT.md`, "Model packs"). Host check after the next release:
+`deepwork-ui` from the package shows the download line, then the realistic
+city.
+
 Level-up moment (2026-11-06): graduating a level now has its own show:
 fireworks over the whole city with the camera pulled back, then a "Hamlet
 → Town" card naming the new needs and blueprints (button to the shop), live
@@ -975,7 +989,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       props realistic (2026-11-04): vehicles, trees and shrubs, street furniture and signals, textured streets, the bridge;
       L1 art deco skyscraper; moving water (river, park pond, fountain) in the app; the showcase town (`ui/town.html`, 2026-11-05)
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
-      (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
+      (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB);
+      downloaded on first run as a checked pack from a `models-<id>` release (2026-11-06), so releases show them
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)

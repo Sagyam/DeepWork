@@ -322,25 +322,39 @@ So the last phase can optimise without remodelling:
 
 ## Downloading the models
 
+Built 2026-11-06 (`ui/scripts/pack.ts`, `ui/src-tauri/src/models.rs`,
+`ui/src/models.ts`); first pack `models-14c9325ec6d74ab5`, 116 files, 113 MB.
+
 - **Who downloads:** the app (`deepwork-ui`), as the user, never the root
   daemon. Clients stay untrusted views; the daemon does not care what the
   city looks like.
-- **What:** one asset pack per release (models, KTX2 textures, a manifest of
-  files with SHA-256 sums). The manifest's hash is compiled into the app, so
-  a pack is checked before use and a tampered or stale pack is refused.
-- **Where from:** a GitHub release asset (`Sagyam/DeepWork`), which has no
-  bandwidth cap; Vercel (the landing site) does. Versioned by content hash,
+- **What:** the glb files, the BC7 textures (gzipped KTX) and `bc7.json`;
+  no PNGs, which halves it. A GPU without BC7 keeps the kit (every GPU Mesa
+  drives with OpenGL 4.2 or later has it). `ui/src-tauri/models.json` lists
+  each file with its size and SHA-256 and is compiled into the app, so a
+  file that does not match is refused (tested with one altered byte).
+- **Where from:** a GitHub release of its own, `models-<id>`, a prerelease
+  never marked latest (`bun run pack --upload`); release assets are flat, so
+  `tex/brick_col.bc7` is the asset `tex.brick_col.bc7`. GitHub has no
+  bandwidth cap; Vercel (the landing site) does. `<id>` hashes the file list,
   so an app update only fetches a new pack when the models changed.
-- **Where to:** `~/.local/share/deepwork/assets/<hash>/`; old packs removed
-  once the new one is verified.
-- **Until it is there:** the current low-poly kit (4.6 MB) stays embedded as
-  the fallback, so the app works offline and on first start; a small
-  progress line in the city card while the pack downloads, and resume after
-  a broken connection.
-- **During a session:** GitHub is not throttled unless the user blocks it;
-  if it is, the download waits for the session to end.
+- **Where to:** `~/.local/share/deepwork/assets/<id>/` (`$XDG_DATA_HOME`);
+  a file lands under its name only once checked, `.complete` marks the
+  whole pack, and older packs are removed then.
+- **Until it is there:** the low-poly kit (4.6 MB) stays embedded, so the
+  app works offline and on first start. The city card shows "Realistic
+  city: 66 of 113 MB downloaded", then "Realistic city downloaded. Show
+  it", which reloads the window with the models. Four files at a time;
+  about 45 s from GitHub here.
+- **Failures:** a failed file is retried with the rest after 15 s, then
+  1 min, 4 min, 10 min, and on every start; what was checked stays. A
+  session that blocks GitHub just delays it.
+- **The page** reads the pack through the `models://` scheme, which serves
+  only the manifest's files and only once the pack is whole.
+  `DEEPWORK_MODELS=<dir>` serves a local directory instead, for development.
 - **Packages:** the Arch / deb / rpm packages do not ship the pack either;
-  the first run fetches it the same way.
+  the first run fetches it the same way. `ui/dist` (embedded in the binary)
+  went from 205 to 5.6 MB once builds left `public/models` out.
 
 ## The buildings
 
@@ -727,8 +741,8 @@ What differs from the town:
 3. Progression v2 and the master plan (`docs/progression.md`): coins and
    the shop in the daemon, the designed layout in `plan.ts`. The plan decides which models are
    needed where, so it comes before most of them.
-4. Download on first run, as soon as models leave the binary: pack,
-   manifest, low-poly fallback.
+4. ~~Download on first run, as soon as models leave the binary: pack,
+   manifest, low-poly fallback.~~ Done 2026-11-06.
 5. ~~One model per kind (C1, S1, A2, O1, L1)~~ (all done 2026-11-05) so a real mixed city can be seen.
    ~~A3~~ (done 2026-11-05) completes the kit's apartment styles.
 6. The first civic landmarks (L5-L7) on their reserved ground.

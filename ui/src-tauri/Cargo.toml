@@ -9,9 +9,12 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 deepwork-proto.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
 
 [features]
 # Serve the built frontend (`ui/dist`) from the binary. Without it the window

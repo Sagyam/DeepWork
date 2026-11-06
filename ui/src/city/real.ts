@@ -2,7 +2,8 @@
 // replace the low-poly kit's styles one model at a time. `bun run models`
 // writes public/models/: <id>.glb (pieces as nodes, materials named by
 // role), <id>_ao.png (AO baked on the lightmap UVs) and tex/, the shared
-// texture library. Any model that is missing falls back to the kit.
+// texture library. Any model that is missing falls back to the kit. Release
+// builds download them instead (models.ts), so the base is set at startup.
 //
 // This module loads the models and owns their materials: PBR from the
 // library with baked AO and world-space weathering, and window glass that
@@ -15,7 +16,15 @@ import type { Kind } from "./plan";
 
 export { interiorUniforms };
 
-const BASE = `${import.meta.env.BASE_URL}models/`;
+let BASE = `${import.meta.env.BASE_URL}models/`;
+/** Whether PNGs sit beside the BC7 files; the downloaded pack has none. */
+let hasPng = true;
+
+/** Where the models load from (models.ts); call before loadReal. */
+export function useModels(base: string, png: boolean) {
+  BASE = base;
+  hasPng = png;
+}
 
 export interface RealPart {
   role: string;
@@ -423,6 +432,8 @@ const isBc7 = (url: string) => packed.has(url.slice(BASE.length, -4));
 /** Loads every model there is; missing ones are left to the kit. Never throws. `renderer` lets textures load compressed. */
 export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?: THREE.WebGLRenderer): Promise<void> {
   await initBc7(renderer);
+  // Without BC7 the pack has nothing to draw with: the kit it is.
+  if (!hasPng && packed.size === 0) return;
   const png = new THREE.TextureLoader();
   const tex = {
     loadAsync: async (url: string): Promise<THREE.Texture> => {
