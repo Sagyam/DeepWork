@@ -63,8 +63,6 @@ with a root shell open in another terminal for the PAM checks.
       new shaders).
 - [ ] Instancing: one InstancedMesh per piece and material instead of
       merged `Parts`.
-- [ ] Quality presets (render scale, shadow map, MSAA, bloom) for weak
-      iGPUs on 1440p+.
 - [ ] Geometry compression (meshopt) to shrink the pack.
 - [ ] Retune lighting: it is still tuned for the flat kit.
 

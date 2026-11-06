@@ -16,11 +16,12 @@ import type { World, WorldEvent } from "../proto";
 import { namesOf } from "../format";
 import { Bench } from "./bench";
 import { shadowTaps, type ShadowTaps } from "./shadow";
+import { onQuality, QUALITY, qualityPref, type QualitySpec } from "./quality";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
 import { thumbnail } from "./thumbs";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setWaterTime, useModels } from "./real";
+import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
@@ -137,6 +138,8 @@ export class City {
   private lampMats: THREE.MeshStandardMaterial[] = [];
 
   private timer = new THREE.Timer();
+  /** The shadow filter's taps in use (0 before the first applyQuality). */
+  private taps: ShadowTaps | 0 = 0;
   /**
    * pause: the window is unfocused, so only ambient motion (smoke, cranes,
    * the ghost's pulse) draws, at DIM_FPS, with traffic and auto-rotate
@@ -210,10 +213,6 @@ export class City {
     r.setPixelRatio(1);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFShadowMap;
-    // shadow filter (shadow.ts): a fixed 2x2 grid looks as soft as three's
-    // noisy 5-tap disc and costs less; &taps=1|4|5 compares them.
-    const taps = Number(new URLSearchParams(location.search).get("taps") ?? 4);
-    shadowTaps(([1, 4, 5].includes(taps) ? taps : 4) as ShadowTaps);
     // shadow: the city stands still nearly all the time and the sun moves
     // slowly, so the shadow map is drawn only when the sun has moved on, a
     // building changes or cut-out textures arrive (shadowsDirty()), not every
@@ -315,7 +314,8 @@ export class City {
     r.domElement.addEventListener("pointerleave", () => this.onHover?.(null, 0, 0));
 
     new ResizeObserver(() => this.resize()).observe(el);
-    this.resize();
+    this.applyQuality(QUALITY[qualityPref()]);
+    onQuality((q) => this.applyQuality(QUALITY[q]));
     const activity = () => this.activity();
     document.addEventListener("visibilitychange", activity);
     window.addEventListener("focus", activity);
@@ -355,6 +355,46 @@ export class City {
     return city;
   }
 
+  /**
+   * quality (quality.ts): render scale, MSAA, shadow map and filter, bloom,
+   * all changeable while the city is on screen. A new shadow filter
+   * recompiles every material (one hitch, on a settings change).
+   */
+  private applyQuality(q: QualitySpec) {
+    // shadow filter (shadow.ts): a fixed 2x2 grid looks as soft as three's
+    // noisy 5-tap disc and costs less; &taps=1|4|5 compares them.
+    const url = Number(new URLSearchParams(location.search).get("taps"));
+    const taps = ([1, 4, 5].includes(url) ? url : q.taps) as ShadowTaps;
+    if (taps !== this.taps) {
+      const first = this.taps === 0;
+      this.taps = taps;
+      shadowTaps(taps);
+      if (!first) {
+        this.scene.traverse((o) => {
+          const m = (o as THREE.Mesh).material;
+          if (m) for (const x of Array.isArray(m) ? m : [m]) x.needsUpdate = true;
+        });
+        this.warm = true;
+      }
+    }
+    this.renderer.setPixelRatio(q.scale);
+    this.composer.setPixelRatio(q.scale);
+    for (const rt of [this.composer.renderTarget1, this.composer.renderTarget2]) {
+      if (rt.samples === q.msaa) continue;
+      rt.samples = q.msaa;
+      rt.dispose();
+    }
+    const shadow = this.sunLight.shadow;
+    if (shadow.mapSize.x !== q.shadow) {
+      shadow.mapSize.set(q.shadow, q.shadow);
+      shadow.map?.dispose();
+      shadow.map = null;
+      this.shadowsDirty();
+    }
+    this.bloom.enabled = q.bloom;
+    this.resize();
+  }
+
   private resize() {
     this.dirty = true;
     const w = this.el.clientWidth || 1;
@@ -367,6 +407,7 @@ export class City {
     const px = (h * this.renderer.getPixelRatio()) / (2 * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2)));
     this.fx.smoke.setScale(px);
     this.fx.glow.setScale(px);
+    setSprayScale(this.renderer.getPixelRatio());
   }
 
   /** New world or time; cheap to call on every poll. */
