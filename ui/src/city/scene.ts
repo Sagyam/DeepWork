@@ -742,7 +742,7 @@ export class City {
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
     const e = LOT / 2 - 1.4;
     for (const l of p.emptyLots) {
-      parts.box(real && hasReal("trees") ? groundMat("grass", 2.2, { roughness: 1, color: 0xd8d0a8 }) : mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
+      parts.box(real && hasReal("trees") ? groundMat("grass", 2.2, { roughness: 1, color: 0xc4b080 }) : mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
       for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
       for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
       for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);

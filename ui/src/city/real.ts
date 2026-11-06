@@ -630,6 +630,36 @@ function pbr(name: string, tile: [number, number], opts: Std & { rough?: boolean
   return m;
 }
 
+/**
+ * Falling water (the fountain's curtains): clear, catching light in streaks
+ * that run down it, both sides drawn; the streaks move on the water clock.
+ */
+function spray(): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color: 0xeaf4f8, roughness: 0.15, metalness: 0.1, transparent: true, side: THREE.DoubleSide, depthWrite: false });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.uSprayT = waterUniforms.uTime;
+    sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying vec2 vSprayUv;").replace("#include <begin_vertex>", "#include <begin_vertex>\nvSprayUv = uv;");
+    sh.fragmentShader = sh.fragmentShader
+      .replace("#include <common>", "#include <common>\nuniform float uSprayT;\nvarying vec2 vSprayUv;\nfloat sprayH(vec2 p) { return fract(sin(dot(p, vec2(41.3, 289.1))) * 43758.5); }\nfloat sprayN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(sprayH(i), sprayH(i + vec2(1.0, 0.0)), f.x), mix(sprayH(i + vec2(0.0, 1.0)), sprayH(i + vec2(1.0)), f.x), f.y); }")
+      .replace(
+        "#include <color_fragment>",
+        `#include <color_fragment>
+        // UVs in metres: u round the curtain, v up it. Soft uneven strands,
+        // long and thin, that slide down; thicker where the sheet breaks up.
+        vec2 su = vSprayUv;
+        float n1 = sprayN(vec2(su.x * 22.0, su.y * 1.2 + uSprayT * 2.5));
+        float n2 = sprayN(vec2(su.x * 57.0 + 13.0, su.y * 3.0 + uSprayT * 4.0));
+        float n3 = sprayN(vec2(su.x * 4.0, su.y * 0.6 + uSprayT * 0.8));
+        float streak = smoothstep(0.45, 0.95, n1 * 0.55 + n2 * 0.45);
+        diffuseColor.a = 0.06 + 0.3 * streak * (0.6 + 0.6 * n3);`,
+      );
+  };
+  m.customProgramCacheKey = () => "spray";
+  // Clear water casts no solid shadow.
+  m.userData.noShadow = true;
+  return m;
+}
+
 const plain = (color: number, roughness = 0.6, metalness = 0, extra: Std = {}) => new THREE.MeshStandardMaterial({ color, roughness, metalness, ...extra });
 
 const SHOPS: [string, string, string, string][] = [
@@ -1600,12 +1630,23 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "worksglass": m = room("works"); break;
     case "cafeglass": m = room("cafe"); break;
     // Civic props (civic.py): water tower, crane, scaffold, rubble, parks.
-    case "tankpaint": m = w(plain(0xd4d8d6, 0.5, 0.35), 1.2); break;
-    case "tankband": m = w(plain(0x2f5a8a, 0.5, 0.3), 1.2); break;
-    case "crane": m = w(plain(0xe8b020, 0.5, 0.3), 1); break;
+    // Years of sun and rain: a dulled silver-grey tank, its band faded and
+    // streaked, and crane yellow gone ochre (clean paint read as a toy).
+    case "tankpaint": m = w(pbr("paintsteel", [3, 3], { rough: true, metalness: 0.15, color: 0xc4c6c0 }), 1.6); break;
+    case "tankband": m = w(pbr("paintsteel", [3, 3], { rough: true, metalness: 0.1, color: 0x5c7286 }), 1.6); break;
+    // Larger tile on the crane: its struts are narrow, and the streaks read as grain up close.
+    case "crane": m = w(pbr("paintsteel", [7, 7], { rough: true, metalness: 0.2, color: 0xeab838, normal: 0.4 }), 0.8); break;
+    case "debris": m = w(pbr("stone", [1.4, 1.4], { roughness: 0.97, color: 0x8e8a84 }), 2.2); break;
+    // The bandstand's columns, brackets and railing: cast iron in old green paint.
+    case "castiron": m = w(pbr("paintsteel", [1.5, 1.5], { rough: true, metalness: 0.2, color: 0x3a4c40 }), 1.4); break;
+    case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
+    // Falling water: white where it breaks up, mostly see-through.
+    case "spray": m = spray(); break;
     case "rubble": m = w(pbr("rubble", [3, 3], { roughness: 0.97 }), 0.6); break;
     case "char": m = w(plain(0x1d1a18, 0.95), 0.4); break;
-    case "scaffboard": m = w(plain(0xa08458, 0.85), 1.2); break;
+    // Scaffold boards: pale, sun-greyed softwood (the plank texture would cut
+    // each narrow board into blocks).
+    case "scaffboard": m = w(plain(0xa89878, 0.88), 2); break;
     case "net": m = new THREE.MeshStandardMaterial({ map: tex("net_col", [1, 1]), alphaTest: 0.5, side: THREE.DoubleSide, roughness: 0.8 }); break;
     case "water": m = sheen({ color: 0x4f7d93, roughness: 0.1, metalness: 0.2 }); break;
     case "skin": case "shirt": case "pants": case "hair": m = w(plain(0xffffff, 0.8)); break;

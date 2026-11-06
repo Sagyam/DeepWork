@@ -750,9 +750,15 @@ const SHRUBS = ["bush", "bush", "bush_wide", "shrub", "flowers"];
 /** Paint for a realistic prop: `wall` picks its tint (foliage, car paint). */
 const tintOf = (i: number): Paint => ({ wall: i, accent: 0, roof: 0, signs: 0 });
 
+/**
+ * The grass texture alone is a lime green; this takes it to a mown lawn's
+ * olive, beside the meadow round the town (land.ts tones that the same way).
+ */
+const LAWN_TINT = 0xbcae88;
+
 /** A lawn: mown grass from the realistic library when loaded, else flat green. */
 export function lawn(): THREE.Material {
-  return hasReal("trees") ? groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8 }) : mat(0x6f9a4f, { roughness: 1 });
+  return hasReal("trees") ? groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8, color: LAWN_TINT }) : mat(0x6f9a4f, { roughness: 1 });
 }
 
 /**

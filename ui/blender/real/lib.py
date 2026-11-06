@@ -1452,6 +1452,7 @@ class Model:
         self.id = id_
         self.m = Mesh(id_)
         self.cut = Mesh(f"{id_}_cut")
+        self.cut_shades = True
         self.decal = Mesh(f"{id_}_decal")
         self.names, self.at = [], []
         self.R = random.Random(seed)
@@ -1468,7 +1469,11 @@ class Model:
         ob, co = self.m.finish(self.sharp), self.cut.finish()
         tris = sum(len(p.vertices) - 2 for p in ob.data.polygons) + sum(len(p.vertices) - 2 for p in co.data.polygons)
         print(self.id, "triangles", tris, "pieces", len(self.names))
+        # Cut-outs shade the solids in the bake (leaves over branches) unless
+        # the model says they are mostly holes (nets, falling water).
+        co.hide_render = not self.cut_shades
         bake_ao(ob, os.path.join(out, f"{self.id}_ao.png"), bake, size, samples, smooth)
+        co.hide_render = False
         parts = split(ob, self.names, self.at, "") + split(co, self.names, self.at, "_cut")
         if self.decal.bm.faces:
             parts += split(self.decal.finish(), self.names, self.at, "_decal")
