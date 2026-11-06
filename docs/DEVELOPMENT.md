@@ -42,10 +42,11 @@ bun run dev        # then open http://localhost:5173/?mock=city
 
 Scenarios: `empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
 `surrender`, `ruins`, `desk` (a choice made, a site paused, crew hours
-waiting), `nearmiss` (a countdown ending just short of a finish line);
+waiting), `nearmiss` (a countdown ending just short of a finish line),
+`levelup` (a countdown whose end finishes the Hamlet, ~15s after loading);
 the mock's city (`src/mockcity.ts`) is a small hand mirror of the daemon's
 fold, so buying, building, pausing and renaming work in the browser too; `&hour=16` fixes the time of day. In the console,
-`city.demo("collapse" | "build" | "damage")` plays one transition.
+`city.demo("collapse" | "build" | "damage" | "graduate")` plays one transition.
 
 The realistic models (`docs/models.md`) are built with Blender into the
 git-ignored `ui/public/models/` (~60 MB); without them the app draws the

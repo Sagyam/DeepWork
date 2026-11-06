@@ -142,11 +142,15 @@ export class City {
   private fpsCount = 0;
   private fpsT = 0;
   private focus: { to: THREE.Vector3; t: number } | null = null;
+  /** The camera backing off to a distance and height above the target, e.g. to see a whole city. */
+  private pull: { dist: number; rise: number } | null = null;
   /** Buildings sinking into their own dust. */
   private dying: { group: THREE.Group; t: number; h: number; w: number; x: number; z: number; tilt: number }[] = [];
 
   /** A building or site under the pointer (`null`: none), with the pointer's place. */
   onHover: ((index: number | null, x: number, y: number) => void) | null = null;
+  /** The settlement reached a new level (live or replayed), as its fireworks end. */
+  onGraduate: ((tier: number) => void) | null = null;
   /** A building or site clicked (not dragged). */
   onPick: ((index: number) => void) | null = null;
   private ray = new THREE.Raycaster();
@@ -321,6 +325,7 @@ export class City {
   /** New world or time; cheap to call on every poll. */
   update(world: World, hour: number, elapsedSecs: number) {
     const first = this.world === null;
+    const was = this.world?.tier ?? world.tier;
     this.world = world;
     if (Math.abs(hour - this.hour) > 1 / 60 || first) this.light(hour);
     const p = plan(world, elapsedSecs);
@@ -333,7 +338,56 @@ export class City {
       this.warm = true;
     } else {
       this.sync(p, true);
+      // After the finished building has risen and sparkled.
+      if (world.tier > was) this.later(2.8, () => this.graduate(world.tier));
     }
+  }
+
+  /**
+   * The level-up moment: the camera turns to the whole city and slowly
+   * circles it while fireworks go up over the rooftops. About 6 seconds;
+   * nothing in it needs waiting for.
+   */
+  graduate(tier: number) {
+    const p = this.plan;
+    if (!p) return;
+    this.story("Every need was met. The settlement grew.");
+    const { minX, maxX, minZ, maxZ } = p.bounds;
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const span = Math.max(40, maxX - minX, maxZ - minZ);
+    const tallest = Math.max(10, ...p.buildings.map((b) => (b.rubble ? 0 : b.height)));
+    // Back off to the opening view's distance (frameCamera), a bit higher.
+    const dist = Math.max(110, span * 1.4, tallest * 2.5);
+    const ty = tallest * 0.45;
+    this.focus = { to: new THREE.Vector3(cx, ty, cz), t: 0 };
+    this.pull = { dist, rise: dist * 0.3 };
+    this.controls.autoRotate = true;
+    this.idle = 0;
+    // Bursts in the upper part of that view, never over the top of the screen.
+    const half = dist * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const size = Math.min(2.2, 0.8 + span / 250);
+    // Brand amber and gold first, then the rest of a festival.
+    const colors: [number, number, number][] = [[1, 0.7, 0.2], [1, 0.85, 0.35], [1, 0.4, 0.45], [0.45, 0.75, 1], [0.6, 1, 0.55], [1, 0.55, 0.15]];
+    const shots = 10 + Math.min(8, tier * 3);
+    for (let i = 0; i < shots; i++) {
+      const at = 0.3 + i * 0.38 + Math.random() * 0.25;
+      this.later(at, () => {
+        const a = Math.random() * Math.PI * 2;
+        const d = Math.random() * span * 0.45;
+        const y = Math.max(tallest + 12, ty + half * (0.3 + Math.random() * 0.35));
+        this.fx.firework(new THREE.Vector3(cx + Math.cos(a) * d, y, cz + Math.sin(a) * d), colors[i % colors.length], size);
+      });
+    }
+    // The finale: three together.
+    const end = 0.5 + shots * 0.38;
+    for (let k = 0; k < 3; k++) {
+      this.later(end + k * 0.08, () => {
+        const a = (k / 3) * Math.PI * 2;
+        this.fx.firework(new THREE.Vector3(cx + Math.cos(a) * span * 0.2, Math.max(tallest + 15, ty + half * 0.55), cz + Math.sin(a) * span * 0.2), colors[k], size * 1.3);
+      });
+    }
+    this.later(end + 1.6, () => this.onGraduate?.(tier));
   }
 
   /** A screen shake, e.g. for a quake. */
@@ -342,7 +396,11 @@ export class City {
   }
 
   /** Dev only (mock mode): play a transition on a plot. The next poll puts it back. */
-  demo(kind: "collapse" | "build" | "damage", index = -1): string {
+  demo(kind: "collapse" | "build" | "damage" | "graduate", index = -1): string {
+    if (kind === "graduate") {
+      this.graduate(Math.max(1, this.world?.tier ?? 1));
+      return "graduation";
+    }
     if (index < 0) {
       const standing = [...this.entries.entries()].filter(([, e]) => !("progress" in e.spec) && !e.spec.rubble);
       index = standing.sort((a, b) => b[1].info.height - a[1].info.height)[0]?.[0] ?? -1;
@@ -499,8 +557,15 @@ export class City {
     for (const [i, s] of before) this.put(i, this.make(s));
 
     let at = 1.5;
+    let levels = unseen.filter((ev) => ev.kind === "graduated").length;
     for (const ev of unseen) {
       const evAt = at;
+      if (ev.kind === "graduated") {
+        const tier = w.tier - --levels;
+        this.later(evAt, () => this.graduate(tier));
+        at += 8;
+        continue;
+      }
       this.later(evAt, () => this.replay(ev, w));
       at += ev.kind === "built" || ev.kind === "repaired" ? 3 : 4.5;
     }
@@ -1023,8 +1088,20 @@ export class City {
     if (this.focus) {
       this.focus.t += dt;
       this.controls.target.lerp(this.focus.to, Math.min(1, dt * 1.5));
+      if (this.pull) {
+        const off = this.camera.position.clone().sub(this.controls.target);
+        const k = Math.min(1, dt * 1.2);
+        const flat = Math.hypot(off.x, off.z) || 1;
+        const want = Math.sqrt(Math.max(1, this.pull.dist ** 2 - this.pull.rise ** 2));
+        const f = (flat + (want - flat) * k) / flat;
+        off.x *= f;
+        off.z *= f;
+        off.y += (this.pull.rise - off.y) * k;
+        this.camera.position.copy(this.controls.target).add(off);
+      }
       if (this.focus.t > 3.5) {
         this.focus = null;
+        this.pull = null;
         if (this.plan) this.frameCamera(this.plan, false);
       }
     }

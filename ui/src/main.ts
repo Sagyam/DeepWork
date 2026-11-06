@@ -1,6 +1,6 @@
 import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, world as getWorld } from "./daemon";
 import { TIERS, clock, escapeHtml, hm } from "./format";
-import { deedHtml, deskHtml, nearMiss, shopHtml, tagHtml } from "./desk";
+import { deedHtml, deskHtml, levelUpHtml, nearMiss, shopHtml, tagHtml } from "./desk";
 import { notice } from "./panels";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
 import { openProgress, progressUpdate } from "./progress";
@@ -31,6 +31,33 @@ function story(text: string) {
   clearTimeout(storyTimer);
   storyTimer = window.setTimeout(() => el.classList.remove("show"), 4200);
 }
+
+let levelTimer = 0;
+/** The level-up card over the scene; it goes by itself after a while. */
+function levelUp(tier: number) {
+  if (!world) return;
+  const el = $("#levelup");
+  el.innerHTML = levelUpHtml(world, tier);
+  el.hidden = false;
+  // Restart the entrance on a second level in a row.
+  el.classList.remove("show");
+  void el.offsetWidth;
+  el.classList.add("show");
+  clearTimeout(levelTimer);
+  levelTimer = window.setTimeout(closeLevelUp, 20000);
+}
+
+function closeLevelUp() {
+  clearTimeout(levelTimer);
+  $("#levelup").hidden = true;
+}
+
+$("#levelup").addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+  if (!btn) return;
+  closeLevelUp();
+  if (btn.dataset.action === "levelup-shop") openShop();
+});
 
 function banner(text: string | null) {
   const el = $("#banner");
@@ -527,7 +554,10 @@ async function poll() {
     if (key !== sessionKey || now - lastWorldFetch > 5000) {
       sessionKey = key;
       lastWorldFetch = now;
+      const was = world?.tier;
       world = await getWorld();
+      // The scene starts the card with its fireworks; without one, at once.
+      if (!skyline && was !== undefined && world.tier > was) levelUp(world.tier);
       renderCity(world);
       if (deedDialog.open) renderDeed();
       if (shopDialog.open) renderShop();
@@ -554,6 +584,7 @@ window.addEventListener("unhandledrejection", (e) => banner(`UI error: ${e.reaso
 try {
   skyline = await City.create($("#stage"), story);
   skyline.onHover = hover;
+  skyline.onGraduate = levelUp;
   skyline.onPick = (i) => {
     skyline?.look(i);
     openDeed(i);

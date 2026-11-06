@@ -1,6 +1,6 @@
 // Canned daemon for developing the renderer in a browser: `bun run dev`, then
 // open http://localhost:5173/?mock=city (empty, hamlet, city, metropolis,
-// session, stopwatch, surrender, ruins, desk). `&hour=22` fixes the time of day.
+// session, stopwatch, surrender, ruins, desk, nearmiss, levelup). `&hour=22` fixes the time of day.
 // Every scenario but `empty` has two routines, a month of past sessions and a
 // pending config change, for the Stats and Session logs sections.
 // Each load replays the history (its timestamps are relative to now). In the
@@ -162,6 +162,10 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
       city.choose("hamlet-water", null, t0 - 5000);
       city.complete(45 * 60, t0 - 3000);
       break;
+    case "levelup":
+      // One 50 min session short of the Town: the countdown below finishes it.
+      grow(city, 11, 50);
+      break;
     case "metropolis":
       grow(city, 200, 150);
       scar(0.05);
@@ -186,6 +190,11 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
     case "surrender":
       status.nudge = null;
       status.session = session({ type: "countdown", secs: 5400 }, 2000, true);
+      break;
+    case "levelup":
+      // Ends 15s after opening, so the graduation plays live.
+      status.nudge = null;
+      status.session = session({ type: "countdown", secs: 3000 }, 2985);
       break;
     case "nearmiss":
       // A countdown about to end a few minutes short of a finish line.

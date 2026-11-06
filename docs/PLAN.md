@@ -674,7 +674,7 @@ TypeScript + three.js frontend, built with bun.
   error shows in a banner.
 - Dev: `cd ui && bun run dev`, then `http://localhost:5173/?mock=city` in a
   browser (`empty`, `hamlet`, `city`, `metropolis`, `session`, `stopwatch`,
-  `surrender`, `ruins`; `&hour=21` fixes the time of day). The mock daemon
+  `surrender`, `ruins`, `desk`, `nearmiss`, `levelup`; `&hour=21` fixes the time of day). The mock daemon
   answers whenever the page is not inside Tauri; `city.demo("collapse")` in
   the console plays a transition.
 - Verified on the host (2026-11-02) against the installed daemon: the real
@@ -697,6 +697,14 @@ TypeScript + three.js frontend, built with bun.
 | Install URL | `https://deepwork.sagyamthapa.com.np/get.sh`, a Vercel rewrite in `Sagyam/deepwork-site` to `dist/get.sh` on `main` |
 
 ## Next session: start here
+
+Level-up moment (2026-11-06): graduating a level now has its own show:
+fireworks over the whole city with the camera pulled back, then a "Hamlet
+→ Town" card naming the new needs and blueprints (button to the shop), live
+and in the replay; the agent notifies "Level up: <level>". Mock scenario
+`levelup`, `city.demo("graduate")`. Checked headless, night and day, light
+and dark. Next from the progression checklist: ruins drawn standing, the
+before-and-after picture on the deed, then the master plan's real layout.
 
 Progression v2 (2026-11-06): built from the checklist at the end of
 `docs/progression.md`. Daemon: `plan.rs` (levels, needs, 71 lots, 13
