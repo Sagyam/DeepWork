@@ -9,12 +9,13 @@
 //
 // The pack is what the app needs on a GPU with BC7 (every GPU Mesa drives
 // with OpenGL 4.2 or later): the glb files, the BC7 textures and bc7.json.
-// No PNGs; a GPU without BC7 keeps the low-poly kit.
+// No PNGs; a GPU without BC7 keeps the low-poly kit. The glbs are gzipped
+// here (31 MB to 10; the app's loader inflates them), the BC7 files already are.
 //
 // <id> is a hash of the file list with each file's sum, so an unchanged pack
 // keeps its id and its release, and an app update downloads nothing. Commit
 // src-tauri/models.json after publishing: it is what the app trusts.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 
@@ -40,8 +41,13 @@ for (const g of glbs) {
 const paths = [...glbs, "bc7.json", ...bc7.map((n) => `${n}.bc7`).sort()];
 
 const sha = (b: Buffer | string) => createHash("sha256").update(b).digest("hex");
-const files = paths.map((path) => {
+/** What a file is published as: glbs gzipped (fixed level and no name or time, so the same bytes every run). */
+const packed = (path: string) => {
   const bytes = readFileSync(join(DIR, path));
+  return path.endsWith(".glb") ? Buffer.from(Bun.gzipSync(bytes, { level: 9 })) : bytes;
+};
+const files = paths.map((path) => {
+  const bytes = packed(path);
   return { path, size: bytes.length, sha256: sha(bytes) };
 });
 const id = sha(files.map((f) => `${f.path} ${f.size} ${f.sha256}\n`).join("")).slice(0, 16);
@@ -62,7 +68,7 @@ console.log(`${files.length} files, ${(total / 1e6).toFixed(1)} MB, pack ${id}; 
 const stage = join(UI, "../target/models-pack", id);
 rmSync(stage, { recursive: true, force: true });
 mkdirSync(stage, { recursive: true });
-for (const f of files) copyFileSync(join(DIR, f.path), join(stage, asset(f.path)));
+for (const f of files) writeFileSync(join(stage, asset(f.path)), packed(f.path));
 console.log(`staged in ${stage}`);
 
 if (upload) {
