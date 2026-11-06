@@ -1,6 +1,6 @@
 {
- "id": "3c1b1b260663f795",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-3c1b1b260663f795/",
+ "id": "37529d058179db62",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-37529d058179db62/",
  "files": [
   {
    "path": "a1.glb",
@@ -69,6 +69,18 @@
    "asset": "e1.glb"
   },
   {
+   "path": "e2.glb",
+   "size": 1047588,
+   "sha256": "ac9fd46314854930ea761e17713b65f0f8d569b9b6b1741e858c820be410be11",
+   "asset": "e2.glb"
+  },
+  {
+   "path": "e3.glb",
+   "size": 1215784,
+   "sha256": "b2a4b4bd5cac02f11fc57e0862aa184b64c9333b89383006b7a483cc31d2afc5",
+   "asset": "e3.glb"
+  },
+  {
    "path": "f1.glb",
    "size": 941140,
    "sha256": "b44928c66476ae28eb7f880ca8ea11e49eac9f256ec71b88e1f7527235e47cd9",
@@ -79,6 +91,12 @@
    "size": 211640,
    "sha256": "c6e25fef64d6fdaf311fc279f0a986577c2ceeae5b91ae8a258269dc690785c7",
    "asset": "h1.glb"
+  },
+  {
+   "path": "h2.glb",
+   "size": 488676,
+   "sha256": "1ed52d0fd687fdc51209a339867307a8bcc081c872acdfa93847fb742baa94bf",
+   "asset": "h2.glb"
   },
   {
    "path": "l1.glb",
@@ -103,6 +121,12 @@
    "size": 1226688,
    "sha256": "fb8e51d61640fe7fe949e62a08105be61cbda76b5900cda5a13531cb6ea82fa8",
    "asset": "p1.glb"
+  },
+  {
+   "path": "p2.glb",
+   "size": 1187984,
+   "sha256": "140b412ec9eac33328334a1757295be10bb4d3c9a2b97e7487b6b82b88890046",
+   "asset": "p2.glb"
   },
   {
    "path": "s1.glb",
@@ -141,9 +165,15 @@
    "asset": "trees.glb"
   },
   {
+   "path": "w2.glb",
+   "size": 958340,
+   "sha256": "f6366de8cfcbd84a286ab48d272c7eb297e8c6d4d464a18965cdc2d8299294be",
+   "asset": "w2.glb"
+  },
+  {
    "path": "bc7.json",
-   "size": 1717,
-   "sha256": "9596798bc8c6cb8f05c1dc4459b3f3d83da1c9ba29603218d65838c987281c1c",
+   "size": 1757,
+   "sha256": "d6ab1cd7b0ebcd615a5ae0a14d73e89df264d49a03566b902c850f35c73bd162",
    "asset": "bc7.json"
   },
   {
@@ -213,6 +243,18 @@
    "asset": "e1_ao.bc7"
   },
   {
+   "path": "e2_ao.bc7",
+   "size": 3121957,
+   "sha256": "3ef8183e8bdc0cc550828c46415c3c6ac99980646e4eee011330e6b10b56ba36",
+   "asset": "e2_ao.bc7"
+  },
+  {
+   "path": "e3_ao.bc7",
+   "size": 3140752,
+   "sha256": "22d7a59e95a63cf6c2cc5ab077b35a25ae1db395786186d75c6e68b5e3fef9bf",
+   "asset": "e3_ao.bc7"
+  },
+  {
    "path": "f1_ao.bc7",
    "size": 3083494,
    "sha256": "f6f572cb5ed9d6c7f15c8c2d092505424cef6ec0e21c6eae5bed514c046bec58",
@@ -223,6 +265,12 @@
    "size": 2466554,
    "sha256": "e04b514907584938296f70f68bde53c5829bea4352a3e944acb40e09e402d616",
    "asset": "h1_ao.bc7"
+  },
+  {
+   "path": "h2_ao.bc7",
+   "size": 2985047,
+   "sha256": "ce097b3c93bb4f387005b1fc14b4c6141a227ee59b0abd5aff80d4101d5e561a",
+   "asset": "h2_ao.bc7"
   },
   {
    "path": "l1_ao.bc7",
@@ -247,6 +295,12 @@
    "size": 3626317,
    "sha256": "efb6798897b2463e8ae3496d692f14d7375afed8d388e6d4a96aea4ba25ae1ee",
    "asset": "p1_ao.bc7"
+  },
+  {
+   "path": "p2_ao.bc7",
+   "size": 2935435,
+   "sha256": "9a4f83912e35dec281c65b0048bd2a625c5b4a8933e9d6671806ce66c0c025a1",
+   "asset": "p2_ao.bc7"
   },
   {
    "path": "s1_ao.bc7",
@@ -817,6 +871,12 @@
    "size": 2577646,
    "sha256": "1a286ec9a949db939df4c177c3c2e2fa09d2ab7303250cfca02335daed384c66",
    "asset": "trees_ao.bc7"
+  },
+  {
+   "path": "w2_ao.bc7",
+   "size": 3047414,
+   "sha256": "42c93e12d05b01a302d827632ba9ef8352887c0c64231adaef942b0df002b403",
+   "asset": "w2_ao.bc7"
   }
  ]
 }

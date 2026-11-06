@@ -708,10 +708,19 @@ substation (power), F1 fire station, E1 school, H1 clinic and L5 city hall
 shop's blueprint pictures (`city/thumbs.ts`, the models drawn off screen
 by the city's renderer, locked ones as silhouettes, light and dark); ruins
 drawn standing as burnt shells (`shell()` in `models.ts`, `&damage=3` in
-the viewer). Pack `models-3c1b1b260663f795` (136 files). Left, in that
-list's order: O2 or O3, a second workshop, then H2 hospital, E2 police
-and E3 library, and P2 power station and W2 pumping station for the City;
-the master plan's layout before L5 grows to its half block.
+the viewer). Pack `models-3c1b1b260663f795` (136 files). Then the City's
+public buildings, the same day: H2 hospital (wards stacked on a podium, the
+emergency canopy, a helipad), E2 police station (the blue lamp), E3 library
+(portico, lions, banners, a copper dome), P2 power station (turbine hall,
+two 34 m stacks) and W2 pumping station (Victorian engine house and
+chimney); P2 and W2 are drawn by need (`NEED_LOOKS` in `city/plan.ts`;
+the daemon now sends `need` with the construction site too), so nothing
+in the plan borrows a model any more. Ruins of models with a portico or
+canopy stand their stumps on the main walls (`RealDef.walls`). The
+showcase town has them on the through road (`view=services|utilities`).
+Pack `models-37529d058179db62` (146 files). Left, in that list's order:
+O2 or O3, a second workshop; the master plan's layout before L5 grows to
+its half block.
 
 Civic props, textured (2026-11-06): the civic pieces were flat `plain()`
 colours and read as clean CG. Now: a weathered painted-steel texture
@@ -1066,7 +1075,8 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       visual fixes (2026-11-06): no bloom on white surfaces, trees with leaves on twigs, smooth detailed terrain, hi-poly boulders, camera above ground;
       civic props realistic (2026-11-06): water tower, tower crane and scaffold, rubble, park fountain / bandstand / goals / stand, people;
       early-game gaps listed (2026-11-06, `docs/models.md` "Early-game gaps"); P1 substation, F1 fire station, E1 school, H1 clinic, L5 city hall,
-      blueprint pictures in the shop and ruins standing done the same day (pack `models-3c1b1b260663f795`)
+      blueprint pictures in the shop and ruins standing done the same day (pack `models-3c1b1b260663f795`);
+      H2 hospital, E2 police station, E3 library, P2 power station and W2 pumping station the same day (pack `models-37529d058179db62`)
 - [x] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
       building memories (designed 2026-11-05, built 2026-11-06 from the checklist at the end of `docs/progression.md`;
       its "Next" and "Later" lists hold what is left, the plan's real layout first)

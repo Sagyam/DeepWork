@@ -13,7 +13,7 @@ factory, C2, the brick cottage (sharing the classic cottages with C1), and
 S2, the corner café (sharing the classic shops with S1), O1, the
 curtain-wall office tower, A2, the brownstone row (the townhouse
 apartments), L1, the art deco skyscraper, and A3, the balcony block
-(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, E1, the school, and H1, the clinic, and L5, city hall;
+(sharing the classic apartments with A1), P1, the substation (for power), F1, the fire station, E1, the school, and H1, the clinic, and L5, city hall, and for the City H2, the hospital, E2, the police station, E3, the library, P2, the power station, and W2, the pumping station;
 and the props round them (vehicles, trees, street
 furniture, streets and the bridge; see "Props"). This file lists every model
 the city needs, what each costs to draw, and the order to build them in. Go
@@ -461,8 +461,9 @@ models, `PUBLIC` in `ui/src/city/plan.ts` borrows a blueprint's model for
 them (see "Early-game gaps" below). They fit an ordinary lot (16 x 16 m)
 like the blueprints; the town builds them, so they need no blueprint and
 take no coins. Hamlet and Town power share a model, the City's power
-station is its own; `PUBLIC` picks by kind, so P1 serves all three power
-needs until P2 lands.
+station is its own: `PUBLIC` picks by kind, and `NEED_LOOKS` (in
+`city/plan.ts`) by need first, so `city-power` draws P2 and `city-water` W2
+(the daemon sends the need with each plot and construction site).
 
 | ID | Model | Look | Need (level, hour) | Effort | Priority |
 |---|---|---|---|---|---|
@@ -470,11 +471,11 @@ needs until P2 lands.
 | F1 | Fire station | Two-bay brick engine house, red folding doors, hose-drying tower, a lamp over the door, the town's name in stone | A fire station (Town, ~10-50 h) | **done** (2026-11-06, `f1_fire.py`): a 1915 engine house, 11 x 13 m, red brick on granite with rubbed-brick quoins; two engine bays of four folding red leaves each (raised panels, six-light tops, strap hinges) under steel beams and a stone band lettered FIRE STATION in gilt, rubbing posts, the number on the pier, red globe lamps on brackets (lit at night); crew storey of five sashes with keyed lintels; corbelled cornice, parapet with a dated panel, chimney, flagpole; the hose tower proud of the back right corner rising to an open belfry with the bell, a slate pyramid and copper finial; personnel door, yard door; pieces ground / floor / roof; 11.1 k triangles | 12% | P1 |
 | E1 | School | One- or two-storey schoolhouse, tall classroom windows, a bell cupola, a fenced playground with a hopscotch court and a flagpole | A school (Town) | **done** (2026-11-06, `e1_school.py`): a 1924 two-storey schoolhouse, 14 x 10 m, red brick on a raised ashlar basement with vents; an entrance pavilion with quoins, steps with iron rails, double six-panel doors under a radiating fanlight in an arched stone surround, SCHOOL on the frieze, lamps; banks of four tall six-over-six sashes per classroom under continuous lintel bands, a belt course; a hipped slate roof with a cross-gabled pediment and the year in a roundel, two chimneys, a white louvred bell cupola with a copper ogee roof and a weathervane; classroom interiors in the glass; the yard has lawns, railings, a flagpole and hopscotch on the playground; pieces ground / floor / roof; 12.1 k triangles | 15% | P1 |
 | H1 | Clinic | Low rendered building, a canopy over the entrance with a green cross, ramp and rails, a bench, an ambulance bay | A clinic (Town) | **done** (2026-11-06, `h1_clinic.py`): an early-1960s health centre, 13 x 9 m, one storey of white render on a brick plinth; aluminium ribbon windows with transoms over sea-green spandrels; a recessed glass entrance screen with sliding doors under a thin cantilevered canopy lettered CLINIC with downlights, a green-cross lightbox (lit at night); steps and a 1:10 ramp with steel rails, a bench and a bin; frosted and ambulance doors on the sides, an ambulance bay canopy on posts; a deep oversailing roof slab with fascia, plant behind a louvre screen, a rooflight and a flue; pieces body / roof; 2.3 k triangles | 12% | P1 |
-| P2 | Power station | Brick turbine hall with tall arched windows, a pair of stacks, a cooling tower or a switchyard behind | A power station (City) | 20% | P2 |
-| W2 | Pumping station | Victorian brick engine house with a tall chimney, a gated yard over the mains | Water mains (City) | 12% | P2 |
-| H2 | Hospital | Several storeys of wards on a podium, an emergency canopy, a helipad on the roof | A hospital (City) | 20% | P1 |
-| E2 | Police station | Stone ground storey, blue lamp over the door, flagpole, cars in the yard | A police station (City) | 12% | P1 |
-| E3 | Library | See L8 (one model: portico, steps, lions, banners), at lot size | A library (City) | 15% | P1 |
+| P2 | Power station | Brick turbine hall with tall arched windows, a pair of stacks, a cooling tower or a switchyard behind | A power station (City) | **done** (2026-11-06, `p2_power.py`): a 1932 coal-fired station, 14 x 14 m; the turbine hall on the street in red brick on a blue-brick plinth, four great round-headed steel windows of small panes under rubbed-brick arches with stone keys, fluted piers rising past the parapet in stepped heads; a stepped Art Deco doorway with bronze doors, POWER STATION in bronze, a tall window over it and 1932 on a stone panel; patent glazing on the roof; the taller boiler house behind with high louvres and a corrugated door, a covered coal conveyor on trestles up its side from a hopper; two round chimneys to 34 m on square bases, banded in concrete, steel caps, caged ladders and red aircraft lights (lit at night); smokes like the factory; coal heaps in the yard (`models.ts`); pieces body / roof; 14.8 k triangles | 20% | P2 |
+| W2 | Pumping station | Victorian brick engine house with a tall chimney, a gated yard over the mains | Water mains (City) | **done** (2026-11-06, `w2_pumping.py`): an 1885 waterworks engine house, 9 x 11 m, gable to the street, red brick banded in blue brick (the bands break round the arches), a blue-brick plinth with a stone chamfer, buttresses with stone weatherings, a corbelled eaves course; one great round-headed window over a stone panel lettered WATER WORKS 1885, smaller arched windows down the sides; coped gables with kneelers and a finial, a roundel vent, a slate roof with a louvred lantern; a lean-to boiler house on the right; a square Italianate chimney to 24 m, tapering, banded, with an arcaded top under a stone cap; the yard behind railings on a low wall with gates on stone piers, valve covers and a standpipe; pieces body / roof; 11.3 k triangles | 12% | P2 |
+| H2 | Hospital | Several storeys of wards on a podium, an emergency canopy, a helipad on the roof | A hospital (City) | **done** (2026-11-06, `h2_hospital.py`): a 1968 general hospital, a 14 x 12 m podium (4.8 m) under a slab of wards 13 x 7.6 m, 3.5 m storeys stacked by the app (four to six), white precast with window bands between fins and blue-grey panels, a glazed stair tower at one end, a blank service core at the other; the main entrance under a canopy lettered HOSPITAL; the emergency department under a deep canopy on round columns, EMERGENCY in red letters lit at night, wide sliding doors, bollards; on the roof a helipad deck on legs (white ring, yellow H, green edge lights lit at night, a safety net), a windsock, the lift motor room, plant and a blue H sign lit at night; an ambulance on the drive (`models.ts`); pieces ground / ward / roof; 6.0 k triangles at one storey of wards | 20% | P1 |
+| E2 | Police station | Stone ground storey, blue lamp over the door, flagpole, cars in the yard | A police station (City) | **done** (2026-11-06, `e2_police.py`): a 1910 divisional station, 12 x 10 m; a rusticated stone ground storey on granite, sashes behind iron bars, a stone band lettered POLICE STATION; the entrance up three steps in a doorcase with pilasters and a segmental pediment, the blue lamp lettered POLICE on a wrought-iron bracket (lit at night); a red-brick upper storey with stone quoins, keyed lintels, a balcony on consoles at the middle window; a modillioned cornice, a parapet with a shaped centrepiece (the arms and 1910), a slate hip, chimneys, the flagpole and flag; the charge-room door and barred cell windows down the side; patrol cars in the walled yard behind (`models.ts`); pieces ground / floor / roof; 12.6 k triangles | 12% | P1 |
+| E3 | Library | See L8 (one model: portico, steps, lions, banners), at lot size | A library (City) | **done** (2026-11-06, `e3_library.py`): a 1908 free library, 14 x 10 m, one lofty storey of red brick over a rusticated basement; a Doric portico of four columns under a pediment, PUBLIC LIBRARY on the frieze, FREE TO ALL over bronze doors, broad steps between two couchant stone lions on cheek walls, lamp standards; tall round-headed windows with fanlights under rubbed-brick arches; red banners with a gilt book on iron arms; a triglyph frieze and a parapet; an octagonal drum with windows and a shallow ribbed copper dome with a lantern over the reading room; the model moves itself back so its footprint is centred; pieces ground / roof; 15.2 k triangles. L8 can grow from it at half-block size | 15% | P1 |
 
 City hall is L5 above; the town square L6; the City's park L12.
 
@@ -487,13 +488,13 @@ order (an old ledger, no choices) spends hours 50-98 on six office towers.
 
 | # | Gap | First seen | Drawn today | Fix |
 |---|---|---|---|---|
-| 1 | Power | ~10 h (Hamlet) | ~~S4, the brick factory~~ done: P1 substation | P2 power station for the City |
+| 1 | Power | ~10 h (Hamlet) | ~~S4, the brick factory~~ done: P1 substation, P2 for the City | |
 | 2 | Fire station | Town | ~~S4 again~~ done: F1 | |
 | 3 | School, clinic | Town | ~~A3, the balcony block~~ done: E1, H1 | |
 | 4 | Works: one design | ~8 h | S4 is the only workshop blueprint, so the mayor never chooses | a second workshop (a timber mill or a brewery) |
-| 5 | Water, three times | 10 h, ~45 h, ~100 h | the civic water tower each time | W2 pumping station for the City's mains |
+| 5 | Water, three times | 10 h, ~45 h, ~100 h | the civic water tower in the Hamlet and Town; ~~for the City's mains too~~ done: W2 | |
 | 6 | City hall | City | ~~L1, also the City's landmark~~ done: L5 | |
-| 7 | Hospital, police, library | City | O1 (like the six offices), A1, A2 | H2, E2, E3 |
+| 7 | Hospital, police, library | City | ~~O1 (like the six offices), A1, A2~~ done: H2, E2, E3 | |
 | 8 | Offices: one design | 50-98 h (default order) | six O1 towers | O2 or O3 |
 | 9 | Ruins | the first surrender | ~~the rubble heap~~ done: burnt shells left standing | |
 | 10 | Shop pictures | the first purchase | ~~one outline per kind~~ done: a render of each model (`city/thumbs.ts`) | |
@@ -515,7 +516,8 @@ buildings stand, so it should come before L5.
 - [x] L5 city hall (2026-11-06, at lot size until the plan reserves its half block)
 - [ ] O2 or O3
 - [ ] A second workshop
-- [ ] H2 hospital, E2 police station, E3 library
+- [x] H2 hospital, E2 police station, E3 library (2026-11-06)
+- [x] P2 power station and W2 pumping station for the City (2026-11-06), drawn by need (`NEED_LOOKS`)
 
 ### States every building needs
 
