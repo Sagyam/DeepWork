@@ -40,9 +40,9 @@ DeepWork is installed. To put it to work:
   systemctl --user enable --now deepwork-agent.service   # notifications
   deepwork start 25m                                     # a first session
 
-  deepwork-ui                         opens the city and the settings sheet
-  /etc/deepwork/config.toml           settings (the app edits this for you)
-  /usr/share/doc/deepwork/PLAN.md     how it works and what it enforces
+  deepwork-ui                              opens the city and the settings sheet
+  /etc/deepwork/config.toml                settings (the app edits this for you)
+  /usr/share/doc/deepwork/ARCHITECTURE.md  how it works and what it enforces
 
 sudo, pkexec and systemctl are refused while a session runs (PAM and polkit
 hooks, both fail open; TTY root always works). Removing the package removes

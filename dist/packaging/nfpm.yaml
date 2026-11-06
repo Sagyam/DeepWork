@@ -50,8 +50,8 @@ contents:
     dst: /usr/share/deepwork/pam.py
   - src: target/pkg/stage/usr/share/deepwork/config.example.toml
     dst: /usr/share/deepwork/config.example.toml
-  - src: target/pkg/stage/usr/share/doc/deepwork/PLAN.md
-    dst: /usr/share/doc/deepwork/PLAN.md
+  - src: target/pkg/stage/usr/share/doc/deepwork/ARCHITECTURE.md
+    dst: /usr/share/doc/deepwork/ARCHITECTURE.md
   - src: target/pkg/stage/usr/share/doc/deepwork/README.md
     dst: /usr/share/doc/deepwork/README.md
   - src: target/pkg/stage/usr/share/doc/deepwork/LICENSE

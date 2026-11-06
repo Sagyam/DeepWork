@@ -1,6 +1,6 @@
 [Unit]
 Description=DeepWork notifications and nudges
-Documentation=file:///usr/local/share/doc/deepwork/PLAN.md
+Documentation=file:///usr/local/share/doc/deepwork/ARCHITECTURE.md
 PartOf=graphical-session.target
 After=graphical-session.target
 
