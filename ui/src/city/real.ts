@@ -92,6 +92,7 @@ const F1_G = 5.0;
 const F1_FL = 3.4;
 const E1_G = 4.6;
 const E1_FL = 3.9;
+const H1_H = 3.6;
 const A3_G = 3.2;
 const A3_FL = 2.9;
 const O1_G = 5.4;
@@ -374,6 +375,22 @@ export const DEFS: Record<string, RealDef> = {
     height: () => E1_G + E1_FL + 3.9,
     smoke: () => new THREE.Vector3(2.4, E1_G + E1_FL + 5.55, 0),
     debris: 0x8a4e3c,
+  },
+  h1: {
+    id: "h1",
+    kind: "shop",
+    style: "clinic",
+    // The storey with its oversailing roof, the ambulance bay on the right
+    // and the entrance canopy, ramp and steps reaching 2.8 m out in front.
+    w: 17.4,
+    d: 15.2,
+    front: 0.6,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: H1_H }] : [])],
+    top: () => H1_H,
+    // The fascia; the plant screen and flue stand to 5.5 m.
+    height: () => H1_H + 0.5,
+    debris: 0xd8d4c8,
   },
   o1: {
     id: "o1",
@@ -1447,7 +1464,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
       // A3's walls sit deep between balconies: the bake over-darkens them against the bounce they would get.
       if (id === "a3") (m as THREE.MeshStandardMaterial).aoMapIntensity = 0.55;
       break;
@@ -1683,7 +1700,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room(id === "e1" ? "office" : "home"); break;
+    case "glass": m = room(id === "e1" || id === "h1" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
     case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
@@ -1703,6 +1720,14 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "zinc": m = w(pbr("zinc", [2, 2], { roughness: 0.5, metalness: 0.4, color: 0xa4a8aa }), 1); break;
     // Falling water: white where it breaks up, mostly see-through.
     case "spray": m = spray(); break;
+    // The clinic (h1_clinic.py): sea-green spandrels, frosted glass, the green cross lit at night.
+    case "clinicpanel": m = w(plain(0x5f9c94, 0.5), 0.6); break;
+    case "frosted": m = w(plain(0xdfe6e8, 0.3, 0.05), 0.2); break;
+    case "clinicname": m = w(plain(0x2c3e50, 0.4, 0.3), 0.3); break;
+    case "cross":
+      m = plain(0x1c9a4a, 0.3, 0, { emissive: 0x2aff6a, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 3;
+      break;
     // The school's cupola (e1_school.py): white louvres.
     case "cupola": m = w(pbr("louvre", [1, 1], { roughness: 0.6, color: 0xeeebe2 }), 0.8); break;
     // The fire station (f1_fire.py): engine-house red, gilt letters, red lamps lit at night.

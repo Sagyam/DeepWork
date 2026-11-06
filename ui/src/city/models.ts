@@ -618,6 +618,20 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [-5.5, -2.5]) shrub(p, x, front - 0.6, s.seed * 5 + x * 3, KERB, 0.7);
       break;
     }
+    case "h1": {
+      // Paved to the pavement in front (the ramp and steps run onto it),
+      // lawns down the left and behind with shrubs, a car at the
+      // ambulance bay on the right.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(paving, LOT - 0.4, KERB + 0.01, front - 4.5, 0, 0, (front + 4.5) / 2);
+      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      p.box(asphalt, half - 6.5, KERB + 0.012, 8, (half + 6.5) / 2, 0, 0.4);
+      const line = mat(0xd8b83a, { roughness: 0.7 });
+      for (const z of [-3.2, 4.0]) p.box(line, half - 6.6, KERB + 0.02, 0.1, (half + 6.6) / 2, 0, z);
+      parked(p, 7.2, 0.4, 0, s.seed + 3);
+      for (const [x, z] of [[-7.3, -2], [-7.3, 1.5], [-3, -5.6], [1.5, -5.6]]) shrub(p, x, z, s.seed * 5 + x * 3 + z, KERB, 0.8);
+      break;
+    }
     case "e1": {
       // Lawns either side of a paved path to the steps, an iron railing
       // along the street open at the path, the flagpole on the lawn; the
