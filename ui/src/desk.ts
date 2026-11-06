@@ -1,4 +1,4 @@
-// The mayor's desk (docs/progression.md): the residents' needs, the sites,
+// The mayor's desk (docs/GAME.md): the residents' needs, the sites,
 // the blueprint shop, a building's deed and its hover tag. Text only; main.ts
 // wires the clicks to the daemon, which decides everything.
 import { TIERS, ago, escapeHtml, hm } from "./format";

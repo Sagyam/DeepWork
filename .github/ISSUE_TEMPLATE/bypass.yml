@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         Thanks, these make DeepWork harder to get around. Check the
-        [threat model](https://github.com/Sagyam/DeepWork/blob/main/docs/PLAN.md#threat-model) first:
+        [threat model](https://github.com/Sagyam/DeepWork/blob/main/docs/ARCHITECTURE.md#threat-model) first:
         some bypasses are known, and anything needing TTY root, a live USB or the GRUB command line is
         out of scope on purpose. If the bypass gives an unprivileged user root, report it
         [privately](https://github.com/Sagyam/DeepWork/security/advisories/new) instead.

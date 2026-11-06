@@ -44,7 +44,7 @@ put 644 ui/src-tauri/icons/icon.png /usr/share/icons/hicolor/512x512/apps/deepwo
 put 644 dist/config.example.toml /usr/share/deepwork/config.example.toml
 put 644 dist/packaging/apt-browser-policies.conf /usr/share/deepwork/apt-browser-policies.conf
 
-put 644 docs/PLAN.md /usr/share/doc/deepwork/PLAN.md
+put 644 docs/ARCHITECTURE.md /usr/share/doc/deepwork/ARCHITECTURE.md
 put 644 README.md /usr/share/doc/deepwork/README.md
 put 644 LICENSE /usr/share/doc/deepwork/LICENSE
 

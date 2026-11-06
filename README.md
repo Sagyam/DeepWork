@@ -6,7 +6,7 @@
 
 ### Focus builds a city. Giving in tears it down.
 
-[How it works](#how-it-works) · [Tour](#tour) · [Quick start](#quick-start) · [Docs](docs/PLAN.md)
+[How it works](#how-it-works) · [Tour](#tour) · [Quick start](#quick-start) · [Docs](#docs)
 
 **A focus app for Linux that is hard to get around.**<br>
 Distracting sites slow to a crawl at the network layer, routines start sessions on their own, and every early quit costs you a building.
@@ -50,7 +50,7 @@ Distracting sites slow to a crawl at the network layer, routines start sessions 
 | `sudo` / `pkexec` mid-session | Denied until the session ends |
 | Loosen the config | Waits 24 hours; tightening is instant |
 
-Full threat model: [docs/PLAN.md](docs/PLAN.md#threat-model).
+Full threat model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#threat-model).
 </details>
 
 ## Tour
@@ -84,8 +84,11 @@ from there, or build from source ([Development](docs/DEVELOPMENT.md#install)).
 
 ## Docs
 
-- [Development](docs/DEVELOPMENT.md): layout, building without root, CLI
-- [Plan](docs/PLAN.md): design, threat model, roadmap
+- [Architecture](docs/ARCHITECTURE.md): how enforcement works, threat model, safety rails
+- [The game](docs/GAME.md): coins, needs, blueprints, what giving in costs
+- [The app](docs/APP.md): the window and the 3D city
+- [Development](docs/DEVELOPMENT.md): building without root, mock UI, CLI, releases
+- [Roadmap](docs/ROADMAP.md): what's next
 - [Design language](docs/DESIGN.md): fonts, colours and components shared with the site, light and dark
 - [Contributing](.github/CONTRIBUTING.md) · [Security](.github/SECURITY.md) · [Code of conduct](.github/CODE_OF_CONDUCT.md)
 

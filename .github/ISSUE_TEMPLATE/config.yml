@@ -4,5 +4,5 @@ contact_links:
     url: https://github.com/Sagyam/DeepWork/security/advisories/new
     about: Privilege escalation, lockouts and other security bugs. Report them privately, not as issues.
   - name: Threat model
-    url: https://github.com/Sagyam/DeepWork/blob/main/docs/PLAN.md#threat-model
+    url: https://github.com/Sagyam/DeepWork/blob/main/docs/ARCHITECTURE.md#threat-model
     about: Check what DeepWork already defends against before reporting a bypass.

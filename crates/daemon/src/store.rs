@@ -53,7 +53,7 @@ pub enum EventKind {
     /// Root is not locked then, and package upgrades can reload firewalls,
     /// so this is recorded but carries no penalty.
     AmbientRepair,
-    /// The mayor's decisions (`docs/progression.md`); `detail` is JSON.
+    /// The mayor's decisions (`docs/GAME.md`); `detail` is JSON.
     BlueprintBought,
     NeedChosen,
     SitePaused,

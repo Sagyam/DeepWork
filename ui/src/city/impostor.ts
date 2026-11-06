@@ -1,5 +1,5 @@
 // Tree impostors, shared by the app's scene and the showcase town (where they
-// were tried first, docs/models.md "Tried in the showcase town"): past a
+// were tried first, docs/APP.md "Performance"): past a
 // hundred and fifty metres a tree is three crossed cards (front, side and
 // top) carrying a picture of its species and tint rendered once at load, 12
 // triangles instead of a crown of alpha-tested leaf cards that the GPU

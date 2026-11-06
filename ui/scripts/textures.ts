@@ -1,7 +1,7 @@
 // Compresses the realistic models' textures (public/models: the AO bakes and
 // the tex/ library) to BC7, which the GPU keeps compressed: a quarter of the
-// memory of a PNG decoded to 32-bit RGBA, at near-PNG quality (docs/models.md,
-// "Texture compression"). Runs after `bun run models` (part of it); alone:
+// memory of a PNG decoded to 32-bit RGBA, at near-PNG quality (docs/APP.md,
+// "Performance"). Runs after `bun run models` (part of it); alone:
 //
 //   bun run textures            # only what changed since the last run
 //   bun run textures --force    # everything

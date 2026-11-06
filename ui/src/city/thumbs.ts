@@ -1,4 +1,4 @@
-// Pictures of the blueprints for the shop (docs/models.md, "Early-game gaps"):
+// Pictures of the blueprints for the shop (docs/APP.md):
 // each design's realistic model on its lot, drawn once by the city's own
 // renderer into a target off screen and kept as a data URL. A design whose
 // model is not loaded (the pack is still downloading) gets none, and the

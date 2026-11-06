@@ -1,5 +1,5 @@
-//! The realistic city's models, downloaded on first run (docs/models.md,
-//! "Downloading the models"). Releases do not carry them: `models.json`, made
+//! The realistic city's models, downloaded on first run (docs/APP.md,
+//! "Model packs"). Releases do not carry them: `models.json`, made
 //! by `bun run pack` and compiled in, lists every file of the pack with its
 //! size and SHA-256, and the pack lives in a GitHub release of its own. Files
 //! are fetched as the user (never by the daemon), checked against the

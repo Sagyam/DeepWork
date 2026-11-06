@@ -5,8 +5,9 @@ are all welcome.
 
 ## Before you start
 
-- [docs/PLAN.md](../docs/PLAN.md) is the source of truth: design, threat model
-  and roadmap. Read it before proposing a feature.
+- [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md) covers the design and threat
+  model, [docs/ROADMAP.md](../docs/ROADMAP.md) what is planned. Read them
+  before proposing a feature.
 - [docs/DEVELOPMENT.md](../docs/DEVELOPMENT.md) covers the layout, building
   without root and the mock UI.
 - For anything bigger than a small fix, open an issue first so we can agree on
@@ -44,7 +45,8 @@ cd ui && bun test
   views.
 - Anything touching DNS must keep working with systemd-resolved in strict
   DNS-over-TLS mode.
-- If your change lands a PLAN.md checklist item, tick it.
+- If your change lands a roadmap item, delete it from `docs/ROADMAP.md` and
+  update the doc for that area (see "Writing docs" in `CLAUDE.md`).
 
 ## Safety rails
 
@@ -60,7 +62,7 @@ requests that weaken them won't be merged:
 
 Found a way around the throttle? That is useful, but usually not a security
 issue: the user has the sudo password, so a determined bypass is always
-possible. Open a regular issue, and check the threat model in PLAN.md first.
+possible. Open a regular issue, and check the threat model in ARCHITECTURE.md first.
 Privilege escalation, or anything that could lock a user out, is different:
 see [SECURITY.md](SECURITY.md).
 

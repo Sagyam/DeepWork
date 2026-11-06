@@ -1,4 +1,4 @@
-# Shared library for the realistic city's models (see docs/models.md): the
+# Shared library for the realistic city's models (see docs/APP.md): the
 # tiling PBR textures every model draws from, the geometry helpers, and the
 # piece / bake / export pipeline. Each model is a module next to this one
 # (a1_apartment.py, c1_farmhouse.py, ...); build.py runs them.

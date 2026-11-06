@@ -1,4 +1,4 @@
-// City theme: the realistic models (ui/blender/real, docs/models.md), which
+// City theme: the realistic models (ui/blender/real, docs/APP.md), which
 // replace the low-poly kit's styles one model at a time. `bun run models`
 // writes public/models/: <id>.glb (pieces as nodes, materials named by
 // role), <id>_ao.png (AO baked on the lightmap UVs) and tex/, the shared
@@ -41,7 +41,7 @@ const loaded = new Map<string, Loaded>();
 /** How a model sits in the city: its size, how it stacks, where its chimney smokes. */
 export interface RealDef {
   id: string;
-  /** The kit kind and style it takes over (docs/models.md). */
+  /** The kit kind and style it takes over (docs/APP.md). */
   kind: Kind;
   style: string;
   /** Footprint (x, z) in metres, eaves, porch and steps included; front faces +z. */

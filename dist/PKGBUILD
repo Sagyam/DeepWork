@@ -129,7 +129,7 @@ package() {
     install -Dm644 dist/config.example.toml "$pkgdir/etc/deepwork/config.toml"
     install -Dm755 dist/pam.py "$pkgdir/usr/share/deepwork/pam.py"
 
-    install -Dm644 docs/PLAN.md "$pkgdir/usr/share/doc/deepwork/PLAN.md"
+    install -Dm644 docs/ARCHITECTURE.md "$pkgdir/usr/share/doc/deepwork/ARCHITECTURE.md"
     install -Dm644 README.md "$pkgdir/usr/share/doc/deepwork/README.md"
     install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }
