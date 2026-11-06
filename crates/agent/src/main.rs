@@ -97,6 +97,8 @@ struct Watch {
     /// The newest world event seen; outer `None` before the first fetch, so
     /// old losses are not announced again when the agent starts.
     world_seen: Option<Option<WorldEvent>>,
+    /// The session of the last award seen, likewise.
+    award_seen: Option<Option<i64>>,
 }
 
 impl Watch {
@@ -138,12 +140,20 @@ impl Watch {
         ]
     }
 
-    /// Announces losses in the world since the last fetch. Building and
-    /// repairs are left to the "Session complete" note.
+    /// Announces losses in the world since the last fetch, and what a
+    /// completed session earned and built.
     fn on_world(&mut self, w: &World) -> Vec<Note> {
+        let award = w.last_award.as_ref().map(|a| a.session_id);
+        let award_seen = self.award_seen.replace(award);
+        let mut notes = Vec::new();
+        if award_seen.is_some_and(|a| a != award)
+            && let Some(a) = &w.last_award
+        {
+            notes.push(award_note(w, a));
+        }
         let seen = self.world_seen.replace(w.history.last().cloned());
         let Some(seen) = seen else {
-            return Vec::new();
+            return notes;
         };
         let new = match &seen {
             None => &w.history[..],
@@ -155,7 +165,8 @@ impl Watch {
                 }
             },
         };
-        new.iter().filter_map(loss_note).collect()
+        notes.extend(new.iter().filter_map(|e| loss_note(w, e)));
+        notes
     }
 
     fn heads_up(&mut self, cur: &Status, notes: &mut Vec<Note>) {
@@ -346,25 +357,65 @@ fn ended_note(s: &SessionInfo) -> Note {
     }
 }
 
-fn loss_note(e: &WorldEvent) -> Option<Note> {
+fn plot_name(w: &World, index: u32) -> Option<&str> {
+    w.plots
+        .iter()
+        .find(|p| p.index == index)
+        .map(|p| p.name.as_str())
+}
+
+fn award_note(w: &World, a: &deepwork_proto::Award) -> Note {
+    let mut body = Vec::new();
+    let finished: Vec<&str> = a.finished.iter().filter_map(|&i| plot_name(w, i)).collect();
+    if !finished.is_empty() {
+        body.push(format!("Finished {}.", finished.join(", ")));
+    }
+    match w.sites.iter().find(|s| s.active) {
+        Some(s) => body.push(format!(
+            "{}: {} of {} built.",
+            s.name,
+            fmt_mins(s.done_secs),
+            fmt_mins(s.build_secs)
+        )),
+        None if w.idle_secs > 0 => body.push(format!(
+            "{} of crew hours wait: pick what to build next.",
+            fmt_mins(w.idle_secs)
+        )),
+        None => body.push("Pick what to build next.".into()),
+    }
+    if a.rested_bonus > 0 {
+        body.push("Welcome back: double coins.".into());
+    }
+    if a.freeze_earned {
+        body.push("A streak freeze earned.".into());
+    }
+    if a.freezes_used > 0 {
+        body.push("A streak freeze saved your streak.".into());
+    }
+    Note::new(Urgency::Low, format!("+{} coins", a.coins), body.join(" "))
+}
+
+fn loss_note(w: &World, e: &WorldEvent) -> Option<Note> {
     let ruined = match e.ruined.len() {
         0 => String::new(),
-        1 => " One fell into rubble.".into(),
-        n => format!(" {n} fell into rubble."),
+        1 => " One is in ruins.".into(),
+        n => format!(" {n} are in ruins."),
     };
     let repair = "Completed sessions repair them.";
     let note = match e.kind {
-        WorldEventKind::Built | WorldEventKind::Repaired => return None,
+        WorldEventKind::Built | WorldEventKind::Repaired | WorldEventKind::Graduated => {
+            return None;
+        }
         WorldEventKind::Collapsed => {
             let burned = e.plots.len().saturating_sub(1);
+            let fire = match burned {
+                0 => String::new(),
+                _ => format!(" Fire spread to {}.{ruined} {repair}", buildings(burned)),
+            };
             Note::new(
                 Urgency::Critical,
-                "Your building collapsed",
-                format!(
-                    "Surrendering left rubble on plot {}. Fire spread to {}.{ruined} {repair}",
-                    e.plots.first().map_or(0, |p| p + 1),
-                    buildings(burned)
-                ),
+                "Your city burned",
+                format!("Surrendering built nothing and earned nothing.{fire}"),
             )
         }
         WorldEventKind::Quake => Note::new(
@@ -385,7 +436,13 @@ fn loss_note(e: &WorldEvent) -> Option<Note> {
             Note::new(
                 Urgency::Normal,
                 "A building was damaged",
-                format!("{why} damaged your newest building.{ruined}"),
+                format!(
+                    "{why} damaged {}.{ruined}",
+                    e.plots
+                        .first()
+                        .and_then(|&i| plot_name(w, i))
+                        .unwrap_or("your newest building")
+                ),
             )
         }
     };
@@ -529,14 +586,8 @@ mod tests {
 
     fn world(history: Vec<WorldEvent>) -> World {
         World {
-            tier: 0,
-            focused_secs: 0,
-            tier_floor_secs: 0,
-            next_tier_secs: None,
-            streak_days: 0,
-            plots: Vec::new(),
-            construction: None,
             history,
+            ..World::default()
         }
     }
 
@@ -587,18 +638,53 @@ mod tests {
         let notes = w.on_world(&world(vec![built, quake, fire.clone(), denied.clone()]));
         assert_eq!(
             summaries(&notes),
-            ["Your building collapsed", "A building was damaged"]
+            ["Your city burned", "A building was damaged"]
         );
         assert_eq!(
             notes[0].body,
-            "Surrendering left rubble on plot 5. Fire spread to 2 buildings. One fell into rubble. \
-             Completed sessions repair them."
+            "Surrendering built nothing and earned nothing. Fire spread to 2 buildings. One is in \
+             ruins. Completed sessions repair them."
         );
         // The seen event rolled out of the history window.
         let rebuilt = world_event(5, WorldEventKind::Built, WorldCause::Completed, vec![4]);
         let quake2 = world_event(6, WorldEventKind::Quake, WorldCause::Tamper, vec![1]);
         let notes = w.on_world(&world(vec![rebuilt, quake2]));
         assert_eq!(summaries(&notes), ["Earthquake"]);
+    }
+
+    #[test]
+    fn awards_are_announced_once() {
+        let mut w = Watch::default();
+        let award = |id| deepwork_proto::Award {
+            session_id: id,
+            ts: 0,
+            coins: 216,
+            length_bonus: 50,
+            streak_bonus: 0,
+            rested_bonus: 0,
+            build_secs: 6000,
+            finished: vec![0],
+            freeze_earned: false,
+            freezes_used: 0,
+        };
+        let mut world = World {
+            last_award: Some(award(1)),
+            plots: vec![deepwork_proto::Plot {
+                name: "The Hart house".into(),
+                ..deepwork_proto::Plot::default()
+            }],
+            idle_secs: 600,
+            ..World::default()
+        };
+        assert!(w.on_world(&world).is_empty());
+        assert!(w.on_world(&world).is_empty());
+        world.last_award = Some(award(2));
+        let notes = w.on_world(&world);
+        assert_eq!(summaries(&notes), ["+216 coins"]);
+        assert_eq!(
+            notes[0].body,
+            "Finished The Hart house. 10 min of crew hours wait: pick what to build next."
+        );
     }
 
     fn summaries(notes: &[Note]) -> Vec<&str> {

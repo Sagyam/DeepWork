@@ -78,6 +78,30 @@ pub enum Request {
     },
     /// Stop spending free minutes; the rest stays banked.
     FreeStop,
+    /// Buy a blueprint with coins. Refused during a session.
+    Buy {
+        blueprint: String,
+    },
+    /// The mayor picks the residents' need to build for next, with the
+    /// blueprint to fill its lot (`None`: the only or the first owned one
+    /// that fits). The current site, if another, is paused. Refused during a
+    /// session.
+    Choose {
+        need: String,
+        #[serde(default)]
+        blueprint: Option<String>,
+    },
+    /// Pause the active construction site; focus then banks as crew hours.
+    Pause,
+    /// Rename a finished building. An empty name restores the plan's.
+    Rename {
+        lot: String,
+        name: String,
+    },
+    /// Add minutes to the running countdown, up to the session cap.
+    Extend {
+        secs: u64,
+    },
 }
 
 /// The most sessions one [`Request::History`] returns.
@@ -217,81 +241,266 @@ pub struct ConfigInfo {
     pub pending: Option<PendingConfig>,
 }
 
-/// The progression world. Theme-agnostic: a renderer turns plots, grades and
+/// The progression world. Theme-agnostic: a renderer turns lots, kinds and
 /// damage into pictures (buildings in the skyline theme). Clients can only
 /// read it; it is rebuilt from the ledger on every request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct World {
-    /// Settlement size, 0 to [`World::MAX_TIER`], from `focused_secs`.
+    /// Settlement level, 0 to [`World::MAX_TIER`]: Hamlet, Town, City,
+    /// Metropolis. It goes up when every need of a level is met.
     pub tier: u32,
     /// Focus time that counts: completed sessions only.
     pub focused_secs: u64,
-    /// `focused_secs` needed for the current and the next tier.
+    /// Build time of the plan up to the current level, and up to the next
+    /// one (`None` once the plan is finished). Progress is [`World::built_secs`].
     pub tier_floor_secs: u64,
     pub next_tier_secs: Option<u64>,
-    /// Consecutive local days with a completed session, up to today.
+    /// Build time put into the plan's lots, finished or under construction.
+    #[serde(default)]
+    pub built_secs: u64,
+    /// Consecutive local days with a completed session of 25 minutes or
+    /// more, up to today (a freeze covers a missed day).
     pub streak_days: u32,
-    /// In build order. A plot keeps its index for good.
+    /// Finished buildings, by lot index. A lot keeps its index for good.
     pub plots: Vec<Plot>,
-    /// The plot the running session is working on.
+    /// The site the running session is working on.
     pub construction: Option<Construction>,
     /// Recent world changes, oldest first.
     pub history: Vec<WorldEvent>,
+    /// Coins to spend, and all ever earned.
+    #[serde(default)]
+    pub coins: u64,
+    #[serde(default)]
+    pub coins_earned: u64,
+    /// The current level's needs, in the plan's order.
+    #[serde(default)]
+    pub needs: Vec<NeedInfo>,
+    /// The next level's needs, by title, as a teaser.
+    #[serde(default)]
+    pub next_needs: Vec<String>,
+    /// Every blueprint, for sale or not.
+    #[serde(default)]
+    pub blueprints: Vec<BlueprintInfo>,
+    /// Construction sites standing half built: the active one and the paused.
+    #[serde(default)]
+    pub sites: Vec<SiteInfo>,
+    /// Focus waiting for a site to be chosen.
+    #[serde(default)]
+    pub idle_secs: u64,
+    /// Streak freezes held; each saves the streak on one missed day.
+    #[serde(default)]
+    pub freezes: u32,
+    /// The mayor has not chosen anything yet: the plan builds itself in its
+    /// default order, buying the default blueprint when coins allow.
+    #[serde(default)]
+    pub auto: bool,
+    /// What the last completed session earned.
+    #[serde(default)]
+    pub last_award: Option<Award>,
 }
 
 impl World {
     pub const MAX_TIER: u32 = 3;
-    /// Damage at which a building falls into rubble.
+    /// Damage at which a building is a ruin. It stays one until repaired.
     pub const MAX_DAMAGE: u32 = 3;
+    /// Sites that may stand paused at once.
+    pub const MAX_PAUSED: usize = 3;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plot {
+    /// The lot's index in the plan.
     pub index: u32,
     /// Plots are grouped into districts of a fixed size, in index order.
     pub district: u32,
-    /// Size / rarity, 0 to 4, from the length of the session that built it.
+    /// Size class, 0 cottage to 4 landmark, from the lot's kind.
     pub grade: u32,
-    /// 0 is intact; below [`World::MAX_DAMAGE`].
+    /// 0 is intact, up to [`World::MAX_DAMAGE`].
     pub damage: u32,
-    /// Collapsed. The next completed session builds here.
+    /// A ruin (damage at the maximum). Repairs bring it back.
     pub rubble: bool,
     /// Stable per-plot randomness for renderers.
     pub seed: u64,
-    /// The session that built (or failed to build) it.
+    /// The session that finished it.
     pub session_id: i64,
-    /// Unix seconds.
+    /// Unix seconds, when it was finished.
     pub built_at: i64,
+    /// The plan's lot id.
+    #[serde(default)]
+    pub lot: String,
+    /// What it is: `cottage`, `shop`, `water`, ...
+    #[serde(default)]
+    pub kind: String,
+    /// The blueprint it was built from (a model id); `None` for buildings the
+    /// town provides.
+    #[serde(default)]
+    pub design: Option<String>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub address: String,
+    /// The need it answered.
+    #[serde(default)]
+    pub need: String,
+    /// It came out rare.
+    #[serde(default)]
+    pub shiny: bool,
+    #[serde(default)]
+    pub memory: Memory,
+}
+
+/// How a building came to be.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Memory {
+    /// Unix seconds: first work on it.
+    pub started_at: i64,
+    /// Sessions that put time into it, in order.
+    pub parts: Vec<BuildPart>,
+    pub focused_secs: u64,
+    /// The streak when it was finished.
+    pub streak_at_finish: u32,
+    /// Damage and repairs, in order.
+    pub scars: Vec<Scar>,
+    /// It was the first building of the city.
+    pub first: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildPart {
+    pub session_id: i64,
+    /// Unix seconds the session ended.
+    pub ts: i64,
+    /// Seconds of it that went into this building.
+    pub secs: u64,
+    /// The whole session's length.
+    pub session_secs: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Scar {
+    pub ts: i64,
+    pub cause: WorldCause,
+    /// Damage after it.
+    pub damage: u32,
+    /// Repaired rather than damaged.
+    pub repaired: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NeedInfo {
+    pub id: String,
+    pub title: String,
+    /// What the residents say.
+    pub words: String,
+    pub kind: String,
+    pub district: String,
+    /// Build time of one of its lots.
+    pub build_secs: u64,
+    pub lots: u32,
+    pub lots_done: u32,
+    /// The lot it is building, or would build next.
+    pub next_lot: Option<String>,
+    /// Its site stands (active or paused).
+    pub site: bool,
+    /// Whether its lots are filled from a blueprint.
+    pub designed: bool,
+    /// Owned blueprints that fit, and ones that would fit if bought.
+    pub fits: Vec<String>,
+    pub fits_locked: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlueprintInfo {
+    /// The model id.
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub districts: Vec<String>,
+    /// The level it is for sale from.
+    pub level: u32,
+    pub price: u64,
+    pub owned: bool,
+    /// For sale now (owned or not).
+    pub unlocked: bool,
+    /// Buildings standing from it.
+    pub built: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SiteInfo {
+    pub index: u32,
+    pub lot: String,
+    pub need: String,
+    pub name: String,
+    pub kind: String,
+    pub design: Option<String>,
+    pub done_secs: u64,
+    pub build_secs: u64,
+    /// Being built; the others are paused.
+    pub active: bool,
+    pub seed: u64,
+}
+
+/// What one completed session earned.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Award {
+    pub session_id: i64,
+    pub ts: i64,
+    pub coins: u64,
+    /// Of `coins`: from the session length, the streak and a comeback.
+    pub length_bonus: u64,
+    pub streak_bonus: u64,
+    pub rested_bonus: u64,
+    pub build_secs: u64,
+    /// Buildings it finished, by lot index.
+    pub finished: Vec<u32>,
+    /// A streak freeze was earned, or one was spent.
+    pub freeze_earned: bool,
+    pub freezes_used: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Construction {
     pub session_id: i64,
-    /// Where it will stand: the oldest rubble plot, or a new one.
+    /// The lot being built.
     pub index: u32,
-    /// The grade it reaches if the session completes now (stopwatch) or on
-    /// time (countdown).
+    /// Size class of the lot's kind.
     pub grade: u32,
-    /// 0 to 1000; `None` for stopwatches.
+    /// 0 to 1000, counting this session so far. `None` when no site is
+    /// chosen and the session banks crew hours.
     pub progress_permille: Option<u32>,
     pub surrendering: bool,
     pub seed: u64,
+    #[serde(default)]
+    pub lot: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub design: Option<String>,
+    #[serde(default)]
+    pub name: String,
+    /// Build time the site still needed when the session started.
+    #[serde(default)]
+    pub remaining_secs: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorldEventKind {
-    /// A completed session put up a building.
+    /// A building was finished (`plots`: one lot).
     Built,
     /// Damage taken away by a completed session.
     Repaired,
-    /// A surrendered session: its plot collapsed and nearby buildings burned.
+    /// A surrendered session: its work on the site (`plots[0]`) was lost and
+    /// the buildings after it in `plots` burned.
     Collapsed,
     /// Tampering with enforcement: a whole district was hit.
     Quake,
     /// A refused sudo / polkit attempt, a wall-clock jump or a tunnel: one
     /// building hit.
     Damaged,
+    /// Every need of a level was met; `plots` is empty.
+    Graduated,
 }
 
 /// The ledger event behind a world change.

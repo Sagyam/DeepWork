@@ -53,6 +53,13 @@ pub enum EventKind {
     /// Root is not locked then, and package upgrades can reload firewalls,
     /// so this is recorded but carries no penalty.
     AmbientRepair,
+    /// The mayor's decisions (`docs/progression.md`); `detail` is JSON.
+    BlueprintBought,
+    NeedChosen,
+    SitePaused,
+    BuildingRenamed,
+    /// A running countdown was made longer; `detail` is the added seconds.
+    Extend,
 }
 
 /// What happened to a routine run. Each run is recorded once.
@@ -100,6 +107,11 @@ impl EventKind {
             EventKind::FreeStart => "free_start",
             EventKind::FreeEnd => "free_end",
             EventKind::AmbientRepair => "ambient_repair",
+            EventKind::BlueprintBought => "blueprint_bought",
+            EventKind::NeedChosen => "need_chosen",
+            EventKind::SitePaused => "site_paused",
+            EventKind::BuildingRenamed => "building_renamed",
+            EventKind::Extend => "extend",
         }
     }
 }
@@ -326,11 +338,12 @@ impl Store {
         )?)
     }
 
-    /// Penalty events that shape the world, for a backup.
+    /// Events that shape the world (penalties and the mayor's decisions),
+    /// for a backup.
     pub fn penalty_events(&self) -> Result<Vec<BackupEvent>> {
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel')
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')
              ORDER BY ts, id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -514,31 +527,32 @@ impl Store {
             };
             facts.push(Fact {
                 ts: ended_at,
+                seq: 0,
                 session_id: Some(id),
                 kind,
             });
         }
         let mut stmt = self.conn.prepare(
-            "SELECT ts, session_id, kind FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel')",
+            "SELECT ts, session_id, kind, detail, id FROM events
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
                 r.get::<_, i64>(0)?,
                 r.get::<_, Option<i64>>(1)?,
                 r.get::<_, String>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, i64>(4)?,
             ))
         })?;
         for row in rows {
-            let (ts, session_id, kind) = row?;
-            let kind = match kind.as_str() {
-                "tamper" => FactKind::Tamper,
-                "escalation_denied" => FactKind::Denied,
-                "tunnel" => FactKind::Tunnel,
-                _ => FactKind::ClockJump,
+            let (ts, session_id, kind, detail, seq) = row?;
+            let Some(kind) = world_fact(&kind, &detail) else {
+                continue;
             };
             facts.push(Fact {
                 ts,
+                seq,
                 session_id,
                 kind,
             });
@@ -554,12 +568,58 @@ impl Store {
     }
 }
 
+/// The detail of a mayor's decision.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct Decision {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub blueprint: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub need: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+fn world_fact(kind: &str, detail: &str) -> Option<FactKind> {
+    let d = || serde_json::from_str::<Decision>(detail).unwrap_or_default();
+    Some(match kind {
+        "tamper" => FactKind::Tamper,
+        "escalation_denied" => FactKind::Denied,
+        "tunnel" => FactKind::Tunnel,
+        "clock_jump" => FactKind::ClockJump,
+        "blueprint_bought" => FactKind::Bought {
+            blueprint: d().blueprint?,
+        },
+        "need_chosen" => {
+            let d = d();
+            FactKind::Chose {
+                need: d.need?,
+                blueprint: d.blueprint,
+            }
+        }
+        "site_paused" => FactKind::Paused,
+        "building_renamed" => {
+            let d = d();
+            FactKind::Renamed {
+                lot: d.lot?,
+                name: d.name.unwrap_or_default(),
+            }
+        }
+        _ => return None,
+    })
+}
+
 fn penalty_kind(kind: &str) -> Option<EventKind> {
     match kind {
         "tamper" => Some(EventKind::Tamper),
         "escalation_denied" => Some(EventKind::EscalationDenied),
         "clock_jump" => Some(EventKind::ClockJump),
         "tunnel" => Some(EventKind::Tunnel),
+        "blueprint_bought" => Some(EventKind::BlueprintBought),
+        "need_chosen" => Some(EventKind::NeedChosen),
+        "site_paused" => Some(EventKind::SitePaused),
+        "building_renamed" => Some(EventKind::BuildingRenamed),
         _ => None,
     }
 }
@@ -722,27 +782,39 @@ mod tests {
         store
             .log_event(902, None, EventKind::ClockJump, "")
             .unwrap();
+        store
+            .log_event(
+                903,
+                None,
+                EventKind::NeedChosen,
+                r#"{"need":"hamlet-homes","blueprint":"c1"}"#,
+            )
+            .unwrap();
+        store
+            .log_event(904, None, EventKind::BlueprintBought, "{}")
+            .unwrap();
         let mut facts = store.world_facts().unwrap();
         facts.sort();
+        let kinds: Vec<(i64, Option<i64>, FactKind)> = facts
+            .into_iter()
+            .map(|f| (f.ts, f.session_id, f.kind))
+            .collect();
         assert_eq!(
-            facts,
+            kinds,
             [
-                Fact {
-                    ts: 700,
-                    session_id: Some(done.id),
-                    kind: FactKind::Completed { secs: 600 }
-                },
-                Fact {
-                    ts: 900,
-                    session_id: Some(running.id),
-                    kind: FactKind::Tamper
-                },
-                Fact {
-                    ts: 902,
-                    session_id: None,
-                    kind: FactKind::ClockJump
-                },
-            ]
+                (700, Some(done.id), FactKind::Completed { secs: 600 }),
+                (900, Some(running.id), FactKind::Tamper),
+                (902, None, FactKind::ClockJump),
+                (
+                    903,
+                    None,
+                    FactKind::Chose {
+                        need: "hamlet-homes".into(),
+                        blueprint: Some("c1".into())
+                    }
+                ),
+            ],
+            "a decision without its detail is dropped"
         );
     }
 

@@ -112,6 +112,28 @@ impl Session {
         }
     }
 
+    /// Makes a running countdown longer. Never past [`MAX_SESSION`].
+    pub fn extend(&mut self, secs: u64) -> Result<(), String> {
+        if self.state != SessionState::Active {
+            return Err("no session is running".into());
+        }
+        let SessionKind::Countdown { secs: target } = self.kind else {
+            return Err("a stopwatch runs as long as you like already".into());
+        };
+        if secs == 0 {
+            return Err("extend by at least a minute".into());
+        }
+        let longer = target.saturating_add(secs);
+        if longer > MAX_SESSION.as_secs() {
+            return Err(format!(
+                "a session can be at most {} hours",
+                MAX_SESSION.as_secs() / 3600
+            ));
+        }
+        self.kind = SessionKind::Countdown { secs: longer };
+        Ok(())
+    }
+
     /// Starts the surrender wait. Enforcement stays on until it runs out.
     pub fn surrender(&mut self, phrase: &str, wait: Duration) -> Result<(), String> {
         match self.state {
@@ -162,6 +184,20 @@ fn fmt_secs(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extend_countdowns_up_to_the_cap() {
+        let mut s = Session::new(SessionKind::Countdown { secs: 3000 }, "p".into(), 0).unwrap();
+        s.extend(600).unwrap();
+        assert_eq!(s.kind, SessionKind::Countdown { secs: 3600 });
+        assert!(s.extend(MAX_SESSION.as_secs()).is_err());
+        assert!(s.extend(0).is_err());
+        let mut w = Session::new(SessionKind::Stopwatch, "p".into(), 0).unwrap();
+        assert!(w.extend(600).is_err());
+        s.surrender(SURRENDER_PHRASE, Duration::from_secs(5))
+            .unwrap();
+        assert!(s.extend(60).is_err());
+    }
 
     const MIN: Duration = Duration::from_secs(60);
 

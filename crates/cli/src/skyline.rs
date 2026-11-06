@@ -1,19 +1,14 @@
 //! A text renderer for the world in the city skyline theme. One column per
-//! plot, height from its grade; damage and rubble are marked below.
+//! lot of the plan, height from its kind; damage and ruins are marked below.
+//! Then the mayor's desk: coins, the residents' needs and the sites.
 
 use deepwork_proto::{World, WorldCause, WorldEvent, WorldEventKind};
 
 const TIERS: [&str; 4] = ["Hamlet", "Town", "City", "Metropolis"];
-const BUILDINGS: [&str; 5] = [
-    "house",
-    "shop",
-    "tower block",
-    "high-rise",
-    "landmark tower",
-];
 const HEIGHTS: [char; 5] = ['▂', '▃', '▅', '▆', '█'];
 const RUBBLE: char = '▁';
 const SCAFFOLD: char = '┊';
+const EMPTY: char = '·';
 const DISTRICT_SIZE: usize = 8;
 
 fn paint(s: impl std::fmt::Display, code: &str, color: bool) -> String {
@@ -33,31 +28,56 @@ pub fn fmt_hm(secs: u64) -> String {
     }
 }
 
-pub fn render(w: &World, now: i64, color: bool) -> String {
-    let mut out = String::new();
+fn header(w: &World) -> String {
     let tier = TIERS[w.tier.min(3) as usize];
     let next = match w.next_tier_secs {
         Some(n) => format!(
-            " · {} to {}",
-            fmt_hm(n.saturating_sub(w.focused_secs)),
+            " · {} of building to {}",
+            fmt_hm(n.saturating_sub(w.built_secs)),
             TIERS[(w.tier as usize + 1).min(3)]
         ),
-        None => String::new(),
+        None => " · the plan is finished".into(),
     };
     let streak = match w.streak_days {
         0 => String::new(),
         1 => " · streak 1 day".into(),
         n => format!(" · streak {n} days"),
     };
-    out += &format!(
-        "{tier} · {} focused{next}{streak}\n\n",
-        fmt_hm(w.focused_secs)
-    );
+    let freezes = match w.freezes {
+        0 => String::new(),
+        n => format!(" ({n} freeze{})", if n == 1 { "" } else { "s" }),
+    };
+    format!(
+        "{tier} · {} focused{next}{streak}{freezes}\n{} coins\n\n",
+        fmt_hm(w.focused_secs),
+        w.coins
+    )
+}
 
-    let site = w.construction.as_ref().map(|c| c.index as usize);
-    let columns = w.plots.len().max(site.map_or(0, |i| i + 1));
+fn skyline(w: &World, color: bool) -> String {
+    let mut out = String::new();
+    let site = w
+        .construction
+        .as_ref()
+        .map(|c| c.index as usize)
+        .or_else(|| w.sites.iter().find(|s| s.active).map(|s| s.index as usize));
+    let paused: Vec<usize> = w
+        .sites
+        .iter()
+        .filter(|s| !s.active)
+        .map(|s| s.index as usize)
+        .collect();
+    let columns = w
+        .plots
+        .iter()
+        .map(|p| p.index as usize + 1)
+        .chain(site.map(|i| i + 1))
+        .chain(w.sites.iter().map(|s| s.index as usize + 1))
+        .max()
+        .unwrap_or(0);
     if columns == 0 {
-        out += "  Empty land. Complete a session to put up the first building.\n";
+        out += "  Empty land. Complete a session to start the first building.\n";
+        return out;
     }
     for start in (0..columns).step_by(DISTRICT_SIZE) {
         let end = (start + DISTRICT_SIZE).min(columns);
@@ -65,17 +85,18 @@ pub fn render(w: &World, now: i64, color: bool) -> String {
         let mut marks = " ".repeat(top.chars().count());
         let mut any_mark = false;
         for i in start..end {
-            let (glyph, mark) = if site == Some(i) {
-                (paint(SCAFFOLD, "36", color), '^')
-            } else {
-                let p = &w.plots[i];
-                if p.rubble {
-                    (paint(RUBBLE, "2", color), 'x')
-                } else {
+            let plot = w.plots.iter().find(|p| p.index as usize == i);
+            let (glyph, mark) = match plot {
+                _ if site == Some(i) => (paint(SCAFFOLD, "36", color), '^'),
+                _ if paused.contains(&i) => (paint(SCAFFOLD, "2", color), '='),
+                None => (EMPTY.to_string(), ' '),
+                Some(p) if p.rubble => (paint(RUBBLE, "2", color), 'x'),
+                Some(p) => {
                     let h = HEIGHTS[p.grade.min(4) as usize];
-                    match p.damage {
-                        0 => (h.to_string(), ' '),
-                        1 => (paint(h, "33", color), '1'),
+                    match (p.damage, p.shiny) {
+                        (0, true) => (paint(h, "93", color), '*'),
+                        (0, false) => (h.to_string(), ' '),
+                        (1, _) => (paint(h, "33", color), '1'),
                         _ => (paint(h, "31", color), '2'),
                     }
                 }
@@ -92,20 +113,83 @@ pub fn render(w: &World, now: i64, color: bool) -> String {
             out.push('\n');
         }
     }
-    if columns > 0 {
-        out += "\n  1 / 2 damaged · x rubble · ^ under construction\n";
-    }
+    out += "\n  1 / 2 damaged · x ruin · * shiny · ^ under construction · = paused\n";
+    out
+}
 
+fn desk(w: &World) -> String {
+    let mut out = String::new();
     if let Some(c) = &w.construction {
-        let what = BUILDINGS[c.grade.min(4) as usize];
         let state = match (c.surrendering, c.progress_permille) {
-            (true, _) => "about to collapse (surrendering)".to_string(),
+            (true, _) => "work about to be lost (surrendering)".to_string(),
             (false, Some(p)) => format!("{}% done", p / 10),
-            (false, None) => "growing while the stopwatch runs".to_string(),
+            (false, None) => String::new(),
         };
-        out += &format!("\nBuilding a {what} on plot {}: {state}\n", c.index + 1);
+        out += &format!("\nBuilding {}: {state}\n", c.name);
     }
+    for s in &w.sites {
+        let tag = if s.active { "building" } else { "paused" };
+        out += &format!(
+            "\n  {tag:<9} {} ({}): {} of {}",
+            s.name,
+            s.lot,
+            fmt_hm(s.done_secs),
+            fmt_hm(s.build_secs)
+        );
+    }
+    if !w.sites.is_empty() {
+        out.push('\n');
+    }
+    if w.idle_secs > 0 {
+        out += &format!(
+            "\n{} of crew hours wait for a site: `deepwork build <need>`\n",
+            fmt_hm(w.idle_secs)
+        );
+    }
+    if !w.needs.is_empty() {
+        out += "\nThe residents ask for:\n";
+        for n in &w.needs {
+            if n.lots_done == n.lots {
+                out += &format!("  ✓ {}\n", n.title);
+                continue;
+            }
+            let design = match (n.designed, n.fits.is_empty()) {
+                (false, _) => String::new(),
+                (true, false) => format!(" · {}", n.fits.join(", ")),
+                (true, true) => {
+                    let forsale: Vec<String> = w
+                        .blueprints
+                        .iter()
+                        .filter(|b| b.unlocked && n.fits_locked.contains(&b.id))
+                        .map(|b| format!("{} {}", b.id, b.price))
+                        .collect();
+                    format!(
+                        " · needs a blueprint: `deepwork buy` {}",
+                        forsale.join(", ")
+                    )
+                }
+            };
+            out += &format!(
+                "  {:<14} {} · {}/{} · {} each{design}\n                 \"{}\"\n",
+                n.id,
+                n.title,
+                n.lots_done,
+                n.lots,
+                fmt_hm(n.build_secs),
+                n.words
+            );
+        }
+    }
+    if w.auto {
+        out += "\nThe plan builds itself in order until you choose a need.\n";
+    }
+    out
+}
 
+pub fn render(w: &World, now: i64, color: bool) -> String {
+    let mut out = header(w);
+    out += &skyline(w, color);
+    out += &desk(w);
     if !w.history.is_empty() {
         out += "\nRecent:\n";
         for e in w.history.iter().rev().take(8) {
@@ -116,46 +200,62 @@ pub fn render(w: &World, now: i64, color: bool) -> String {
     out
 }
 
-fn plots(list: &[u32]) -> String {
-    let names: Vec<String> = list.iter().map(|i| (i + 1).to_string()).collect();
-    match names.len() {
-        1 => format!("plot {}", names[0]),
-        _ => format!("plots {}", names.join(", ")),
+/// The blueprints, for `deepwork buy` with no argument.
+pub fn blueprints(w: &World) -> String {
+    let mut out = format!("{} coins\n\n", w.coins);
+    for b in &w.blueprints {
+        let state = match (b.owned, b.unlocked) {
+            (true, _) => format!("owned, {} built", b.built),
+            (false, true) => format!("{} coins", b.price),
+            (false, false) => format!(
+                "{} coins, from the {}",
+                b.price,
+                TIERS[b.level.min(3) as usize]
+            ),
+        };
+        out += &format!("  {:<4} {:<28} {:<10} {state}\n", b.id, b.name, b.kind);
     }
+    out
+}
+
+fn name(w: &World, index: u32) -> String {
+    w.plots
+        .iter()
+        .find(|p| p.index == index)
+        .map(|p| p.name.clone())
+        .or_else(|| {
+            w.sites
+                .iter()
+                .find(|s| s.index == index)
+                .map(|s| format!("the {} site", s.name))
+        })
+        .unwrap_or_else(|| format!("lot {}", index + 1))
+}
+
+fn names(w: &World, list: &[u32]) -> String {
+    let names: Vec<String> = list.iter().map(|&i| name(w, i)).collect();
+    names.join(", ")
 }
 
 fn describe(w: &World, e: &WorldEvent) -> String {
     let ruined = if e.ruined.is_empty() {
         String::new()
     } else {
-        format!("; {} fell into rubble", plots(&e.ruined))
+        format!("; {} in ruins", names(w, &e.ruined))
     };
     let text = match e.kind {
-        WorldEventKind::Built => {
-            let grade = e
-                .plots
-                .first()
-                .and_then(|&i| w.plots.get(i as usize))
-                .filter(|p| e.session_id == Some(p.session_id))
-                .map_or(String::from("building"), |p| {
-                    BUILDINGS[p.grade.min(4) as usize].to_string()
-                });
-            format!("built a {grade} ({})", plots(&e.plots))
-        }
-        WorldEventKind::Repaired => format!("repaired {}", plots(&e.plots)),
-        WorldEventKind::Collapsed => {
-            let (site, burned) = e.plots.split_first().map_or((0, &[][..]), |(s, b)| (*s, b));
-            let fire = if burned.is_empty() {
-                String::new()
-            } else {
-                format!(", fire spread to {}", plots(burned))
-            };
-            format!("surrendered: plot {} collapsed{fire}", site + 1)
-        }
+        WorldEventKind::Built => format!("finished {}", names(w, &e.plots)),
+        WorldEventKind::Repaired => format!("repaired {}", names(w, &e.plots)),
+        WorldEventKind::Graduated => "every need was met: the settlement grew".into(),
+        WorldEventKind::Collapsed => match e.plots.split_first() {
+            None => "surrendered".into(),
+            Some((_, [])) => "surrendered: the session built nothing".into(),
+            Some((_, burned)) => format!("surrendered: fire spread to {}", names(w, burned)),
+        },
         WorldEventKind::Quake if e.plots.is_empty() => {
             "earthquake (tampering) on empty land".into()
         }
-        WorldEventKind::Quake => format!("earthquake (tampering) hit {}", plots(&e.plots)),
+        WorldEventKind::Quake => format!("earthquake (tampering) hit {}", names(w, &e.plots)),
         WorldEventKind::Damaged => {
             let why = match e.cause {
                 WorldCause::ClockJump => "wall clock jump",
@@ -164,7 +264,7 @@ fn describe(w: &World, e: &WorldEvent) -> String {
             };
             match e.plots.is_empty() {
                 true => format!("{why}, nothing to damage yet"),
-                false => format!("{why} damaged {}", plots(&e.plots)),
+                false => format!("{why} damaged {}", names(w, &e.plots)),
             }
         }
     };
@@ -174,7 +274,7 @@ fn describe(w: &World, e: &WorldEvent) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use deepwork_proto::{Construction, Plot};
+    use deepwork_proto::{Construction, NeedInfo, Plot, SiteInfo};
 
     fn plot(index: u32, grade: u32, damage: u32, rubble: bool) -> Plot {
         Plot {
@@ -183,33 +283,68 @@ mod tests {
             grade,
             damage,
             rubble,
-            seed: 0,
-            session_id: index as i64 + 1,
-            built_at: 0,
+            name: format!("House {}", index + 1),
+            ..Plot::default()
         }
     }
 
     #[test]
-    fn renders_plots_marks_and_history() {
+    fn renders_lots_marks_desk_and_history() {
         let w = World {
-            tier: 0,
             focused_secs: 3 * 3600 + 20 * 60,
-            tier_floor_secs: 0,
             next_tier_secs: Some(10 * 3600),
+            built_secs: 3 * 3600,
             streak_days: 2,
+            coins: 340,
             plots: vec![
                 plot(0, 1, 0, false),
                 plot(1, 4, 2, false),
-                plot(2, 0, 0, true),
+                plot(3, 0, 3, true),
             ],
             construction: Some(Construction {
-                session_id: 9,
                 index: 2,
-                grade: 2,
                 progress_permille: Some(400),
-                surrendering: false,
-                seed: 0,
+                name: "The Hart house".into(),
+                ..Construction::default()
             }),
+            sites: vec![SiteInfo {
+                index: 2,
+                lot: "hamlet-homes-3".into(),
+                need: "hamlet-homes".into(),
+                name: "The Hart house".into(),
+                kind: "cottage".into(),
+                design: Some("c1".into()),
+                done_secs: 1200,
+                build_secs: 3600,
+                active: true,
+                seed: 0,
+            }],
+            blueprints: vec![deepwork_proto::BlueprintInfo {
+                id: "s1".into(),
+                name: "Main-street shop".into(),
+                kind: "shop".into(),
+                districts: vec![],
+                level: 0,
+                price: 300,
+                owned: false,
+                unlocked: true,
+                built: 0,
+            }],
+            needs: vec![NeedInfo {
+                id: "hamlet-shops".into(),
+                title: "Small business".into(),
+                words: "We walk an hour.".into(),
+                kind: "shop".into(),
+                district: "main_street".into(),
+                build_secs: 5400,
+                lots: 2,
+                lots_done: 0,
+                next_lot: Some("hamlet-shops-1".into()),
+                site: false,
+                designed: true,
+                fits: vec![],
+                fits_locked: vec!["s1".into()],
+            }],
             history: vec![WorldEvent {
                 ts: 0,
                 kind: WorldEventKind::Collapsed,
@@ -218,29 +353,34 @@ mod tests {
                 plots: vec![2, 1],
                 ruined: vec![],
             }],
+            ..World::default()
         };
         let text = render(&w, 7200, false);
-        assert!(text.starts_with("Hamlet · 3h 20m focused · 6h 40m to Town · streak 2 days"));
-        assert!(text.contains("  district 1   ▃ █ ┊\n"), "{text}");
-        assert!(text.contains("                 2 ^\n"), "{text}");
-        assert!(text.contains("Building a tower block on plot 3: 40% done"));
-        assert!(text.contains("2 h ago  surrendered: plot 3 collapsed, fire spread to plot 2"));
+        assert!(
+            text.starts_with(
+                "Hamlet · 3h 20m focused · 7h 00m of building to Town · streak 2 days\n340 coins"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("  district 1   ▃ █ ┊ ▁\n"), "{text}");
+        assert!(text.contains("                 2 ^ x\n"), "{text}");
+        assert!(text.contains("Building The Hart house: 40% done"));
+        assert!(text.contains("building  The Hart house (hamlet-homes-3): 20m of 1h 00m"));
+        assert!(
+            text.contains("needs a blueprint: `deepwork buy` s1 300"),
+            "{text}"
+        );
+        assert!(text.contains("2 h ago  surrendered: fire spread to House 2"));
     }
 
     #[test]
     fn empty() {
         let w = World {
             tier: 3,
-            focused_secs: 0,
-            tier_floor_secs: 0,
-            next_tier_secs: None,
-            streak_days: 0,
-            plots: vec![],
-            construction: None,
-            history: vec![],
+            ..World::default()
         };
         let text = render(&w, 0, false);
-        assert!(text.starts_with("Metropolis · 0m focused\n"));
+        assert!(text.starts_with("Metropolis · 0m focused · the plan is finished\n"));
         assert!(text.contains("Empty land"));
     }
 }

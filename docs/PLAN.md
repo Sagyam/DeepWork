@@ -945,7 +945,7 @@ root shell (`sudo -s`) open in another terminal while testing PAM:
       with the cheap rendering optimisations tried and measured (88 to 20 ms a frame on the 610M), ported to the app
       (metropolis 67 to 30 ms, city 50 to 18); textures as BC7 and the sign sheets shared (texture memory 1,370 to 218 MB)
 - [ ] Progression v2 (`docs/progression.md`): coins and blueprints, residents' needs over our master plan, build hours,
-      building memories (designed 2026-11-05, not built)
+      building memories (designed 2026-11-05; being built from the checklist at the end of `docs/progression.md`, 2026-11-06)
 
 ### Phase 4: Deeper enforcement
 
