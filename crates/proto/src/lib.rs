@@ -363,6 +363,9 @@ pub struct World {
     /// Streets and neighbourhoods with lots, as collection sets.
     #[serde(default)]
     pub sets: Vec<SetInfo>,
+    /// The residents' latest letters, oldest first.
+    #[serde(default)]
+    pub letters: Vec<Letter>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -473,6 +476,22 @@ pub struct BoxInfo {
     /// The finished set's name.
     #[serde(default)]
     pub set: Option<String>,
+}
+
+/// A thank-you letter from a family in the city, for something focus or
+/// its coins paid for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Letter {
+    pub ts: i64,
+    /// `street`, `repair`, `park`, `opened` or `set`.
+    pub kind: String,
+    /// "The Hart family".
+    pub from: String,
+    /// The writers' address.
+    pub address: String,
+    pub text: String,
+    /// The building it is about, by lot index.
+    pub lot: Option<u32>,
 }
 
 /// A collection set: every lot on a street, or in a neighbourhood. Building

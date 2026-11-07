@@ -26,8 +26,8 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use deepwork_proto::{
     Award, BlockInfo, BlueprintInfo, BoxInfo, BuildPart, Construction, DecorationInfo, GoalInfo,
-    ItemInfo, Layout, LotInfo, Memory, NeedInfo, NeighbourhoodInfo, Plot, Scar, SetInfo, SiteInfo,
-    SpotInfo, StreetInfo, World, WorldCause, WorldEvent, WorldEventKind,
+    ItemInfo, Layout, Letter, LotInfo, Memory, NeedInfo, NeighbourhoodInfo, Plot, Scar, SetInfo,
+    SiteInfo, SpotInfo, StreetInfo, World, WorldCause, WorldEvent, WorldEventKind,
 };
 use jiff::Timestamp;
 use jiff::civil::Date;
@@ -35,7 +35,8 @@ use jiff::tz::TimeZone;
 
 use crate::economy::{self, Goal, Item};
 use crate::layout::{self, Axis, Ground, NEIGHBOURHOODS, STREETS};
-use crate::plan::{self, BLUEPRINTS, Blueprint, NEEDS, Need};
+use crate::letters::{self, About};
+use crate::plan::{self, BLUEPRINTS, Blueprint, Kind, NEEDS, Need};
 const COINS_PER_HOUR: u64 = 100;
 /// Coin rate per minute of a session, in tenths, by how far into the session
 /// the minute is: depth pays, but a stopwatch left running does not.
@@ -62,6 +63,10 @@ const FIRE_DAMAGE: u32 = 2;
 /// One burst of tamper (or minor) events counts once.
 const PENALTY_COOLDOWN: i64 = 10 * 60;
 const HISTORY: usize = 30;
+/// Letters the world shows, newest last.
+const LETTERS: usize = 30;
+/// When no family lives on the street, one of this many nearest writes.
+const NEAREST_WRITERS: usize = 3;
 /// Chance in a thousand that a finished building comes out shiny, and the
 /// most longer sessions can raise it to.
 const SHINY_BASE: u64 = 50;
@@ -247,6 +252,7 @@ pub struct City {
     since_rare: u32,
     /// Sets whose box is won.
     sets_won: BTreeSet<Set>,
+    letters: Vec<Letter>,
 }
 
 /// A collection set: the plan's lots on one street, or in one neighbourhood.
@@ -358,6 +364,7 @@ impl Default for City {
             inventory: BTreeMap::new(),
             since_rare: 0,
             sets_won: BTreeSet::new(),
+            letters: Vec::new(),
         }
     }
 }
@@ -484,6 +491,17 @@ impl City {
                 if let Ok((si, price)) = self.check_upgrade(street) {
                     self.coins_spent += price;
                     self.roads[si] += 1;
+                    let s = STREETS[si];
+                    let near = match s.axis {
+                        Axis::EastWest => (2, s.line * 3),
+                        Axis::NorthSouth => (s.line * 5 - 1, 0),
+                    };
+                    let name = self.street_name(si).to_string();
+                    let about = About::Street {
+                        street: &name,
+                        class: self.roads[si],
+                    };
+                    self.letter(f.ts, si as u64, Some(si), near, about, None);
                 }
             }
             (FactKind::StreetRenamed { street, name }, _) => {
@@ -498,6 +516,19 @@ impl City {
                 if let Ok((d, price)) = self.check_decorate(spot, decoration) {
                     self.coins_spent += price;
                     self.spots.insert(spot.clone(), d.id);
+                    let b = spot
+                        .split_once(':')
+                        .and_then(|(b, _)| b.parse::<usize>().ok());
+                    if let Some(block) = b.map(|b| layout::blocks()[b])
+                        && let Ground::Park(_, park) = block.ground
+                    {
+                        let near = (block.x * 5 + 2, block.y * 3 + 1);
+                        let about = About::Decoration {
+                            decoration: d.id,
+                            park,
+                        };
+                        self.letter(f.ts, block.x as u64 ^ 0x5eed, None, near, about, None);
+                    }
                 }
             }
             (FactKind::Staked { coins }, Some(id)) => {
@@ -589,6 +620,74 @@ impl City {
             vec![i as u32],
             vec![],
         );
+        self.thank_for_repair(i, ts);
+    }
+
+    /// The family of a mended home thanks the mayor; for any other building,
+    /// the family nearest it.
+    fn thank_for_repair(&mut self, i: usize, ts: i64) {
+        let name = self.name(i);
+        let own = letters::is_home(need_of(i).kind);
+        let about = About::Repaired {
+            building: &name,
+            own,
+        };
+        if own {
+            self.send(ts, i, about, i as u64, Some(i));
+        } else {
+            self.letter(ts, i as u64, None, ground_pos(i), about, Some(i));
+        }
+    }
+
+    /// Finished homes that stand: the families who can write.
+    fn homes(&self) -> impl Iterator<Item = usize> + '_ {
+        self.standing()
+            .filter(|&i| letters::is_home(need_of(i).kind))
+    }
+
+    /// A letter from a family on `street` if any lives there, else one of
+    /// the few nearest `near` (in `ground_pos` units), so one house doesn't
+    /// write them all. No families yet, no letter.
+    fn letter(
+        &mut self,
+        ts: i64,
+        salt: u64,
+        street: Option<usize>,
+        near: (i32, i32),
+        about: About,
+        lot: Option<usize>,
+    ) {
+        let roll = mix((ts as u64).rotate_left(11) ^ salt.wrapping_mul(0x2545_f491));
+        let on: Vec<usize> = self
+            .homes()
+            .filter(|&h| Some(plan::lots()[h].place.street) == street)
+            .collect();
+        let pool = if on.is_empty() {
+            let mut by_distance: Vec<usize> = self.homes().collect();
+            by_distance.sort_by_key(|&h| {
+                let (x, y) = ground_pos(h);
+                ((x - near.0).pow(2) + (y - near.1).pow(2), h)
+            });
+            by_distance.truncate(NEAREST_WRITERS);
+            by_distance
+        } else {
+            on
+        };
+        let writer = (!pool.is_empty()).then(|| pool[(roll % pool.len() as u64) as usize]);
+        if let Some(w) = writer {
+            self.send(ts, w, about, roll, lot);
+        }
+    }
+
+    fn send(&mut self, ts: i64, writer: usize, about: About, roll: u64, lot: Option<usize>) {
+        self.letters.push(Letter {
+            ts,
+            kind: about.kind().into(),
+            from: letters::family(writer, &self.name(writer)),
+            address: self.address(writer),
+            text: letters::write(about, roll),
+            lot: lot.map(|l| l as u32),
+        });
     }
 
     /// Whether a block is part of the town: land in it bought, or an open park.
@@ -684,6 +783,16 @@ impl City {
             if let Some(a) = self.award.as_mut() {
                 a.boxes.push(won);
             }
+            let name = self.set_name(set);
+            let (street, neighbourhood) = match set {
+                Set::Street(si) => (Some(si), false),
+                Set::Hood(_) => (None, true),
+            };
+            let about = About::Set {
+                name: &name,
+                neighbourhood,
+            };
+            self.letter(ts, set.salt(), street, ground_pos(i), about, None);
         }
     }
 
@@ -1095,6 +1204,24 @@ impl City {
             a.finished.push(i as u32);
         }
         self.sets_finished(i, ts);
+        let kind = need_of(i).kind;
+        if !letters::is_home(kind)
+            && !matches!(
+                kind,
+                Kind::Shop | Kind::Workshop | Kind::Office | Kind::Tower
+            )
+        {
+            let (name, street) = (
+                self.name(i),
+                self.street_name(plan::lots()[i].place.street).to_string(),
+            );
+            let about = About::Opened {
+                kind,
+                building: &name,
+                street: &street,
+            };
+            self.letter(ts, i as u64, None, ground_pos(i), about, Some(i));
+        }
         while (self.level as usize) < plan::LEVELS.len()
             && NEEDS
                 .iter()
@@ -1346,6 +1473,18 @@ impl City {
         }
         if !repaired.is_empty() {
             repaired.sort_unstable();
+            // One letter for the session: from a home made whole, else
+            // about the first building that is.
+            let whole: Vec<usize> = repaired
+                .iter()
+                .map(|&i| i as usize)
+                .filter(|&i| self.lots[i].damage == 0)
+                .collect();
+            let thanks = whole
+                .iter()
+                .copied()
+                .find(|&i| letters::is_home(need_of(i).kind))
+                .or(whole.first().copied());
             self.record(
                 ts,
                 (WorldEventKind::Repaired, WorldCause::Completed),
@@ -1353,6 +1492,9 @@ impl City {
                 repaired,
                 vec![],
             );
+            if let Some(i) = thanks {
+                self.thank_for_repair(i, ts);
+            }
         }
     }
 
@@ -1647,6 +1789,7 @@ impl City {
                 })
                 .collect(),
             boxes_to_rare: economy::PITY.saturating_sub(self.since_rare),
+            letters: self.letters[self.letters.len().saturating_sub(LETTERS)..].to_vec(),
             sets: Set::all()
                 .map(|set| SetInfo {
                     id: set.id(),
@@ -2385,6 +2528,54 @@ mod tests {
                 .unwrap_err()
                 .contains("from the town")
         );
+    }
+
+    #[test]
+    fn families_write_to_thank_the_mayor() {
+        let mut facts = daily(1, 60);
+        facts.push(event(DAY + 10, FactKind::Denied));
+        let w = world(&facts, DAY + 20);
+        assert!(w.letters.is_empty(), "damage gets no thanks");
+        facts.push(mayor(
+            DAY + 30,
+            FactKind::RepairBought {
+                lot: "hamlet-homes-1".into(),
+            },
+        ));
+        let w = world(&facts, DAY + 40);
+        let l = w.letters.last().unwrap();
+        assert_eq!((l.kind.as_str(), l.lot), ("repair", Some(0)));
+        assert_eq!(l.address, w.plots[0].address, "the mended home writes");
+        assert!(l.from.starts_with("The ") && l.from.ends_with(" family"));
+
+        // A paved street: a family living on it; a park: the nearest one.
+        let mut facts = daily(4, 180);
+        let green = layout::blocks()
+            .iter()
+            .position(|b| matches!(b.ground, Ground::Park(_, "The Green")))
+            .unwrap();
+        facts.push(mayor(
+            4 * DAY + 20,
+            FactKind::StreetUpgraded {
+                street: "main".into(),
+            },
+        ));
+        facts.push(mayor(
+            4 * DAY + 40,
+            FactKind::Decorated {
+                spot: format!("{green}:1"),
+                decoration: "trees".into(),
+            },
+        ));
+        let w = world(&facts, 4 * DAY + 50);
+        let street = w.letters.iter().find(|l| l.kind == "street").unwrap();
+        assert!(street.address.ends_with("Main Street") && street.text.contains("Main Street"));
+        let park = w.letters.iter().find(|l| l.kind == "park").unwrap();
+        assert!(park.text.contains("The Green") && park.text.contains("new trees"));
+        // The hamlet's water is a public building: its opening is thanked.
+        assert!(w.letters.iter().any(|l| l.kind == "opened"));
+        // Same facts, same letters.
+        assert_eq!(world(&facts, 4 * DAY + 50).letters, w.letters);
     }
 
     #[test]

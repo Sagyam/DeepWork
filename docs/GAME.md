@@ -104,6 +104,23 @@ to the active site; the deed shows it apart from focus.
 Building its last lot pays one box, once (`STREET_RARE_PCT`,
 `NEIGHBOURHOOD_RARE_PCT`); ruins and renames don't take it back.
 
+## Letters
+
+Families live in the homes (cottages and apartments): the one a house's
+name gives ("The Hart house"), else one from `names/families.txt` by lot.
+They write to the mayor when something reaches them (`letters.rs` words
+it, `world.rs` decides when):
+
+| Event | Who writes |
+|---|---|
+| A street upgraded | A family on it, else the nearest |
+| A building whole again (bought, kit or session repairs) | Its own family, or the nearest |
+| A park decoration | The nearest family |
+| A public building opens | The nearest family |
+| A set finished | A family on the street, else the nearest |
+
+Letters are folded like the rest and pay nothing: reading one is not a reward.
+
 ## Penalties and repairs
 
 | Ledger event | In the city |

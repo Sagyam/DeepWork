@@ -30,6 +30,13 @@
               <path d="M18 17v-8"></path>
             </svg>
           </button>
+          <button data-open="letters" id="mailbox" aria-label="Letters" title="Letters from the residents">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="14" rx="2"></rect>
+              <path d="m3 7 9 6 9-6"></path>
+            </svg>
+            <span class="dot" hidden></span>
+          </button>
           <button data-open="sound" id="sound-toggle" aria-label="Sound" title="Sound on or off" aria-pressed="true">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M11 5 6 9H2v6h4l5 4z"></path>
@@ -76,6 +83,16 @@
       </header>
       <div id="town-main" class="panel-main"></div>
       <p class="error" id="town-error"></p>
+    </dialog>
+    <dialog id="letters" class="panel narrow">
+      <header class="panel-head">
+        <div>
+          <h2>Letters</h2>
+          <p class="small muted">From the families of the city.</p>
+        </div>
+        <button class="close" data-action="close" title="Close (Esc)">×</button>
+      </header>
+      <div id="letters-main" class="panel-main"></div>
     </dialog>
     <dialog id="deed" class="panel narrow">
       <header class="panel-head">

@@ -113,6 +113,15 @@ code { font-family: var(--font-mono); }
 #menu { align-self: flex-start; display: flex; gap: 2px; padding: 3px; }
 #menu button { display: flex; align-items: center; padding: 7px; border: none; background: none; color: var(--muted-foreground); border-radius: 8px; box-shadow: none; }
 #menu button:hover { background: var(--muted); color: var(--foreground); }
+#menu button { position: relative; }
+#menu .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--card); }
+#menu .dot[hidden] { display: none; }
+.letters { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.letter { padding: 12px 14px; border-radius: 10px; background: var(--background); border: 1px solid var(--border); }
+.letter.fresh { border-color: color-mix(in oklab, var(--brand) 55%, var(--border)); background: var(--brand-soft); }
+.letter-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.letter p { margin: 6px 0 0; font-size: 13.5px; line-height: 1.5; }
+.letter .sign { font-style: italic; }
 #side { position: absolute; top: 16px; right: 16px; width: 300px; display: flex; flex-direction: column; gap: 10px; }
 #side .card { position: static; }
 #notice { font-size: 12.5px; }

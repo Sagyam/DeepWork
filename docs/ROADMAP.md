@@ -51,6 +51,8 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Names: a new building gets a name from its pile, and its sign shows it.
 - [ ] Sets: finishing a street's last lot shows its box in the award and
       the item in the desk.
+- [ ] Letters: paving a street brings a letter from a family on it; the
+      envelope shows the dot, and the letter names the street.
 - [ ] Model pack: `deepwork-ui` from the next release shows the download
       line, then the realistic city.
 - [ ] Install on a real Debian / Ubuntu and Fedora machine and repeat.
@@ -98,7 +100,7 @@ Check each against the rule in [GAME.md](GAME.md#the-one-rule).
   and box odds are first guesses.
 - **Seasons and quests**: a monthly track advanced by focused hours;
   quests that train deep work. Seasonal items return in later years.
-- **Residents**: named families in the houses; thank-you letters naming
-  their street; families leave long-unrepaired homes and come back.
+- **Residents**: families leave long-unrepaired homes and come back when
+  they're mended (families and their letters are in [GAME.md](GAME.md#letters)).
 - **On hold**: endowed progress (sites starting part built); it breaks
   "a 25 h tower means 25 h".

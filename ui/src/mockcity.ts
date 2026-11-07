@@ -5,7 +5,7 @@
 // scenarios get their land free); the daemon is the truth. The layout is
 // the daemon's own (`layout.json`, kept current by a Rust test).
 import FIXTURE from "./layout.json";
-import type { Award, BlueprintInfo, Construction, GoalInfo, Layout, NeedInfo, Plot, SetInfo, SiteInfo, World, WorldEvent } from "./proto";
+import type { Award, BlueprintInfo, Letter, Construction, GoalInfo, Layout, NeedInfo, Plot, SetInfo, SiteInfo, World, WorldEvent } from "./proto";
 
 const LAYOUT = FIXTURE as Layout;
 const LAND: Record<string, number> = { village: 60, works: 80, civic: 100, main_street: 120, downtown: 250 };
@@ -145,6 +145,21 @@ export class MockCity {
   spots = new Map<string, string>();
   inventory = new Map<string, number>();
   setsWon = new Set<string>();
+  letters: Letter[] = [];
+
+  /**
+   * A thank-you letter, as the daemon writes them but simpler: from a
+   * family on the street if one lives there, else any home by the lot;
+   * one wording per kind.
+   */
+  private letter(ts: number, kind: Letter["kind"], text: string, street: number | null, lot: number | null) {
+    const homes = [...this.built.keys()].filter((i) => ["cottage", "apartment"].includes(NEEDS[LOTS[i].need].kind)).sort((a, b) => a - b);
+    const w = homes.find((i) => LAYOUT.lots[i]?.street === street) ?? homes[(lot ?? ts) % homes.length];
+    if (w === undefined) return;
+    const name = this.nameOf(w, this.built.get(w)!.design);
+    const sur = /^The (\S+) house$/.exec(name)?.[1] ?? SURNAMES[w % SURNAMES.length];
+    this.letters.push({ ts, kind, from: `The ${sur} family`, address: LOTS[w].address, text, lot });
+  }
   today = { day: -1, focus: 0, sessions: 0, longest: 0, paid: new Set<string>() };
   stakes = new Map<number, number>();
   recent: number[] = [];
@@ -236,6 +251,12 @@ export class MockCity {
       const item = ["repair_kit", "hired_help", "master_crew"][(sessionId + set.id.length) % 3];
       this.inventory.set(item, (this.inventory.get(item) ?? 0) + 1);
       this.award?.boxes?.push({ goal: "set", item, set: set.name });
+      const street = set.id.startsWith("street:") ? LAYOUT.streets.findIndex((s) => `street:${s.id}` === set.id) : null;
+      this.letter(ts, "set", `${set.name} is finished, end to end. We held a party, and everyone asked us to say thank you.`, street, null);
+    }
+    const kind = NEEDS[LOTS[i].need].kind;
+    if (!["cottage", "apartment", "shop", "workshop", "office", "tower"].includes(kind)) {
+      this.letter(ts, "opened", `${this.nameOf(i, design)} opened this week. It feels like the town is looking after us.`, null, i);
     }
     while (this.level < 4 && NEEDS.every((n, ni) => n.level !== this.level || this.nextLot(ni) === null)) {
       this.level++;
@@ -338,7 +359,9 @@ export class MockCity {
     if (!kit && this.coins() < price) return `repairing it costs ${price} coins; you have ${this.coins()}`;
     if (!kit) this.spent += price;
     b.damage = 0;
-    this.history.push({ ts: Math.floor(Date.now() / 1000), kind: "repaired", cause: "mayor", session_id: null, plots: [l.index], ruined: [] });
+    const ts = Math.floor(Date.now() / 1000);
+    this.history.push({ ts, kind: "repaired", cause: "mayor", session_id: null, plots: [l.index], ruined: [] });
+    this.letter(ts, "repair", `Thank you for mending ${this.nameOf(l.index, b.design)}. We are back in our own beds tonight, and the kettle is on.`, LAYOUT.lots[l.index]?.street ?? null, l.index);
     return null;
   }
 
@@ -351,6 +374,8 @@ export class MockCity {
     if (this.coins() < next[0]) return `that costs ${next[0]} coins; you have ${this.coins()}`;
     this.spent += next[0];
     this.roads[si]++;
+    const name = this.streetNames.get(si) ?? LAYOUT.streets[si].name;
+    this.letter(Math.floor(Date.now() / 1000), "street", `Thank you for what you did to ${name}. The children ride their bikes to the end and back until it gets dark.`, si, null);
     return null;
   }
 
@@ -390,6 +415,8 @@ export class MockCity {
     if (this.coins() < d.price) return `a ${d.name.toLowerCase()} costs ${d.price} coins; you have ${this.coins()}`;
     this.spent += d.price;
     this.spots.set(spot, id);
+    const park = LAYOUT.blocks[Number(spot.split(":")[0])]?.name ?? "the park";
+    this.letter(Math.floor(Date.now() / 1000), "park", `We took a picnic to ${park} on Sunday to see the ${d.name.toLowerCase()}. Half the town had the same idea.`, null, null);
     return null;
   }
 
@@ -564,6 +591,7 @@ export class MockCity {
       goals: this.goals(now),
       boxes_to_rare: 5,
       sets: this.sets(),
+      letters: this.letters.slice(-30),
     };
   }
 

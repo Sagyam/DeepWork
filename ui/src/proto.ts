@@ -349,6 +349,19 @@ export interface BoxInfo {
   set?: string | null;
 }
 
+/** A thank-you letter from a family in the city, for something focus or its coins paid for. */
+export interface Letter {
+  ts: number;
+  kind: "street" | "repair" | "park" | "opened" | "set";
+  /** "The Hart family". */
+  from: string;
+  /** The writers' address. */
+  address: string;
+  text: string;
+  /** The building it is about, by lot index. */
+  lot: number | null;
+}
+
 /** A collection set: every lot on a street, or in a neighbourhood. The last one built wins a box, once. */
 export interface SetInfo {
   /** `street:<id>` or `hood:<id>`. */
@@ -483,6 +496,8 @@ export interface World {
   boxes_to_rare?: number;
   /** Streets and neighbourhoods with lots, as collection sets. */
   sets?: SetInfo[];
+  /** The residents' latest letters, oldest first. */
+  letters?: Letter[];
 }
 
 export const MAX_PAUSED = 3;

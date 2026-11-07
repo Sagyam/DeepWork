@@ -5,6 +5,7 @@ import { deedHtml, deskHtml, levelUpHtml, nearMiss, shopHtml, tagHtml, townHtml 
 import { notice } from "./panels";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
 import { openProgress, progressUpdate } from "./progress";
+import { lettersHtml, markRead, newest, readUpTo, unread } from "./letters";
 import { confirmSkip, hudUpdate, openSettings, type SettingsSection } from "./settings";
 import { City } from "./city/scene";
 import { modelsStatus, type ModelsStatus } from "./models";
@@ -379,6 +380,47 @@ function openTown() {
   renderTown();
   if (!townDialog.open) townDialog.showModal();
 }
+const lettersDialog = $("#letters") as HTMLDialogElement;
+let lettersRead = readUpTo();
+/** The newest letter the poll has seen; a newer one is announced. */
+let lettersSeen: number | null = null;
+
+function renderMailbox() {
+  const ls = world?.letters ?? [];
+  if (lettersRead === null && ls.length) {
+    // A first run: the city's past letters are there to read, not unread.
+    lettersRead = newest(ls);
+    markRead(lettersRead);
+  }
+  const n = unread(ls, lettersRead);
+  const dot = $("#mailbox .dot");
+  dot.hidden = n === 0;
+  $("#mailbox").setAttribute("aria-label", n ? `Letters, ${n} unread` : "Letters");
+  const top = newest(ls);
+  if (lettersSeen !== null && top > lettersSeen) {
+    const l = ls[ls.length - 1];
+    story(`A letter from ${l.from}`);
+  }
+  lettersSeen = top;
+}
+
+function openLetters() {
+  if (!world) return;
+  $("#letters-main").innerHTML = lettersHtml(world, lettersRead, Math.floor(Date.now() / 1000));
+  lettersRead = Math.max(lettersRead ?? 0, newest(world.letters ?? []));
+  markRead(lettersRead);
+  renderMailbox();
+  if (!lettersDialog.open) lettersDialog.showModal();
+}
+
+lettersDialog.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+  if (btn?.dataset.action === "letter-deed") {
+    lettersDialog.close();
+    openDeed(Number(btn.dataset.lot));
+  }
+});
+
 const deedDialog = $("#deed") as HTMLDialogElement;
 let deedIndex: number | null = null;
 
@@ -420,6 +462,7 @@ async function decide(req: Parameters<typeof call>[0], errorEl: string, after?: 
     if (r.type === "world") {
       world = r;
       renderCity(world);
+      renderMailbox();
       renderDesk(true);
       skyline?.update(world, localHour(), status?.session?.elapsed_secs ?? 0);
     }
@@ -468,7 +511,7 @@ townDialog.addEventListener("submit", (ev) => {
   void decide({ type: "rename_street", street: form.dataset.street!, name }, "#town-error", renderTown);
 });
 
-for (const d of [shopDialog, deedDialog, townDialog]) {
+for (const d of [shopDialog, deedDialog, townDialog, lettersDialog]) {
   d.addEventListener("click", (ev) => {
     if (ev.target === d || (ev.target as HTMLElement).closest("[data-action=close]")) d.close();
   });
@@ -599,6 +642,7 @@ dialog.addEventListener("close", () => {
 $("#menu").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (btn?.dataset.open === "progress") openProgress();
+  else if (btn?.dataset.open === "letters") openLetters();
   else if (btn?.dataset.open === "settings") void openSettings("session");
   else if (btn?.dataset.open === "sound") {
     setSound(!soundOn());
@@ -643,6 +687,7 @@ async function poll() {
       // The scene starts the card with its fireworks; without one, at once.
       if (!skyline && was !== undefined && world.tier > was) levelUp(world.tier);
       renderCity(world);
+      renderMailbox();
       if (deedDialog.open) renderDeed();
       if (shopDialog.open) renderShop();
       $("#notice").innerHTML = notice(await pendingConfig());
