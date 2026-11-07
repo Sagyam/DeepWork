@@ -17,9 +17,10 @@ area, if anything a reader needs changed.
 
 1. **Use it for real** and tune: coin prices, build hours, shiny odds,
    escalation stages, nudges. Add real `[[routines]]`.
-2. **Models**: O2 or O3 (the default order builds six identical O1 towers
-   at 50-98 h), then a second workshop (timber mill or brewery; S4 is the
-   only one, so the mayor never chooses).
+2. **Models**: O2 or O3, then L2 (offices and towers are each one design,
+   so ~200 of the plan's ~350 h build O1 or L1 over and over), then a
+   second workshop (timber mill or brewery; S4 is the only one, so the
+   mayor never chooses) and a third downtown shop (only S1 and S2 fit).
 3. **The master plan's real layout** in `ui/src/city/plan.ts`: streets,
    districts, reserved ground for squares and landmarks; a test that its
    lot ids match `plan.rs`. Then L5 city hall grows to its half block, and

@@ -1,14 +1,13 @@
 // City theme: the countryside meshes, from terrain.ts. Smooth terrain
 // coloured by height and slope (meadow, forest floor, river sand, rock,
 // snow) with grass and stone detail near the eye, one water plane that
-// fills the river and the lake, forests instanced from the trees model (or
-// the kit) and boulders of their own (rocks()): lush broadleaf and
+// fills the river and the lake, forests instanced from the trees model and
+// boulders of their own (rocks()): lush broadleaf and
 // rainforest giants in the lowlands, conifers higher up, bare rock above the
 // tree line.
 import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { piece } from "./kit";
-import { hasReal, realMat, realPiece, tex } from "./real";
+import { realMat, realPiece, tex } from "./real";
 import { IMPOSTOR_NEAR, Impostors, nearOnly } from "./impostor";
 import { PITCH_X, PITCH_Z, rng, type CityPlan } from "./plan";
 import { LAKE, RADIUS, ROAD_Z, WATER, fbm, noise, smoothstep, terrain, type Land as Shape } from "./terrain";
@@ -46,7 +45,6 @@ export class Land {
   private rockMat: THREE.MeshStandardMaterial | null = null;
   private rockGeos: [THREE.BufferGeometry, THREE.BufferGeometry][] = [];
   private waterMat: THREE.MeshStandardMaterial;
-  private forestMats = new Map<string, THREE.MeshStandardMaterial>();
   /** The real woods near the camera, in tiles (see cull()). */
   private tiles: { group: THREE.Group; box: THREE.Box3 }[] = [];
   private nearMats = new Map<THREE.Material, THREE.Material>();
@@ -56,11 +54,11 @@ export class Land {
   }
 
   /** Rebuild for a city of a new size. */
-  build(p: CityPlan, imps: Impostors | null = null) {
+  build(p: CityPlan, imps: Impostors) {
     this.group.clear();
     this.tiles = [];
     const land = (this.shape = terrain(p.bounds));
-    if (!this.groundDetail && hasReal("trees")) {
+    if (!this.groundDetail) {
       this.groundDetail = true;
       detail(this.ground);
     }
@@ -77,7 +75,6 @@ export class Land {
   setNight(night: number) {
     this.ground.color.setRGB(1 - 0.55 * night, 1 - 0.55 * night, 1 - 0.42 * night);
     this.waterMat.color.setHex(0x3d6e86).lerp(C(0x0a1626), night * 0.85);
-    for (const m of this.forestMats.values()) m.color.setRGB(1 - 0.5 * night, 1 - 0.5 * night, 1 - 0.4 * night);
   }
 
   private terrainMesh(land: Shape): THREE.Mesh {
@@ -158,17 +155,8 @@ export class Land {
     return mesh;
   }
 
-  private mat(role: string): THREE.MeshStandardMaterial {
-    let m = this.forestMats.get(role);
-    if (!m) {
-      m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.92, vertexColors: true, flatShading: true });
-      this.forestMats.set(role, m);
-    }
-    return m;
-  }
-
   /** Woods and boulders, instanced per model part and per sector so the camera can cull them. */
-  private forest(land: Shape, p: CityPlan, imps: Impostors | null) {
+  private forest(land: Shape, p: CityPlan, imps: Impostors) {
     const r = rng(0xf0e57);
     /** s scales x / z, sy height: distant clumps are wide so the canopy closes. */
     type Inst = { x: number; y: number; z: number; s: number; sy: number; ry: number; color: number };
@@ -272,8 +260,6 @@ export class Land {
     const v = new THREE.Vector3();
     const sc = new THREE.Vector3();
     const col = new THREE.Color();
-    // The realistic woods (trees model) draw the kit's forest pieces when loaded.
-    const real = hasReal("trees");
     const white = new THREE.Color(0xffffff);
     const place = (mesh: THREE.InstancedMesh, list: Inst[], color: (t: Inst) => THREE.Color) => {
       list.forEach((t, i) => {
@@ -286,12 +272,11 @@ export class Land {
       mesh.receiveShadow = true;
       return mesh;
     };
-    // Realistic leaves are textured: the kit's greens only tint them, lightened.
+    // Leaves are textured: the palette greens only tint them, lightened.
     const tint = (t: Inst) => col.setHex(t.color).lerp(white, 0.45);
     for (const [key, list] of buckets) {
       const model = key.split(":")[0];
-      const realistic = real && model.startsWith("forest_");
-      if (realistic && imps) {
+      if (model.startsWith("forest_")) {
         // trees: far trees are impostors (impostor.ts), one InstancedMesh a
         // model a sector that hides the trees within IMPOSTOR_NEAR of the
         // camera; those are drawn real, from tiles small enough that only
@@ -325,7 +310,7 @@ export class Land {
         continue;
       }
       if (model.startsWith("rock_")) {
-        // Boulders of their own (rocks()), not the kit's low-poly ones.
+        // Boulders of their own (rocks()).
         // Full detail round the town, a light one (about 500 triangles) beyond.
         const [hi, lo] = this.rocks()[model === "rock_a" ? 0 : 1];
         const tint = (t: Inst) => col.setHex(ROCK_TINTS[Math.floor(Math.abs(t.ry * 1000)) % ROCK_TINTS.length]);
@@ -335,24 +320,13 @@ export class Land {
         if (far.length) this.group.add(place(new THREE.InstancedMesh(lo, this.rockMat!, far.length), far, tint));
         continue;
       }
-      const parts = realistic ? realPiece("trees", model) : piece(model).parts;
-      for (const { role, geo } of parts) {
-        const leafy = role === "woods" || role === "firs";
-        const material = realistic ? (realMat("trees", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "forest") as THREE.MeshStandardMaterial) : this.mat(role === "leaf" ? "leaf" : role);
-        this.group.add(
-          place(new THREE.InstancedMesh(geo, material, list.length), list, (t) =>
-            realistic ? (leafy ? tint(t) : white) : col.setHex(role === "leaf" ? t.color : role === "bark" ? 0x5a4030 : 0x8a8478),
-          ),
-        );
-      }
     }
   }
 
   /**
-   * Two boulders (rock_a, rock_b at the kit's sizes, about 1 m): a dense
-   * sphere pushed about by noise and cut by a few cleavage planes, smooth
-   * shaded, darker in its hollows, with stone on it when the library has
-   * loaded (triplanar, as boulders have no UVs).
+   * Two boulders (rock_a, rock_b, about 1 m): a dense sphere pushed about
+   * by noise and cut by a few cleavage planes, smooth shaded, darker in its
+   * hollows, with stone on it (triplanar, as boulders have no UVs).
    */
   private rocks(): [THREE.BufferGeometry, THREE.BufferGeometry][] {
     if (this.rockGeos.length) return this.rockGeos;
@@ -361,7 +335,7 @@ export class Land {
       [rock(19, [0.9, 1.1, 1.3], 8), rock(19, [0.9, 1.1, 1.3], 4)],
     ];
     const m = (this.rockMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.92 }));
-    if (hasReal("trees")) {
+    {
       const stone = tex("stone_col");
       m.onBeforeCompile = (sh) => {
         sh.uniforms.tStone = { value: stone };
@@ -399,7 +373,7 @@ const ROCK_TINTS = [0x9a948a, 0x8a8478, 0xa49c90, 0x7c786e, 0x948c80];
 const noise3 = (x: number, y: number, z: number) => (noise(x, y) + noise(y + 31.7, z - 7.3) + noise(z + 57.1, x + 13.9)) / 3;
 
 /**
- * A boulder with radii `size` (x, height, z) like the kit's, base at y = 0: an icosphere
+ * A boulder with radii `size` (x, height, z) base at y = 0: an icosphere
  * (`detail` 8 is about 1,600 triangles) pushed out by noise, flattened by a few cleavage planes and
  * sunk at the bottom; vertex colours darken its hollows and cracks.
  */

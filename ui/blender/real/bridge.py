@@ -1,7 +1,6 @@
 # The river bridge for the realistic city: a riveted steel Pratt through
-# truss carrying the road out of town, replacing the kit's truss. Same
-# footprint as the kit's: 44 m along x, 11 m wide, the road deck at the
-# origin's height, stone abutments down into the banks.
+# truss carrying the road out of town: 44 m along x, 11 m wide, the road
+# deck at the origin's height, stone abutments down into the banks.
 #
 # Two trusses (built-up chords, I-section verticals, flat-bar diagonals,
 # gusset plates at the joints) stand on the deck's edges; portal frames

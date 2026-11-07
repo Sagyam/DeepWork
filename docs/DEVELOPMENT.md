@@ -45,7 +45,6 @@ shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight. In the con
 ### Models
 
 ```sh
-bun run kit                  # low-poly kit -> public/city-kit.glb (committed)
 bun run models               # every realistic model -> public/models/ (git-ignored, minutes)
 bun run models c1 --no-tex   # one model, skip the shared texture library
 bun run textures             # redo BC7 compression only (needs basisu)

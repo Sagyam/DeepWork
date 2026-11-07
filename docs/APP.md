@@ -35,9 +35,8 @@ A renderer failure only loses the picture: the HUD keeps working.
 | File | Role |
 |---|---|
 | `plan.ts` | The `World` as places: lots, blocks, parks. `PUBLIC` and `NEED_LOOKS` pick models for public buildings. Pure, tested |
-| `models.ts` | Builds a building from kit or realistic pieces; construction sites, damage, ruins (`shell()`) |
-| `kit.ts` | Loads the low-poly kit (`public/city-kit.glb`, from `blender/city_kit.py`), the fallback for anything missing |
-| `real.ts` | Loads realistic models; `DEFS` (size, set-back, kit style taken over), `PROPS`, materials and shaders |
+| `models.ts` | Builds buildings from model pieces, their yards, construction sites, damage, ruins (`shell()`), parks |
+| `real.ts` | Loads the models, all or none; `DEFS` (size, set-back, the plan style drawn), `PROPS`, materials and shaders |
 | `scene.ts` | Sky, sun by local time, shadows, bloom, camera; carries the performance work below |
 | `terrain.ts`, `land.ts` | Hills, river, woods (instanced, with impostors from `impostor.ts`) |
 | `traffic.ts` | Cars and pedestrians |
@@ -47,8 +46,10 @@ A renderer failure only loses the picture: the HUD keeps working.
 
 Each model is a Python module in `ui/blender/real/` on the shared `lib.py`
 (textures, geometry helpers, AO bake, export). `bun run models` writes the
-git-ignored `ui/public/models/`. A model replaces a kit style; models of
-the same kind and style are siblings and each building picks one by seed.
+git-ignored `ui/public/models/`. They are all the city draws: every style
+in `STYLES` needs a model (`plan.test.ts` checks), and a missing one stops
+the city with an error. Models of the same kind and style are siblings and
+each building picks one by seed.
 
 **Rules for every model**, so it stays cheap to draw:
 
@@ -101,14 +102,18 @@ are blueprints and their prices.
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
 pieces, people). Water in the Hamlet and Town is the civic water tower.
+Plan parks and the square are laid out in code (`park()` and `utility()` in
+`models.ts`) from these props on the shared ground textures (pave, ashlar,
+gravel, grass).
 
 ### Model packs
 
 Models ship as their own GitHub release, `models-<id>` (a prerelease, never
 "latest"). `ui/src-tauri/models.json` lists each file's size and SHA-256
 and is compiled into the app, which downloads into
-`~/.local/share/deepwork/assets/<id>/`, refuses any mismatch, and draws the
-kit until the pack is whole. The download is done by the app as the user,
+`~/.local/share/deepwork/assets/<id>/`, refuses any mismatch, and shows
+the HUD and the download, with no city, until the pack is whole. A GPU
+without BC7 gets no city. The download is done by the app as the user,
 never by the daemon. `<id>` hashes the file list, so unchanged models
 download nothing. The pack's glbs are gzipped (`pack.ts`); the loader
 inflates them, and reads a plain local build as it is. Publishing steps: [DEVELOPMENT.md](DEVELOPMENT.md#model-packs).
@@ -167,7 +172,7 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 
 - **3D city, generated assets.** A flat 2D skyline was tried and rejected:
   "nothing to be proud of, nothing to lose". Visuals must make loss hurt.
-- **Realistic over low-poly**; the kit stays only as a fallback.
+- **Realistic models only**, with no low-poly fallback: until the pack is there, no city.
 - American and European styles mixed; real-world sizes per model.
 - **Daylight from a warm sun and a sky hemisphere**, not a flat ambient: an
   ambient lights every face alike and flattened the models (`light()` in

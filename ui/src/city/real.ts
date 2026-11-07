@@ -1,9 +1,8 @@
-// City theme: the realistic models (ui/blender/real, docs/APP.md), which
-// replace the low-poly kit's styles one model at a time. `bun run models`
-// writes public/models/: <id>.glb (pieces as nodes, materials named by
-// role), <id>_ao.png (AO baked on the lightmap UVs) and tex/, the shared
-// texture library. Any model that is missing falls back to the kit. Release
-// builds download them instead (models.ts), so the base is set at startup.
+// City theme: the models (ui/blender/real, docs/APP.md), the only thing the
+// city is drawn with. `bun run models` writes public/models/: <id>.glb
+// (pieces as nodes, materials named by role), <id>_ao.png (AO baked on the
+// lightmap UVs) and tex/, the shared texture library. Release builds
+// download them instead (models.ts), so the base is set at startup.
 //
 // This module loads the models and owns their materials: PBR from the
 // library with baked AO and world-space weathering, and window glass that
@@ -41,7 +40,7 @@ const loaded = new Map<string, Loaded>();
 /** How a model sits in the city: its size, how it stacks, where its chimney smokes. */
 export interface RealDef {
   id: string;
-  /** The kit kind and style it takes over (docs/APP.md). */
+  /** The plan's kind and style it draws (STYLES, DESIGNS in plan.ts). */
   kind: Kind;
   style: string;
   /** Footprint (x, z) in metres, eaves, porch and steps included; front faces +z. */
@@ -561,7 +560,7 @@ export const DEFS: Record<string, RealDef> = {
     floors: (plan) => Math.max(12, plan),
     stack(floors, roof, _r, total) {
       // Three tiers, stepping back at about half and four fifths of the
-      // finished height (as the kit's deco tower does), a ledge piece where
+      // finished height, a ledge piece where
       // each tier ends; the crown on top.
       const n = Math.max(total, floors);
       const e1 = Math.round(n * 0.5);
@@ -584,11 +583,7 @@ export const DEFS: Record<string, RealDef> = {
   },
 };
 
-/**
- * Models that are not buildings: the props the city is dressed with
- * (vehicles, ...), each one glb of named pieces. Missing ones fall back to
- * the kit's props.
- */
+/** Models that are not buildings: the props the city is dressed with (vehicles, ...), each one glb of named pieces. */
 export const PROPS = ["cars", "trees", "street", "bridge", "civic"];
 
 // ---- compressed textures ------------------------------------------------------------
@@ -651,11 +646,15 @@ async function loadGlb(url: string): Promise<GLTF> {
 /** A texture to load: BC7 if it is listed (and this GPU has it), else the PNG. */
 const isBc7 = (url: string) => packed.has(url.slice(BASE.length, -4));
 
-/** Loads every model there is; missing ones are left to the kit. Never throws. `renderer` lets textures load compressed. */
-export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?: THREE.WebGLRenderer): Promise<void> {
+/**
+ * Loads the models, all of them or throws: the city draws nothing else.
+ * `lenient` (the viewers) skips missing ones instead. `renderer` lets textures load compressed.
+ */
+export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?: THREE.WebGLRenderer, lenient = false): Promise<void> {
   await initBc7(renderer);
-  // Without BC7 the pack has nothing to draw with: the kit it is.
-  if (!hasPng && packed.size === 0) return;
+  // The pack ships BC7 textures only.
+  if (!hasPng && packed.size === 0) throw new Error("the city's textures need BC7 compression, which this GPU lacks");
+  const missing: string[] = [];
   const png = new THREE.TextureLoader();
   const tex = {
     loadAsync: async (url: string): Promise<THREE.Texture> => {
@@ -697,11 +696,13 @@ export async function loadReal(ids = [...Object.keys(DEFS), ...PROPS], renderer?
         }
         if (id === "trees") for (const parts of pieces.values()) bendLeaves(parts);
         loaded.set(id, { pieces, ao });
-      } catch {
-        // Not built (bun run models) or not downloaded yet: the kit draws this style.
+      } catch (e) {
+        console.warn("model", id, e);
+        missing.push(id);
       }
     }),
   );
+  if (missing.length && !lenient) throw new Error(`models missing: ${missing.join(", ")}`);
 }
 
 export const hasReal = (id: string) => loaded.has(id);
@@ -1393,7 +1394,7 @@ export function waterMat(o: { amp?: number; scale?: number; ring?: [number, numb
 /**
  * A fountain's spray, drawn by the GPU alone (no per-frame work): the jet
  * from the top falls back into the upper basin, and eight streams arc from
- * the upper basin's rim into the lower one, as the kit fountain shows them.
+ * the upper basin's rim into the lower one.
  * `x, y, z` is the fountain's foot, `s` its scale.
  */
 /** The spray's brightness, dimmed at night by setSignals. */

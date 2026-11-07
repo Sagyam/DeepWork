@@ -1,14 +1,12 @@
 // City theme: street life. Cars, taxis, vans and buses loop around each
 // block in the right-hand lane; pedestrians walk the pavements. Both grow
 // with the tier, so a metropolis is busy and a hamlet sleepy. Every part of
-// a kit model is one InstancedMesh, moved every frame; headlights, tail
+// a model is one InstancedMesh, moved every frame; headlights, tail
 // lights and signs follow the night.
 import * as THREE from "three";
-import { piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, PAVEMENT, ROAD, blockLoop, rng, type CityPlan, type Loop } from "./plan";
-import { CAR_PAINTS, hasReal, realMat, realPiece } from "./real";
+import { CAR_PAINTS, realMat, realPiece } from "./real";
 
-const CAR_PAINT = [0xb8252a, 0x1f4e8c, 0xe8e6e0, 0x2a2c30, 0x8a8f96, 0x2f6b4a, 0xd9a03a, 0x6a2a4a, 0x3a7fb8, 0xc8c2b4];
 const BUS_PAINT = [0xc0392b, 0x2e6fb5, 0x2a9a5a];
 const SHIRTS = [0xc0392b, 0x2e6fb5, 0x2a9a5a, 0xe8b020, 0xf0ece4, 0x6a4a8a, 0xe07a30, 0x30343a, 0x8ab0d0, 0xd06a8a];
 const PANTS = [0x2a3040, 0x3a3a3e, 0x4a3a2a, 0x1e2a4a, 0x6a6458, 0x202020];
@@ -18,23 +16,10 @@ const HAIR = [0x1a1410, 0x3a2414, 0x6a4424, 0xb08a50, 0x8a8a88];
 interface Look {
   color: number;
   rough?: number;
-  metal?: number;
-  emissive?: number;
-  night?: number;
-  /** Emissive by day too (tail lights, signs), as a share of the night level. */
-  day?: number;
 }
 
+/** The figure's roles; colours come per person from the palettes above. */
 const LOOKS: Record<string, Look> = {
-  body: { color: 0xffffff, rough: 0.35, metal: 0.35 },
-  carglass: { color: 0x1a2028, rough: 0.1, metal: 0.6 },
-  dark: { color: 0x222326, rough: 0.8 },
-  tyre: { color: 0x151515, rough: 0.9 },
-  chrome: { color: 0xc8ccd0, rough: 0.25, metal: 0.9 },
-  headlight: { color: 0xfff6e0, emissive: 0xfff2d0, night: 3 },
-  taillight: { color: 0x801010, emissive: 0xff2010, night: 2.2, day: 0.15 },
-  taxisign: { color: 0xffd040, emissive: 0xffd040, night: 1.6, day: 0.2 },
-  led: { color: 0x402000, emissive: 0xffa020, night: 1.8, day: 0.5 },
   skin: { color: 0xffffff, rough: 0.8 },
   shirt: { color: 0xffffff, rough: 0.9 },
   pants: { color: 0xffffff, rough: 0.9 },
@@ -94,11 +79,8 @@ interface Mover {
   bob: number;
 }
 
-/** The kit model standing in for each realistic vehicle when those are not loaded. */
-const KIT: Record<string, string> = {
-  hatch: "car_hatch", sedan: "car_sedan", estate: "car_sedan", suv: "car_sedan", coupe: "car_hatch",
-  taxi: "car_taxi", pickup: "car_van", van: "car_van", truck: "car_van", bus: "bus",
-};
+/** The vehicles in traffic (pieces of cars.glb). */
+const VEHICLES = ["hatch", "sedan", "estate", "suv", "coupe", "taxi", "pickup", "van", "truck", "bus"];
 
 /** Vehicles per block and people per block, by tier. */
 const CARS = [1, 2, 3, 4];
@@ -116,12 +98,7 @@ export class Traffic {
     let m = this.mats.get(role);
     if (!m) {
       const l = LOOKS[role] ?? { color: 0xff00ff };
-      m = new THREE.MeshStandardMaterial({ color: l.color, roughness: l.rough ?? 0.6, metalness: l.metal ?? 0, vertexColors: true });
-      if (l.emissive !== undefined) {
-        m.emissive.setHex(l.emissive);
-        m.userData.night = l.night;
-        m.userData.day = l.day ?? 0;
-      }
+      m = new THREE.MeshStandardMaterial({ color: l.color, roughness: l.rough ?? 0.6, vertexColors: true });
       this.mats.set(role, m);
     }
     return m;
@@ -157,21 +134,19 @@ export class Traffic {
     });
     const count = (m: string) => plans.filter((v) => v.model === m).length;
     const fleets = new Map<string, Fleet>();
-    const real = hasReal("cars");
     this.lamps.clear();
     const realMats = (role: string) => {
       const m = realMat("cars", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "traffic") as THREE.MeshStandardMaterial;
       if (m.userData.night) this.lamps.add(m);
       return m;
     };
-    for (const model of Object.keys(KIT)) {
+    for (const model of VEHICLES) {
       const n = count(model);
       if (!n) continue;
-      const colours = model === "taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : real ? CAR_PAINTS : CAR_PAINT;
-      const parts = real ? realPiece("cars", model) : piece(KIT[model]).parts;
+      const colours = model === "taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : CAR_PAINTS;
+      const parts = realPiece("cars", model);
       const withBlob = [...parts, { role: "blob", geo: blobGeo(parts) }];
-      if (real) fleets.set(model, new Fleet(withBlob, n, { carpaint: colours }, (role) => (role === "blob" ? this.blob : realMats(role)), r));
-      else fleets.set(model, new Fleet(withBlob, n, { body: colours }, (role) => (role === "blob" ? this.blob : this.mat(role)), r));
+      fleets.set(model, new Fleet(withBlob, n, { carpaint: colours }, (role) => (role === "blob" ? this.blob : realMats(role)), r));
     }
     const slots = new Map<string, number>();
     // The lane next to the block: a quarter of the way across the carriageway.
@@ -188,16 +163,13 @@ export class Traffic {
     }
 
     const walkers = p.blocks.length * PEOPLE[tier];
-    // The realistic figure (civic.py) when loaded; the same roles, so the
-    // same palettes. These materials read the kit's baked AO from vertex
-    // colours, so the figure gets plain white ones.
-    const figure = hasReal("civic")
-      ? realPiece("civic", "person").map(({ role, geo }) => {
-          const g = geo.clone();
-          g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3).fill(1), 3));
-          return { role, geo: g };
-        })
-      : piece("person").parts;
+    // The figure (civic.py), tinted per person by role. Its materials take
+    // vertex colours, so the figure gets plain white ones.
+    const figure = realPiece("civic", "person").map(({ role, geo }) => {
+      const g = geo.clone();
+      g.setAttribute("color", new THREE.Float32BufferAttribute(new Float32Array(g.getAttribute("position").count * 3).fill(1), 3));
+      return { role, geo: g };
+    });
     const people = new Fleet(figure, walkers, { shirt: SHIRTS, pants: PANTS, skin: SKIN, hair: HAIR }, this.mat, r);
     const walks = p.blocks.flatMap((b) => [
       blockLoop(b.x, b.z, BLOCK_X / 2 + 0.5, BLOCK_Z / 2 + 0.5, 0.8),
@@ -238,7 +210,7 @@ export class Traffic {
   /** 0 by day, 1 at night. */
   setNight(night: number) {
     this.blob.opacity = 0.8 - 0.45 * night;
-    for (const m of [...this.mats.values(), ...this.lamps]) {
+    for (const m of this.lamps) {
       if (m.userData.night) m.emissiveIntensity = m.userData.night * Math.max(night, m.userData.day ?? 0);
     }
   }
