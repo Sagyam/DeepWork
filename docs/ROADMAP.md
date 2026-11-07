@@ -73,12 +73,83 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
       user is creating the accounts.
 
+## Fixes
+
+- [ ] **Old icon** in notifications and the window/tray: `ui/scripts/icon.mjs`
+      still draws the first night skyline. Render the PNGs from
+      `assets/logo.svg` instead, and pass `--icon=deepwork` in the agent's
+      `notify-send`.
+- [ ] **Stones and bushes on the road**: the town-grass scatter in
+      `land.ts` skips only a block's pitch less 1 m, so road edges and the
+      outer streets get tufts and rocks. Test against the real road strips.
+- [ ] **Traffic loops forever**: every car circles one block. See
+      [Streets](#streets) for trips and traffic rules.
+
 ## Ideas, not designed
 
 Check each against the rule in [GAME.md](GAME.md#the-one-rule).
 
-- **Metropolis and beyond**: open-ended needs in expansion districts once
-  the plan runs out.
+### Streets
+
+Names, road classes and real traffic all need the same thing first: a
+street graph in the plan (step 3 of Next), with a name and a class on each
+street, and the street each lot fronts.
+
+- **Street and neighbourhood names**: each street of the plan gets its own
+  name (not one per district and level, as `street()` does now), and each
+  district instance a neighbourhood name ("Millbrook", "the Canal
+  Quarter"). Labels on the map when zoomed out; signs at corners.
+- **Naming as a milestone**: when a street's last lot is built, the mayor
+  may rename it. Paid for by the focus that finished it.
+- **Road classes**: lane, local street, collector with a tree median,
+  avenue, the highway. Streets start as gravel lanes; every upgrade costs
+  coins (see [Coin sinks](#coin-sinks)).
+- **Junctions and structures**: signals and crossings, stop signs, a
+  roundabout at district centres, a flyover where the highway meets
+  downtown, an underpass under the river road or the rail line.
+- **Traffic with trips**: cars leave a lot, route over the street graph to
+  another (homes to offices in the morning, shops at midday, home at
+  dusk, by local time like the sun), park and vanish. Buses on fixed lines
+  with stops. Stop at red, yield at roundabouts, keep a gap. Volume
+  follows what is built. Routes precomputed; budget the CPU on the iGPU.
+
+### Names
+
+- **A name pile per class**: one file per kind (`houses`, `apartments`,
+  `offices`, `shops`, `workshops`, `towers`) loaded with `include_str!`,
+  instead of `SURNAMES` and `TRADES` shared by all. Houses mix family and
+  house names ("Willowbank"); apartments "Ardmore Court"; offices
+  "Meridian House".
+- **Names that match the model**: shops name by blueprint, so the diner is
+  a diner and the café a café, and the model's sign shows the name. This
+  means naming at fold time, when the design is known, not in `lots()`.
+  No two buildings share a name. Buildings that already exist keep the
+  names they have.
+
+### Coin sinks
+
+Coins pile up once the blueprints are bought. Sinks may be tolls, and
+may take coins, when that makes the game more interesting.
+
+- **Land**: every plot is bought with coins, the plan's included; a
+  `land_bought` ledger event. A site can only start on bought land; until
+  then focused hours wait as crew hours, so none are lost. Flat or rising
+  price: tune once the game is complete.
+- **Land beyond the plan** (hills, the waterfront, across the river) holds
+  the open-ended needs of **Metropolis and beyond**; buying a parcel there
+  picks its zoning, which the plan never lets the mayor do.
+- **Congestion**: the city tracks traffic on each street as it grows;
+  residents complain about the jammed ones, and the complaint is a need
+  only a paid upgrade meets (widen it, a signal, a roundabout, a flyover).
+- **Infrastructure and decorations**: every road and utility upgrade costs
+  coins, as do street trees, lights, a fountain, a statue.
+- **Quick repair**: pay coins to repair a ruin now instead of waiting for
+  sessions to repair it.
+- **Staking**: bet coins on finishing a session; double back or lose it.
+  Keep the expected value at or below zero, or it prints more coins.
+
+### Rewards
+
 - **Diamonds and loot boxes**: a rare currency that repairs or speeds up a
   build (capped, and memories keep the real focused hours). Boxes only from
   daily streak goals, never bought; seeded by the daemon so nobody can
@@ -87,10 +158,10 @@ Check each against the rule in [GAME.md](GAME.md#the-one-rule).
 - **Seasons and quests**: a monthly track advanced by focused hours;
   quests that train deep work ("one 90-minute session"). Seasonal items
   return in later years so missing one isn't a reason to quit.
-- **Staking**: bet coins on finishing a session; double back or lose it.
 - **Endowed progress**: new sites start ~10% built.
-- **Collection sets**: "Main Street: 4 of 5 shops" unlocks a plaza or lights.
-- **Residents**: thank-you letters; families move out of long-unrepaired
-  homes and come back when fixed.
-- **Repairs as gameplay**: repair needs that cost build hours or diamonds.
+- **Collection sets**: "Main Street: 4 of 5 shops" unlocks a plaza or
+  lights. A finished street is a natural set.
+- **Residents**: named families in the houses (from the house's name);
+  thank-you letters that mention their street; families move out of
+  long-unrepaired homes and come back when fixed.
 - **Sound** for completion, collapse and level-up; **weather**.
