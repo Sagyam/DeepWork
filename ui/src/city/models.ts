@@ -892,6 +892,11 @@ const tintOf = (i: number): Paint => ({ wall: i, accent: 0, roof: 0, signs: 0 })
  */
 const LAWN_TINT = 0xbcae88;
 
+/** Loose gravel or sand (paths, a pond's edge, a running track), tinted, from the shared texture library. */
+function gravelMat(color: number, tile = 2.4): THREE.Material {
+  return groundMat("gravel", tile, { roughness: 1, normal: 0.7, color });
+}
+
 /** A lawn: mown grass from the realistic library when loaded, else flat green. */
 export function lawn(): THREE.Material {
   return hasReal("trees") ? groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8, color: LAWN_TINT }) : mat(0x6f9a4f, { roughness: 1 });
@@ -1165,8 +1170,9 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
     info.beacons.push(new THREE.Vector3(0, top + 6.3, cz));
   } else {
     const park = s.style === "park";
-    p.box(park ? lawn() : mat(0xb9b2a6, { roughness: 0.9 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
-    if (park) p.box(mat(0xc8bfae, { roughness: 1 }), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
+    const real = hasReal("street");
+    p.box(park ? lawn() : real ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 }) : mat(0xb9b2a6, { roughness: 0.9 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
+    if (park) p.box(real ? gravelMat(0xd8ccb0) : mat(0xc8bfae, { roughness: 1 }), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
     if (hasReal("civic")) {
       const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
       civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(0.85, 0.85, 0.85), swap: water });
@@ -1543,14 +1549,15 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
   const W = BLOCK_X;
   const D = BLOCK_Z;
   const lawn_ = hasReal("trees") ? lawn() : mat(0x6a9a48, { roughness: 1 });
-  const paving = hasReal("street") ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 }) : mat(0xc4bcae, { roughness: 0.9 });
+  const real = hasReal("street");
+  const paving = real ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 }) : mat(0xc4bcae, { roughness: 0.9 });
   const flat = (m: THREE.Material, g: THREE.BufferGeometry, x: number, z: number, y = KERB + 0.02) => p.add(m, g, X + x, y, Z + z, -Math.PI / 2);
   const bench = (x: number, z: number, ry: number) => prop(p, "bench", X + x, Z + z, ry);
   switch (k.kind) {
     case "plaza": {
       p.box(paving, W, KERB, D, X, 0, Z);
-      flat(mat(0x9a8e7e, { roughness: 0.9 }), new THREE.CircleGeometry(10, 32), 0, 0);
-      flat(mat(0xd8d0c0, { roughness: 0.9 }), new THREE.RingGeometry(10, 10.8, 32), 0, 0, KERB + 0.03);
+      flat(real ? groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 }) : mat(0x9a8e7e, { roughness: 0.9 }), new THREE.CircleGeometry(10, 48), 0, 0);
+      flat(real ? groundMat("ashlar", 2.4, { roughness: 0.8, color: 0xf0ebe0 }) : mat(0xd8d0c0, { roughness: 0.9 }), new THREE.RingGeometry(10, 10.8, 48), 0, 0, KERB + 0.03);
       prop(p, "fountain", X, Z, 0, 1.45);
       if (hasReal("civic")) p.extra(fountainSpray(X, KERB, Z, 1.45));
       for (let i = 0; i < 8; i++) {
@@ -1569,7 +1576,7 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
     case "park": {
       p.box(lawn_, W, KERB, D, X, 0, Z);
       // A loop path round the lawn, with a cut through the middle.
-      const path = mat(0xc9b896, { roughness: 1 });
+      const path = real ? gravelMat(0xe0d0a8) : mat(0xc9b896, { roughness: 1 });
       const ax = W / 2 - 6;
       const az = D / 2 - 4.5;
       const n = 36;
@@ -1584,7 +1591,7 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       // A pond with a sandy edge, and the bandstand across the lawn.
       const pond = { x: -12, z: 1, rx: 10, rz: 5.5 };
       const sand = new THREE.CircleGeometry(1, 28).scale(pond.rx + 0.9, pond.rz + 0.9, 1);
-      flat(mat(0xb8a87c, { roughness: 1 }), sand, pond.x, pond.z, KERB + 0.025);
+      flat(real ? gravelMat(0xd8c490) : mat(0xb8a87c, { roughness: 1 }), sand, pond.x, pond.z, KERB + 0.025);
       flat(waterMat({ amp: 0.9, scale: 1.7, color: 0x1d3c3a }), new THREE.CircleGeometry(1, 28).scale(pond.rx, pond.rz, 1), pond.x, pond.z, KERB + 0.04);
       prop(p, "bandstand", X + 16, Z - 1);
       // Trees wherever the paths, the pond and the bandstand leave room.
@@ -1604,9 +1611,11 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       p.box(lawn_, W, KERB, D, X, 0, Z);
       const pz = -3;
       const [pw, pd] = [46, 22];
-      p.box(mat(0xa85a40, { roughness: 1 }), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
+      // A rubber-crumb surround and a mown pitch: light and dark bands of one turf.
+      p.box(real ? gravelMat(0xff8a68, 1.6) : mat(0xa85a40, { roughness: 1 }), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
       for (let i = 0; i < 10; i++) {
-        p.box(mat(i % 2 ? 0x5e9a3e : 0x6aa646, { roughness: 1 }), pw / 10, KERB + 0.04, pd, X - pw / 2 + (i + 0.5) * (pw / 10), 0, Z + pz);
+        const turf = real ? groundMat("grass", 1.8, { roughness: 0.95, normal: 0.6, color: i % 2 ? 0xa8c888 : 0xc4dca0 }) : mat(i % 2 ? 0x5e9a3e : 0x6aa646, { roughness: 1 });
+        p.box(turf, pw / 10, KERB + 0.04, pd, X - pw / 2 + (i + 0.5) * (pw / 10), 0, Z + pz);
       }
       const white = mat(0xf2f2ea, { roughness: 0.7 });
       const ly = KERB + 0.045;
@@ -1621,16 +1630,22 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
         prop(p, "goal", X + (sx * pw) / 2, Z + pz, -sx * Math.PI / 2);
       }
       line(0.15, pd, 0, 0);
-      p.add(white, new THREE.RingGeometry(4.2, 4.35, 32), X, ly + 0.02, Z + pz, -Math.PI / 2);
+      p.add(white, new THREE.RingGeometry(4.2, 4.35, 64), X, ly + 0.02, Z + pz, -Math.PI / 2);
       for (const x of [-9, 9]) prop(p, "bleachers", X + x, Z + 10.2, Math.PI);
       // Floodlights at the corners.
       for (const sx of [-1, 1]) {
         for (const sz of [-1, 1]) {
           const x = X + sx * (pw / 2 + 4);
           const z = Z + pz + sz * (pd / 2 + 2.2);
-          p.cyl(pole, 0.15, 0.25, 13, x, KERB, z, 6);
-          p.box(pole, 2.2, 0.2, 0.3, x, KERB + 13, z);
-          p.box(bulb, 2.0, 0.8, 0.25, x - sx * 0.1, KERB + 13.2, z - sz * 0.2, 0, -sz * 0.5);
+          // A tapered mast with a footing, and a frame of six lamps tipped at the pitch.
+          p.cyl(pole, 0.45, 0.5, 0.4, x, KERB, z, 16);
+          p.cyl(pole, 0.13, 0.24, 13, x, KERB + 0.4, z, 16);
+          p.box(pole, 2.4, 0.12, 0.12, x, KERB + 13.1, z);
+          p.box(pole, 2.4, 0.12, 0.12, x, KERB + 14.1, z);
+          for (const lx of [-0.8, 0, 0.8]) for (const ly of [13.35, 14.35]) {
+            p.box(pole, 0.62, 0.62, 0.3, x + lx, KERB + ly - 0.31, z + sz * 0.05, 0, -0.5 * sz);
+            p.box(bulb, 0.5, 0.5, 0.06, x + lx, KERB + ly - 0.25, z - sz * 0.13, 0, -0.5 * sz);
+          }
         }
       }
       for (let i = 0; i < 8; i++) tree(p, X + (r() < 0.5 ? -1 : 1) * (28 + r() * 3), Z + (r() - 0.5) * (D - 4), 0.7 + r() * 0.3, k.seed + i, KERB);

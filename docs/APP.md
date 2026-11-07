@@ -101,6 +101,9 @@ are blueprints and their prices.
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
 pieces, people). Water in the Hamlet and Town is the civic water tower.
+Plan parks and the square are laid out in code (`park()` and `utility()` in
+`models.ts`) from these props on the shared ground textures (pave, ashlar,
+gravel, grass).
 
 ### Model packs
 
