@@ -1,23 +1,15 @@
-// City theme, step 2: 3D models for the plan's specs. Buildings and trees
-// are stacked from the Blender kit (kit.ts) with materials picked per
-// building and damage, or from a realistic model (real.ts) for the styles
-// one replaces; lots, wreckage, rubble and the construction site are built
-// here from boxes. Geometry is merged per material to keep draw calls low.
+// City theme, step 2: 3D models for the plan's specs. Buildings, trees,
+// cars and props are pieces of the realistic models (real.ts), stacked and
+// placed per building and damage; lots, wreckage and the construction site
+// are laid out here. Geometry is merged per material to keep draw calls low.
 import * as THREE from "three";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { NOMINAL, piece } from "./kit";
 import { BLOCK_X, BLOCK_Z, LOT, lot, rng, type ParkSpec, type SiteSpec, type Spec } from "./plan";
-import { CAR_PAINTS, DEFS, fountainSpray, groundMat, hasReal, realMat, realPiece, type Paint, type RealDef, waterMat } from "./real";
-import { ATLAS, panes, type Pane } from "./textures";
+import { CAR_PAINTS, DEFS, fountainSpray, groundMat, realMat, realPiece, type Paint, type RealDef, waterMat } from "./real";
 
 export const WALLS = [0xe8d9c0, 0xd9c2a5, 0xc9d3d8, 0xe6c9b5, 0xb9c4b0, 0xd8d0e0, 0xcfb59b, 0xe9e4da];
 export const GLASS = [0x7f9bb3, 0x6d8a99, 0x8fa3b8, 0x5d7488, 0x9ab0a8, 0x7a8aa8, 0x8a98b0, 0x6f8c9c];
 export const ACCENTS = [0xb5483a, 0x3a6fb5, 0x3a9a6a, 0xc9902a, 0x7a4ab5, 0x2f3a4a];
-/** Cottage roofs, by accent: terracotta, slate, moss, clay, plum, charcoal. */
-const ROOFS = [0xa8503c, 0x56606e, 0x5e6e4a, 0xb8764a, 0x6e4a5a, 0x3e4044];
-const LEAVES = [0x4f7a3a, 0x5d8a42, 0x3f6a34, 0x6a8f3e, 0x48703f];
-const BLOSSOMS = [0xf2a5c0, 0xf7c6d6, 0xe88aa8, 0xf5e0ea];
-const BRICKS = [0x8a4e3c, 0x9a5a44, 0x7a4636, 0xa0664a, 0x6e3e30, 0x94604c];
 
 /** Things the scene animates on a model. Positions are model-local. */
 export interface ModelInfo {
@@ -33,10 +25,8 @@ export interface ModelInfo {
   jibBeacons?: THREE.Vector3[];
 }
 
-const UP = new THREE.Vector3(0, 1, 0);
 /** Lots, pavements and park lawns sit at kerb height. */
 export const KERB = 0.2;
-const CAR_PAINT = [0xa8acb0, 0x2a2e36, 0xa83a32, 0x2f5a8a, 0xbcb8b0, 0x5a6a4a, 0x8a6a3a, 0x3a3e44];
 
 const shared = new Map<string, THREE.MeshStandardMaterial>();
 /** The one material of every yard (see Parts' tint). */
@@ -72,12 +62,8 @@ export class Parts {
    */
   constructor(private tint?: THREE.Material) {}
 
-  /**
-   * `cells` moves window panes to another cell of the kit's atlas; `shift`
-   * adds to UV x, which for realistic glass gives its windows new ids (other
-   * rooms, curtains and lights).
-   */
-  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, cells?: [number, number], shift = 0) {
+  /** `shift` adds to UV x, which for glass gives its windows new ids (other rooms, curtains and lights). */
+  add(material: THREE.Material, g: THREE.BufferGeometry, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0, scale?: THREE.Vector3, shift = 0) {
     this.q.setFromEuler(this.e.set(rx, ry, rz));
     this.m.compose(new THREE.Vector3(x, y, z), this.q, scale ?? new THREE.Vector3(1, 1, 1));
     const geo = g.index ? g.toNonIndexed() : g.clone();
@@ -95,10 +81,6 @@ export class Parts {
       geo.setAttribute("color", new THREE.BufferAttribute(col, 3));
       geo.deleteAttribute("uv");
       material = this.tint;
-    }
-    if (cells) {
-      const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
-      for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) + cells[0] / ATLAS, uv.getY(i) + cells[1] / ATLAS);
     }
     if (shift) {
       const uv = geo.getAttribute("uv") as THREE.BufferAttribute;
@@ -135,295 +117,21 @@ export class Parts {
   }
 }
 
-function shade(color: number, damage: number): THREE.Color {
-  return new THREE.Color(color).multiplyScalar([1, 0.78, 0.5][Math.min(2, damage)]);
-}
-
-// ---- kit materials -----------------------------------------------------------
-
-interface RoleLook {
-  color: number;
-  rough?: number;
-  metal?: number;
-  emissive?: number;
-  night?: number;
-  double?: boolean;
-}
-
-/** Roles whose look does not depend on the building. */
-const ROLES: Record<string, RoleLook> = {
-  trim: { color: 0xe6dfd2, rough: 0.75 },
-  stone: { color: 0xa9a094, rough: 0.9 },
-  frame: { color: 0xf3f0ea, rough: 0.6 },
-  deck: { color: 0x505256, rough: 0.95 },
-  canvas: { color: 0xf2ede0, rough: 0.9, double: true },
-  board: { color: 0x1d2024, rough: 0.6 },
-  shopfront: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xffd9a0, night: 0.9 },
-  lobby: { color: 0x2a323c, rough: 0.2, metal: 0.4, emissive: 0xffe2b8, night: 0.5 },
-  crownlight: { color: 0x8a6a3a, rough: 0.3, metal: 0.3, emissive: 0xffc870, night: 1.6 },
-  door: { color: 0x4a2f20, rough: 0.6 },
-  metal: { color: 0x8c9298, rough: 0.4, metal: 0.6 },
-  dark: { color: 0x2e2c2a, rough: 0.9 },
-  gold: { color: 0xd9a441, rough: 0.3, metal: 0.85, emissive: 0xffb84a, night: 0.9 },
-  brick: { color: 0x8a4e3c, rough: 0.9 },
-  wood: { color: 0x6e4a32, rough: 0.85 },
-  bark: { color: 0x5a4030, rough: 1 },
-  paint: { color: 0xf0e8d0, rough: 0.7 },
-  railglass: { color: 0x5a7080, rough: 0.15, metal: 0.4 },
-  crane: { color: 0xe8b020, rough: 0.5, metal: 0.3 },
-  concrete: { color: 0x9a9890, rough: 0.95 },
-  grate: { color: 0x4a4c50, rough: 0.6, metal: 0.5 },
-  birch: { color: 0xe8e4dc, rough: 0.9 },
-  carglass: { color: 0x1a2028, rough: 0.1, metal: 0.6 },
-  steel: { color: 0x3e5a52, rough: 0.5, metal: 0.5 },
-  led: { color: 0x9ab0c8, rough: 0.3, metal: 0.2, emissive: 0xd8ecff, night: 2 },
-  water: { color: 0x4a86a0, rough: 0.08, metal: 0.3 },
-  tyre: { color: 0x1a1a1a, rough: 0.9 },
-  chrome: { color: 0xc8ccd0, rough: 0.3, metal: 0.8 },
-  headlight: { color: 0xf0ecd8, rough: 0.3 },
-  taillight: { color: 0x8a1810, rough: 0.4 },
-  taxisign: { color: 0xf2c12e, rough: 0.5 },
-};
-
-const kitShared = new Map<string, THREE.MeshStandardMaterial>();
-
-/** A kit material: lit by the baked occlusion in the vertex colours. */
-function kitMat(look: RoleLook, damage: number): THREE.MeshStandardMaterial {
-  const key = `${JSON.stringify(look)}:${damage}`;
-  let m = kitShared.get(key);
-  if (!m) {
-    m = new THREE.MeshStandardMaterial({
-      color: shade(look.color, damage),
-      roughness: look.rough ?? 0.8,
-      metalness: look.metal ?? 0,
-      vertexColors: true,
-      side: look.double ? THREE.DoubleSide : THREE.FrontSide,
-    });
-    // Burnt-out shops and lobbies stay dark.
-    if (look.emissive !== undefined && damage < 2) {
-      m.emissive.setHex(look.emissive);
-      m.emissiveIntensity = 0;
-      m.userData.night = look.night;
-    }
-    kitShared.set(key, m);
-  }
-  return m;
-}
-
-/** Window panes: one atlas cell each, lit at night, smashed when broken. */
-function paneMat(kind: Pane, color: number, damage: number): THREE.MeshStandardMaterial {
-  const key = `pane:${kind}:${color}:${damage}`;
-  let m = kitShared.get(key);
-  if (!m) {
-    const set = panes(kind);
-    const broken = damage >= 2;
-    const glass = kind === "glass";
-    m = new THREE.MeshStandardMaterial({
-      map: broken ? set.brokenMap : set.map,
-      emissiveMap: broken ? set.brokenEmissive : set.emissive,
-      emissive: 0xffffff,
-      emissiveIntensity: 0,
-      color: shade(color, damage),
-      roughness: glass ? 0.12 : 0.25,
-      metalness: glass ? 0.6 : 0.2,
-      envMapIntensity: glass ? 1.4 : 1,
-      vertexColors: true,
-    });
-    m.userData.night = damage === 1 ? 0.35 : 0.6;
-    kitShared.set(key, m);
-  }
-  return m;
-}
-
-type Look = (role: string) => THREE.MeshStandardMaterial;
-
-/** The plain material for a kit role (bridges, street furniture). */
-export const kitLook: Look = (role) => kitMat(ROLES[role] ?? ROLES.metal, 0);
-
-/** Materials for a building's roles; night-lit ones are collected in info. */
-function looks(s: Spec, info: ModelInfo): Look {
-  const office = s.kind === "office";
-  const wall = office ? new THREE.Color(GLASS[s.wall]).lerp(new THREE.Color(0xe0e0dc), 0.7).getHex() : WALLS[s.wall];
-  const byRole: Record<string, RoleLook> = {
-    wall: { color: wall, rough: 0.85 },
-    roof: { color: ROOFS[s.accent], rough: 0.8 },
-    accent: { color: ACCENTS[s.accent], rough: 0.7, double: true },
-    sign: { color: ACCENTS[s.accent], emissive: new THREE.Color(ACCENTS[s.accent]).lerp(new THREE.Color(0xffffff), 0.35).getHex(), night: 1.8 },
-    spandrel: { color: new THREE.Color(office ? GLASS[s.wall] : 0x4a4e58).multiplyScalar(0.45).getHex(), rough: 0.3, metal: 0.5 },
-    leaf: { color: LEAVES[s.seed % LEAVES.length], rough: 0.9 },
-    brick: { color: BRICKS[s.wall % BRICKS.length], rough: 0.9 },
-  };
-  const glass = office ? GLASS[s.wall] : s.kind === "landmark" ? 0xb4c0cc : 0xa8bccc;
-  const seen = new Set<THREE.MeshStandardMaterial>();
-  return (role) => {
-    const m =
-      role === "window" ? paneMat("window", 0xffffff, s.damage)
-      : role === "glass" ? paneMat("glass", glass, s.damage)
-      : kitMat(byRole[role] ?? ROLES[role] ?? { color: 0xff00ff }, s.damage);
-    if (m.userData.night && !seen.has(m)) {
-      seen.add(m);
-      info.night.push(m);
-    }
-    return m;
-  };
-}
-
-/** Puts a kit piece on the stack at height y, scaled to the footprint and turned by ry. */
-function put(p: Parts, name: string, y: number, sx: number, sz: number, look: Look, r: () => number, ry = 0) {
-  const cells: [number, number] = [Math.floor(r() * ATLAS), Math.floor(r() * ATLAS)];
-  const scale = new THREE.Vector3(sx, 1, sz);
-  for (const { role, geo } of piece(name).parts) {
-    p.add(look(role), geo, 0, y, 0, 0, ry, 0, scale, role === "window" || role === "glass" ? cells : undefined);
-  }
-  return piece(name).anchors;
-}
+// ---- buildings -------------------------------------------------------------------
 
 /**
- * Stacks the first `floors` storeys of a building from the kit, and its roof
- * if `roof`. Returns the height reached, the footprint there, and anchors
- * (piece-local, already moved onto the stack).
- */
-function stack(p: Parts, s: Spec, look: Look, floors: number, roof: boolean) {
-  const r = rng(s.seed * 13 + 7);
-  const variant = (n: number) => "abcd"[Math.floor(r() * n)];
-  const [W0, D0] = NOMINAL[s.kind];
-  const sx = s.w / W0;
-  const sz = s.d / D0;
-  const fh = s.floorH;
-  const anchors: Record<string, THREE.Vector3> = {};
-  let k = 1;
-  const place = (name: string, y: number, ry = 0) => {
-    for (const [key, a] of Object.entries(put(p, name, y, sx * k, sz * k, look, r, ry))) {
-      anchors[key] = new THREE.Vector3(a.x * sx * k, a.y + y, a.z * sz * k).applyAxisAngle(UP, ry);
-    }
-  };
-  switch (s.style) {
-    case "modern":
-    case "aframe": {
-      const v = s.style === "modern" ? "e" : "f";
-      if (floors > 0) place(`cottage_body_${v}`, 0);
-      if (roof) place(`cottage_roof_${v}`, fh);
-      return { top: floors * fh, w: s.w, d: s.d, anchors };
-    }
-    case "diner":
-    case "substation":
-    case "factory": {
-      const [g, rf] = s.style === "diner" ? ["shop_ground_d", "shop_roof_d"] : ["factory_ground", "factory_roof"];
-      if (floors > 0) place(g, 0);
-      if (roof) place(rf, fh);
-      return { top: floors * fh, w: s.w, d: s.d, anchors };
-    }
-    case "townhouse": {
-      for (let f = 0; f < floors; f++) place(f === 0 ? "town_ground" : "town_floor", f * fh);
-      if (roof) place("town_roof", floors * fh);
-      return { top: floors * fh, w: s.w, d: s.d, anchors };
-    }
-    case "round": {
-      const lower = Math.max(1, Math.round(s.floors * 0.68));
-      for (let f = 0; f < floors; f++) {
-        if (f === lower) {
-          place("round_setback", f * fh);
-          k = 0.78;
-        }
-        place(f === 0 ? "round_ground" : "round_floor", f * fh);
-      }
-      if (roof) place("round_roof", floors * fh);
-      return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
-    }
-    case "twist": {
-      // Each storey turns a little and the tower tapers: a quarter turn in all.
-      const step = Math.PI / 2 / s.floors;
-      const at = (f: number) => 1 - 0.14 * (f / s.floors);
-      for (let f = 0; f < floors; f++) {
-        k = f === 0 ? 1 : at(f);
-        place(f === 0 ? "lm3_ground" : "lm3_floor", f * fh, f === 0 ? 0 : f * step);
-      }
-      k = at(floors);
-      if (roof) place("lm3_crown", floors * fh, floors * step);
-      return { top: floors * fh, w: s.w * k * 0.9, d: s.d * k * 0.9, anchors };
-    }
-    case "tvtower": {
-      // A concrete shaft with the observation pod three quarters up.
-      const pod = Math.round(s.floors * 0.74);
-      for (let f = 0; f < floors; f++) {
-        if (f === 0) place("tvt_base", 0);
-        else if (f === pod) place("tvt_pod", f * fh);
-        else if (f !== pod + 1) place("tvt_shaft", f * fh);
-      }
-      if (roof) place("tvt_spire", floors * fh);
-      k = 0.32;
-      return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
-    }
-  }
-  switch (s.kind) {
-    case "cottage": {
-      const v = variant(4);
-      if (floors > 0) place(`cottage_body_${v}`, 0);
-      if (roof) place(`cottage_roof_${v}`, fh);
-      break;
-    }
-    case "shop":
-    case "apartment": {
-      const shop = s.kind === "shop";
-      const pre = shop ? "shop" : "apt";
-      const fv = variant(3);
-      const rv = variant(2);
-      // Brick walk-ups (apartment c) have their own ground storey and roof.
-      const ground = shop ? `shop_ground_${fv}` : fv === "c" ? "apt_ground_c" : "apt_ground";
-      for (let f = 0; f < floors; f++) place(f === 0 ? ground : `${pre}_floor_${fv}`, f * fh);
-      if (roof) place(!shop && fv === "c" ? "apt_roof_c" : `${pre}_roof_${rv}`, floors * fh);
-      break;
-    }
-    case "office": {
-      const fv = variant(3);
-      const rv = variant(2);
-      const lower = Math.max(1, Math.round(s.floors * 0.68));
-      for (let f = 0; f < floors; f++) {
-        if (f === lower) {
-          place("office_setback", f * fh);
-          k = 0.78;
-        }
-        place(f === 0 ? "office_ground" : `office_floor_${fv}`, f * fh);
-      }
-      if (roof) place(`office_roof_${rv}`, floors * fh);
-      break;
-    }
-    case "landmark": {
-      // Art deco stone and gold, or a modern glass tower with sky gardens.
-      const pre = s.style === "glass" ? "lm2" : "lm";
-      const e1 = Math.round(s.floors * 0.5);
-      const e2 = Math.round(s.floors * 0.8);
-      let tier = 1;
-      for (let f = 0; f < floors; f++) {
-        const t = f < e1 ? 1 : f < e2 ? 2 : 3;
-        if (t !== tier) place(`${pre}_ledge_${tier}`, f * fh);
-        tier = t;
-        place(f === 0 ? `${pre}_ground` : `${pre}_floor_${t}`, f * fh);
-      }
-      if (roof) place(`${pre}_crown`, floors * fh);
-      // Landmark tiers are modelled at their own sizes; k is only the top's.
-      k = [1, 0.78, 0.56][tier - 1];
-      break;
-    }
-  }
-  return { top: floors * fh, w: s.w * k, d: s.d * k, anchors };
-}
-
-// ---- realistic models -----------------------------------------------------------
-
-/**
- * The realistic model that draws a spec, if it is loaded. A model takes over
- * the kit style it replaces (docs/APP.md) as a whole, until its siblings
- * exist to take their own variants of it; siblings (C1 and C2 for the
- * classic cottage) share the style, picked per building from its seed.
+ * The model that draws a spec: its blueprint's, else one of its style's,
+ * picked per building from its seed (siblings such as C1 and C2 share the
+ * classic cottage). Null only for the town's lots built in code (water
+ * tower, square, park: utility()).
  */
 export function realDef(s: Spec): RealDef | null {
-  if (s.model) return DEFS[s.model] && hasReal(s.model) ? DEFS[s.model] : null;
-  const defs = Object.values(DEFS).filter((d) => d.kind === s.kind && d.style === s.style && hasReal(d.id));
+  if (s.model) return DEFS[s.model] ?? null;
+  const defs = Object.values(DEFS).filter((d) => d.kind === s.kind && d.style === s.style);
   return defs.length ? defs[Math.floor(rng(s.seed * 29 + 3)() * defs.length)] : null;
 }
 
-/** A spec sized and placed for its realistic model (real-world sizes, not the kit's); others unchanged. */
+/** A spec sized and placed for its model (real-world sizes); the town's own lots unchanged. */
 export function fitReal<T extends Spec>(s: T): T {
   const def = realDef(s);
   if (!def) return s;
@@ -440,11 +148,11 @@ function putReal(p: Parts, def: RealDef, piece: string, paint: Paint, damage: nu
   for (const { role, geo } of realPiece(def.id, piece)) {
     const m = realMat(def.id, role, paint, damage);
     if (info && m.userData.night && !info.night.includes(m as THREE.MeshStandardMaterial)) info.night.push(m as THREE.MeshStandardMaterial);
-    p.add(m, geo, x, y, z, 0, ry, 0, scale, undefined, role.endsWith("glass") ? shift : 0);
+    p.add(m, geo, x, y, z, 0, ry, 0, scale, role.endsWith("glass") ? shift : 0);
   }
 }
 
-/** Stacks a realistic model's pieces on the lot (at kerb height), like stack() for the kit. */
+/** Stacks a model's pieces on the lot (at kerb height). */
 function stackReal(p: Parts, s: Spec, def: RealDef, floors: number, roof: boolean, info: ModelInfo) {
   const r = rng(s.seed * 13 + 11);
   const paint = paintOf(s);
@@ -465,7 +173,7 @@ function picket(p: Parts, def: RealDef, s: Spec, x0: number, x1: number, z: numb
   putReal(p, def, "fence_post", paint, 0, null, x1, KERB, z);
 }
 
-/** The lot round a realistic model; like yard() for the kit. */
+/** The lot round a model: what its kind of building has in front and out back. */
 function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
   const cz = -s.yard;
   const front = LOT / 2 - s.yard;
@@ -478,8 +186,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const bin = mat(0x2a4a34, { roughness: 0.6 });
       for (let i = 0; i < 3; i++) p.box(bin, 0.7, 1.1, 0.7, half - 0.6 - i * 0.85, KERB, back + 0.7);
-      if (hasReal("street")) fenceRun(p, "wall_brick", half, back + 0.12, -half, back + 0.12, 1.5);
-      else p.box(mat(0x7a4636, { roughness: 0.95 }), LOT - 0.4, 1.6, 0.25, 0, KERB, back + 0.12);
+      fenceRun(p, "wall_brick", half, back + 0.12, -half, back + 0.12, 1.5);
       break;
     }
     case "a2": {
@@ -498,17 +205,13 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         x0 = Math.max(x0, b);
       }
       if (half - x0 > 0.3) runs.push([x0, half]);
-      if (hasReal("street")) {
-        for (const [a, b] of runs) fenceRun(p, "fence_iron", a, fz, b, fz, 0.85);
-      } else for (const [a, b] of runs) p.box(mat(0x2a2c2e, { metalness: 0.5 }), b - a, 0.9, 0.06, (a + b) / 2, KERB, fz);
+      for (const [a, b] of runs) fenceRun(p, "fence_iron", a, fz, b, fz, 0.85);
       const bin = mat(0x3a3e40, { roughness: 0.55, metalness: 0.3 });
       for (const [x, z] of [[-5.1, 4.0], [-4.6, 4.0], [0.0, 4.0], [2.6, 4.0]]) p.box(bin, 0.55, 0.95, 0.55, x, KERB, z);
       for (const x of [-6.8, -5.5, 1.4, 4.2, 5.4]) if (r() < 0.75) shrub(p, x, fz - 0.6, s.seed * 5 + x * 3, KERB, 0.55);
       tree(p, 4.4, fz - 1.4, 0.45, s.seed + 1, KERB, ["young", "linden", "cherry"]);
-      if (hasReal("street")) {
-        for (const x of [-2.6, 2.6]) fenceRun(p, "fence_panel", x, -6.8, x, back + 0.1);
-        fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
-      }
+      for (const x of [-2.6, 2.6]) fenceRun(p, "fence_panel", x, -6.8, x, back + 0.1);
+      fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
     case "c1": {
@@ -552,7 +255,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (const x of [2.2, 3.2]) if (r() < 0.8) shrub(p, x, 4.55, s.seed * 7 + x * 3, KERB, 0.7);
       tree(p, -half + 1.4, fz - 1.4, 0.6, s.seed + 1, KERB, ["cherry", "birch", "maple", "cherry"]);
       const yb = -s.d / 2 + 0.6; // the back wall
-      if (hasReal("street")) for (const x of [-half + 0.1, half - 0.1]) fenceRun(p, "fence_panel", x, yb, x, back + 0.6);
+      for (const x of [-half + 0.1, half - 0.1]) fenceRun(p, "fence_panel", x, yb, x, back + 0.6);
       hedge(p, LOT - 0.4, KERB + 1.5, 0.7, 0, 0, back + 0.55, s.seed);
       tree(p, -half + 2.2, back + 1.6, 0.7, s.seed + 2, KERB, ["young", "cherry", "linden"]);
       break;
@@ -584,10 +287,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       const dx = half - 1.7;
       p.box(mat(0x9e978c, { roughness: 1 }), 2.8, KERB + 0.03, front - cz - 0.6, dx, 0, (front + cz + 0.6) / 2);
       parked(p, dx, 0.2, 0, s.seed + 3);
-      if (hasReal("street")) {
-        fenceRun(p, "fence_rail", -half + 0.2, fz, -0.6, fz);
-        fenceRun(p, "fence_rail", 0.6, fz, dx - 1.6, fz);
-      }
+      fenceRun(p, "fence_rail", -half + 0.2, fz, -0.6, fz);
+      fenceRun(p, "fence_rail", 0.6, fz, dx - 1.6, fz);
       const pines = ["spruce", "pine", "spruce", "birch", "pine"];
       tree(p, -half + 1.3, front - 2.4, 0.95, s.seed + 1, KERB, pines);
       tree(p, -half + 1.6, back + 2.0, 1.1, s.seed + 2, KERB, pines);
@@ -632,7 +333,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // ambulance bay on the right.
       p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       p.box(paving, LOT - 0.4, KERB + 0.01, front - 4.5, 0, 0, (front + 4.5) / 2);
-      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
       p.box(asphalt, half - 6.5, KERB + 0.012, 8, (half + 6.5) / 2, 0, 0.4);
       const line = mat(0xd8b83a, { roughness: 0.7 });
       for (const z of [-3.2, 4.0]) p.box(line, half - 6.6, KERB + 0.02, 0.1, (half + 6.6) / 2, 0, z);
@@ -646,7 +347,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // asphalt playground round the sides and back, hopscotch on it.
       p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       p.box(paving, 2.6, KERB + 0.01, front - 5.0, 0, 0, (front + 5.0) / 2);
-      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
       p.box(asphalt, LOT - 0.4, KERB + 0.005, 5.5 - back, 0, 0, (5.5 + back) / 2);
       const chalk = mat(0xe8e4d8, { roughness: 0.8 });
       for (let i = 0; i < 6; i++) {
@@ -654,10 +355,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         if (i % 3 === 1) for (const dx of [-0.31, 0.31]) p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25 + dx, 0, z);
         else p.box(chalk, 0.5, KERB + 0.012, 0.5, -7.25, 0, z);
       }
-      if (hasReal("street")) {
-        fenceRun(p, "fence_iron", -half, front - 0.3, -1.4, front - 0.3, 1.1);
-        fenceRun(p, "fence_iron", 1.4, front - 0.3, half, front - 0.3, 1.1);
-      }
+      fenceRun(p, "fence_iron", -half, front - 0.3, -1.4, front - 0.3, 1.1);
+      fenceRun(p, "fence_iron", 1.4, front - 0.3, half, front - 0.3, 1.1);
       const pole = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.4 });
       p.add(pole, new THREE.CylinderGeometry(0.04, 0.07, 9, 10), 4.6, KERB + 4.5, front - 1.2);
       p.add(mat(0xc9a24e, { roughness: 0.3, metalness: 1 }), new THREE.SphereGeometry(0.1, 10, 8), 4.6, KERB + 9.05, front - 1.2);
@@ -674,17 +373,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
         for (const dx of [-1.7, 1.7]) p.box(yellow, 0.12, KERB + 0.01, front - s.d / 2 - 0.3, x + dx, 0, (front + s.d / 2) / 2);
         for (let i = 0; i < 4; i++) p.box(yellow, 3.3, KERB + 0.01, 0.14, x, 0, s.d / 2 + 0.5 + i * 0.75);
       }
-      if (hasReal("street")) {
-        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
-        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, -s.d / 2, 1.8);
-      }
+      fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+      fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, -s.d / 2, 1.8);
       break;
     }
     case "s3": {
       // An asphalt forecourt to the pavement with a car drawn up beside the
       // steps and shrubs either side of them; behind, a concrete service yard
       // round the kitchen with bins, a grease drum and gas bottles, fenced.
-      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
       p.box(asphalt, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const line = mat(0xe8e4d8, { roughness: 0.7 });
       for (const x of [-6.9, -1.7]) p.box(line, 0.12, KERB + 0.01, 2.2, x, 0, front - 2.0);
@@ -697,7 +394,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       p.add(mat(0x3a5a8a, { roughness: 0.5, metalness: 0.3 }), new THREE.CylinderGeometry(0.29, 0.29, 0.88, 14), -half + 0.8, KERB + 0.44, back + 0.7);
       const gas = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.2 });
       for (const x of [-5.2, -4.6]) p.add(gas, new THREE.CapsuleGeometry(0.19, 0.95, 4, 12), x, KERB + 0.67, -3.0);
-      if (hasReal("street")) fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
     case "s4": {
@@ -718,14 +415,9 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       const yardZ = -5.2; // the back wall
       p.box(mat(0x4a5a3e, { roughness: 0.6, metalness: 0.4 }), 3.4, 1.3, 1.7, -3.2, KERB, (yardZ + back) / 2, 0.04);
       p.box(mat(0x5a4a3e, { roughness: 0.8, metalness: 0.5 }), 1.6, 0.4, 0.9, 2.6, KERB, (yardZ + back) / 2, 0.3);
-      if (hasReal("street")) {
-        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
-        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.8);
-        fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.8);
-      } else {
-        const wall = mat(0x7a4636, { roughness: 0.95 });
-        p.box(wall, LOT - 0.4, 1.8, 0.25, 0, KERB, back + 0.12);
-      }
+      fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+      fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.8);
+      fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.8);
       break;
     }
     case "a3": {
@@ -745,7 +437,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       const backWall = -s.d / 2 + 0.3;
       p.box(paving, 1.6, KERB + 0.02, backWall - back, 0, 0, (backWall + back) / 2);
       hedge(p, LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.5, s.seed + 3);
-      if (hasReal("street")) furniture(p, "bench", -3.5, KERB, back + 1.6, Math.PI);
+      furniture(p, "bench", -3.5, KERB, back + 1.6, Math.PI);
       break;
     }
     case "o1": {
@@ -756,9 +448,9 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       const fz = s.d / 2;
       for (const sx of [-1, 1]) {
         planter(p, sx * 5.6, front - 1.3, s.seed + (sx > 0 ? 1 : 2));
-        if (hasReal("street")) furniture(p, "bench", sx * 3.3, KERB, front - 1.3, 0);
+        furniture(p, "bench", sx * 3.3, KERB, front - 1.3, 0);
       }
-      if (hasReal("street")) for (let i = 0; i < 5; i++) furniture(p, "bollard", -2.4 + i * 1.2, KERB, front - 0.45);
+      for (let i = 0; i < 5; i++) furniture(p, "bollard", -2.4 + i * 1.2, KERB, front - 0.45);
       p.box(mat(0x6a6a6c, { roughness: 0.6 }), 4.4, 0.02, 1.6, 0, KERB, fz + 0.9);
       const bin = mat(0x2a3a4a, { roughness: 0.6 });
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
@@ -768,7 +460,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // Granite paving to the pavement, heritage lamps either side of the
       // portal; behind, the bins by the service door.
       p.box(mat(0x9c9890, { roughness: 0.6 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
-      if (hasReal("street")) for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 4.5, KERB, front - 0.4, 0);
+      for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 4.5, KERB, front - 0.4, 0);
       const bin = mat(0x2a3a4a, { roughness: 0.6 });
       for (let i = 0; i < 3; i++) p.box(bin, 1.0, 1.2, 0.5, -half + 1.0 + i * 1.1, KERB, back + 0.3);
       break;
@@ -779,16 +471,14 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // cars stand (white and dark blue) by a brick wall.
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       const yardZ = -s.d / 2;
-      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
       p.box(asphalt, LOT - 0.4, KERB + 0.01, yardZ - back, 0, 0, (yardZ + back) / 2);
       const line = mat(0xe8e4d8, { roughness: 0.7 });
       for (const x of [-4.6, -1.6, 1.4, 4.4]) p.box(line, 0.1, KERB + 0.02, 2.2, x, 0, (yardZ + back) / 2);
       parked(p, -3.1, (yardZ + back) / 2, Math.PI / 2, s.seed + 3, KERB, { name: "estate", paint: 0 });
       parked(p, 2.9, (yardZ + back) / 2, Math.PI / 2, s.seed + 4, KERB, { name: "sedan", paint: 5 });
-      if (hasReal("street")) {
-        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
-        for (const sx of [-1, 1]) furniture(p, "bollard", sx * 1.8, KERB, front - 0.45);
-      }
+      fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.8);
+      for (const sx of [-1, 1]) furniture(p, "bollard", sx * 1.8, KERB, front - 0.45);
       break;
     }
     case "e3": {
@@ -796,7 +486,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // it; lawns down the sides and behind, a tree at each back corner.
       p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       p.box(mat(0x9c9890, { roughness: 0.7 }), LOT - 0.4, KERB + 0.01, front - 4.0, 0, 0, (front + 4.0) / 2);
-      if (hasReal("street")) for (const sx of [-1, 1]) {
+      for (const sx of [-1, 1]) {
         furniture(p, "lamp_heritage", sx * 6.4, KERB, front - 0.5, 0);
         furniture(p, "bench", sx * 5.6, KERB, 4.6, 0);
       }
@@ -808,13 +498,13 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       // under the emergency canopy (h2_hospital.py, x 2.3 to 7.8) with an
       // ambulance drawn up, a drop-off line; a service road behind.
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
-      const asphalt = hasReal("street") ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
       const dz = 1.5; // the podium's front, building-local (CAN / 2)
       p.box(asphalt, half - 2.2, KERB + 0.012, front - dz, (half + 2.2) / 2, 0, (front + dz) / 2);
       p.box(mat(0xd8382a, { roughness: 0.7 }), half - 2.4, KERB + 0.02, 0.12, (half + 2.4) / 2, 0, dz + 0.3);
       parked(p, 5.2, (front + dz) / 2 + 0.2, 0, s.seed + 3, KERB, { name: "van", paint: 0 });
       p.box(asphalt, LOT - 0.4, KERB + 0.01, Math.max(0.5, -s.d / 2 - back), 0, 0, (-s.d / 2 + back) / 2);
-      if (hasReal("street")) for (const x of [-6.6, -4.6]) furniture(p, "bench", x, KERB, front - 1.2, 0);
+      for (const x of [-6.6, -4.6]) furniture(p, "bench", x, KERB, front - 1.2, 0);
       break;
     }
     case "p2": {
@@ -824,7 +514,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       const coal = mat(0x1c1c1e, { roughness: 0.95 });
       p.add(coal, new THREE.ConeGeometry(2.2, 1.6, 9), -4.5, KERB + 0.8, -s.d / 2 + 0.2);
       p.add(coal, new THREE.ConeGeometry(1.6, 1.1, 8), -1.8, KERB + 0.55, -s.d / 2 + 0.6);
-      if (hasReal("street")) fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
     case "w2": {
@@ -849,15 +539,9 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, -half + 0.6 + i * 0.85, KERB, yardZ - 0.6);
       p.box(mat(0x3a4048, { roughness: 0.6, metalness: 0.3 }), 1.6, 1.3, 1.1, -half + 3.0, KERB, yardZ - 0.75);
       parked(p, 2.2 + r() * 1.5, (yardZ + back) / 2 + 0.2, Math.PI / 2, s.seed + 3);
-      if (hasReal("street")) {
-        fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.45);
-        fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.45);
-        fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.45);
-      } else {
-        const wall = mat(0x7a4636, { roughness: 0.95 });
-        p.box(wall, LOT - 0.4, 1.5, 0.25, 0, KERB, back + 0.12);
-        for (const sx of [-1, 1]) p.box(wall, 0.25, 1.5, yardZ - back, sx * (half - 0.12), KERB, (yardZ + back) / 2);
-      }
+      fenceRun(p, "wall_brick", half - 0.12, back + 0.12, -half + 0.12, back + 0.12, 1.45);
+      fenceRun(p, "wall_brick", -half + 0.12, back + 0.12, -half + 0.12, yardZ, 1.45);
+      fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.45);
       break;
     }
   }
@@ -878,8 +562,7 @@ function wreckTop(p: Parts, w: number, d: number, y: number, color: number, r: (
   }
 }
 
-const TREES = ["tree_a", "tree_a", "tree_b", "tree_b", "tree_c", "tree_d", "tree_d", "tree_e", "tree_f"];
-/** Realistic species, by how common they are in town. */
+/** Tree species, by how common they are in town. */
 export const SPECIES = ["maple", "linden", "oak", "maple", "linden", "birch", "cherry", "young", "spruce", "oak", "birch", "maple", "pine", "poplar", "linden", "cherry"];
 const SHRUBS = ["bush", "bush", "bush_wide", "shrub", "flowers"];
 
@@ -897,20 +580,13 @@ function gravelMat(color: number, tile = 2.4): THREE.Material {
   return groundMat("gravel", tile, { roughness: 1, normal: 0.7, color });
 }
 
-/** A lawn: mown grass from the realistic library when loaded, else flat green. */
+/** A lawn: mown grass. */
 export function lawn(): THREE.Material {
-  return hasReal("trees") ? groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8, color: LAWN_TINT }) : mat(0x6f9a4f, { roughness: 1 });
+  return groundMat("grass", 2.2, { roughness: 0.95, normal: 0.8, color: LAWN_TINT });
 }
 
-/**
- * A clipped hedge where a box would be (w along x, d along z, from y up to
- * y + h): realistic segments stretched to fit when loaded, else the box.
- */
+/** A clipped hedge filling a box (w along x, d along z, from y up to y + h): segments stretched to fit. */
 export function hedge(p: Parts, w: number, h: number, d: number, x: number, y: number, z: number, seed: number) {
-  if (!hasReal("trees")) {
-    p.box(mat(0x3f6a34, { flatShading: true }), w, h, d, x, y, z);
-    return;
-  }
   const alongX = w >= d;
   const L = alongX ? w : d;
   const D = alongX ? d : w;
@@ -923,7 +599,7 @@ export function hedge(p: Parts, w: number, h: number, d: number, x: number, y: n
   }
 }
 
-/** A piece of the realistic street furniture; `phase` ("a" / "b") picks a crossing's signal cycle. */
+/** A piece of street furniture; `phase` ("a" / "b") picks a crossing's signal cycle. */
 export function furniture(p: Parts, name: string, x: number, y: number, z: number, ry = 0, scale?: THREE.Vector3, phase = "") {
   for (const { role, geo } of realPiece("street", name)) p.add(realMat("street", role, tintOf(0), 0, phase), geo, x, y, z, 0, ry, 0, scale);
 }
@@ -952,9 +628,8 @@ export function fenceRun(p: Parts, name: string, x0: number, z0: number, x1: num
   }
 }
 
-/** A garden shrub (nothing without the realistic trees: the kit has none). */
+/** A garden shrub. */
 export function shrub(p: Parts, x: number, z: number, seed: number, y = KERB, s = 1) {
-  if (!hasReal("trees")) return;
   const r = rng(Math.floor(seed));
   const name = SHRUBS[Math.floor(r() * SHRUBS.length)];
   const k = s * (0.8 + r() * 0.4);
@@ -964,59 +639,26 @@ export function shrub(p: Parts, x: number, z: number, seed: number, y = KERB, s 
   for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 
-/** A tree; `s` was the kit's scale (0.35-1.2), which picks the realistic tree's size too; `species` the realistic ones to pick from. */
+/** A tree; `s` (0.35-1.2) picks its size, `species` what it may be. */
 export function tree(p: Parts, x: number, z: number, s: number, seed: number, y = 0, species = SPECIES) {
   const r = rng(seed);
-  if (hasReal("trees")) {
-    const name = species[Math.floor(r() * species.length)];
-    const k = 0.5 + 0.55 * s;
-    const scale = new THREE.Vector3(k, k * (0.88 + r() * 0.24), k);
-    const ry = r() * Math.PI * 2;
-    const tint = tintOf(Math.floor(r() * 6));
-    for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
-    return;
-  }
-  const name = TREES[Math.floor(r() * TREES.length)];
-  const leaf = kitMat({ color: LEAVES[Math.floor(r() * LEAVES.length)], rough: 0.9 }, 0);
-  const roles: Record<string, THREE.MeshStandardMaterial> = {
-    leaf,
-    blossom: kitMat({ color: BLOSSOMS[Math.floor(r() * BLOSSOMS.length)], rough: 0.9 }, 0),
-    birch: kitMat(ROLES.birch, 0),
-    bark: kitMat(ROLES.bark, 0),
-  };
-  const scale = new THREE.Vector3(s, s * (0.85 + r() * 0.3), s);
+  const name = species[Math.floor(r() * species.length)];
+  const k = 0.5 + 0.55 * s;
+  const scale = new THREE.Vector3(k, k * (0.88 + r() * 0.24), k);
   const ry = r() * Math.PI * 2;
-  for (const { role, geo } of piece(name).parts) p.add(roles[role] ?? roles.bark, geo, x, y, z, 0, ry, 0, scale);
+  const tint = tintOf(Math.floor(r() * 6));
+  for (const { role, geo } of realPiece("trees", name)) p.add(realMat("trees", role, tint, 0), geo, x, y, z, 0, ry, 0, scale);
 }
 
-/** Realistic cars that park on drives and in bays, by how common they are. */
+/** Cars that park on drives and in bays, by how common they are. */
 const PARKED = ["hatch", "sedan", "estate", "suv", "hatch", "sedan", "suv", "coupe", "pickup", "van", "estate", "hatch"];
 
-/** A parked car, nose toward +z before ry: a realistic one if they are loaded, else from the traffic kit. */
+/** A parked car, nose toward +z before ry. */
 export function parked(p: Parts, x: number, z: number, ry: number, seed: number, y = KERB, pick?: { name?: string; paint?: number }) {
   const r = rng(seed);
-  if (hasReal("cars")) {
-    const name = pick?.name ?? PARKED[Math.floor(r() * PARKED.length)];
-    const paint: Paint = { wall: pick?.paint ?? Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
-    for (const { role, geo } of realPiece("cars", name)) p.add(realMat("cars", role, paint, 0), geo, x, y, z, 0, ry, 0);
-    return;
-  }
-  const model = ["car_sedan", "car_hatch", "car_sedan", "car_van"][Math.floor(r() * 4)];
-  const body = kitMat({ color: CAR_PAINT[Math.floor(r() * CAR_PAINT.length)], rough: 0.5, metal: 0.15 }, 0);
-  for (const { role, geo } of piece(model).parts) p.add(role === "body" ? body : kitMat(ROLES[role] ?? ROLES.dark, 0), geo, x, y, z, 0, ry, 0);
-}
-
-/** Parking bays: a strip of asphalt with lines and some cars, centred on (x, z), bays along x. */
-function parking(p: Parts, x: number, z: number, w: number, d: number, fill: number, seed: number) {
-  const r = rng(seed);
-  p.box(mat(0x45474b, { roughness: 0.95 }), w, 0.04, d, x, KERB, z);
-  const bays = Math.floor(w / 2.8);
-  const line = mat(0xe8e6de, { roughness: 0.7 });
-  for (let i = 0; i <= bays; i++) p.box(line, 0.12, 0.05, Math.min(5, d - 0.4), x - (bays * 2.8) / 2 + i * 2.8, KERB, z - d / 2 + Math.min(5, d - 0.4) / 2 + 0.2);
-  for (let i = 0; i < bays; i++) {
-    if (r() > fill) continue;
-    parked(p, x - (bays * 2.8) / 2 + (i + 0.5) * 2.8, z - d / 2 + 2.6, 0, seed * 31 + i);
-  }
+  const name = pick?.name ?? PARKED[Math.floor(r() * PARKED.length)];
+  const paint: Paint = { wall: pick?.paint ?? Math.floor(r() * CAR_PAINTS.length), accent: 0, roof: 0, signs: 0 };
+  for (const { role, geo } of realPiece("cars", name)) p.add(realMat("cars", role, paint, 0), geo, x, y, z, 0, ry, 0);
 }
 
 const planter = (p: Parts, x: number, z: number, seed: number, s = 0.55) => {
@@ -1025,113 +667,8 @@ const planter = (p: Parts, x: number, z: number, seed: number, s = 0.55) => {
 };
 
 /**
- * The lot around a building: lawn or paving, a way in from the street, and
- * what the type needs out back (a garden, parking, a loading yard). The
- * building's centre is the origin and its front faces +z.
- */
-function yard(p: Parts, s: Spec, r: () => number) {
-  const cz = -s.yard;
-  const front = LOT / 2 - s.yard;
-  const back = -LOT / 2 - s.yard;
-  const grass = lawn();
-  const paving = mat(0xbab4a8, { roughness: 0.9 });
-  const concrete = mat(0xa29e96, { roughness: 0.95 });
-  const half = LOT / 2 - 0.2;
-  const ground = (m: THREE.Material) => p.box(m, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
-  const path = (x: number, w = 1.4) => p.box(paving, w, KERB + 0.03, front - s.d / 2, x, 0, (front + s.d / 2) / 2);
-  switch (s.kind) {
-    case "cottage": {
-      ground(grass);
-      const side = r() < 0.5 ? -1 : 1;
-      // A drive up to the garage (modern) or along the side of the house, a
-      // car on it, and a path to the door.
-      const modern = s.style === "modern";
-      const dx = modern ? s.w * 0.3 : side * (s.w / 2 + 2.2);
-      const dw = modern ? 2.6 : 2.4;
-      const dEnd = modern ? s.d / 2 : -s.d / 4;
-      p.box(concrete, dw, KERB + 0.03, front - dEnd, dx, 0, (front + dEnd) / 2);
-      parked(p, dx, modern ? s.d / 2 + 2.6 : 0.4, 0, s.seed + 3);
-      const px = modern ? s.w * 0.05 : 0;
-      path(px, 1.2);
-      // Hedge along the front, broken for the path and the drive.
-      const gaps = [[dx - dw / 2 - 0.1, dx + dw / 2 + 0.1], [px - 0.7, px + 0.7]].sort((a, b) => a[0] - b[0]);
-      let x0 = -half;
-      for (const [g0, g1] of [...gaps, [half, half]]) {
-        if (g0 > x0 + 0.4) hedge(p, g0 - x0, KERB + 0.75, 0.6, (x0 + g0) / 2, 0, front - 0.5, s.seed);
-        x0 = Math.max(x0, g1);
-      }
-      // Garden: trees, maybe a shed, and a fence round the back.
-      tree(p, -side * (s.w / 2 + 2.0), s.d / 2 + 1.8, 0.7, s.seed + 1, KERB);
-      tree(p, (r() - 0.5) * s.w, back + 2.2, 0.85, s.seed + 2, KERB);
-      if (r() < 0.6) p.box(mat(0x7a5a3e), 1.6, 2.0, 1.4, -side * (half - 1.2), KERB, back + 1.2);
-      const run = LOT / 2 + s.yard;
-      if (hasReal("street")) {
-        // Close-board or post-and-rail round the back garden.
-        const kind = r() < 0.6 ? "fence_panel" : "fence_rail";
-        const h = kind === "fence_panel" ? 0.85 : 1;
-        fenceRun(p, kind, half, back + 0.25, -half, back + 0.25, h);
-        fenceRun(p, kind, -half, back + 0.25, -half, back + 0.25 + run, h);
-        fenceRun(p, kind, half, back + 0.25 + run, half, back + 0.25, h);
-      } else {
-        const fence = mat(0xe8e0d0, { roughness: 0.8 });
-        p.box(fence, LOT - 0.4, 1.1, 0.08, 0, KERB, back + 0.25);
-        for (const sx of [-1, 1]) p.box(fence, 0.08, 1.1, run, sx * half, KERB, back + run / 2 + 0.25);
-      }
-      break;
-    }
-    case "shop": {
-      ground(s.style === "factory" ? concrete : paving);
-      if (s.style === "factory") {
-        // Loading yard out back: pallets, a skip and a van at the dock.
-        parked(p, -s.w * 0.25, s.d / 2 + 2.8, 0, s.seed + 7);
-        const wood = mat(0x8a6a40, { roughness: 0.9 });
-        for (let i = 0; i < 6; i++) p.box(wood, 1.2, 0.9 + r() * 0.9, 1.0, -half + 1 + (i % 3) * 1.4, KERB, back + 1 + Math.floor(i / 3) * 1.3);
-        p.box(mat(0x3a6a3a, { roughness: 0.7, metalness: 0.3 }), 3.2, 1.4, 1.8, half - 2, KERB, back + 1.3);
-        p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 2.0, 0.06, 0, KERB, back + 0.1);
-      } else {
-        // Shoppers' parking behind, benches and planters at the front.
-        parking(p, 0, back + 3.2, LOT - 1, 5.8, 0.7, s.seed + 5);
-        planter(p, -s.w / 2 + 0.4, front - 0.9, s.seed + 11, 0.45);
-        planter(p, s.w / 2 - 0.4, front - 0.9, s.seed + 12, 0.45);
-      }
-      break;
-    }
-    case "apartment": {
-      ground(grass);
-      path(0, s.style === "townhouse" ? s.w : 2);
-      if (s.style !== "townhouse") {
-        tree(p, -s.w / 2 + 0.8, front - 1.2, 0.6, s.seed + 1, KERB);
-        tree(p, s.w / 2 - 0.8, front - 1.2, 0.6, s.seed + 2, KERB);
-      } else {
-        if (hasReal("street")) fenceRun(p, "fence_iron", -half, front - 0.3, half, front - 0.3, 0.75);
-        else p.box(mat(0x2a2c2e, { metalness: 0.5 }), LOT - 0.4, 0.9, 0.06, 0, KERB, front - 0.3);
-      }
-      parking(p, 0, back + 3.2, LOT - 1, 5.8, 0.8, s.seed + 5);
-      break;
-    }
-    case "office": {
-      ground(paving);
-      // A plaza out front with trees in planters, a smoking-area bench at the back.
-      for (const sx of [-1, 1]) {
-        planter(p, sx * (s.w / 2 + 1.6), front - 1.3, s.seed + (sx > 0 ? 1 : 2));
-        planter(p, sx * (s.w / 2 + 1.6), cz, s.seed + (sx > 0 ? 3 : 4));
-      }
-      p.box(mat(0x8f8a80, { roughness: 0.9 }), s.w * 0.7, 0.05, front - s.d / 2 - 0.6, 0, KERB, (front + s.d / 2) / 2);
-      parking(p, 0, back + 3.0, LOT - 1, 5.6, 0.85, s.seed + 5);
-      break;
-    }
-    case "landmark": {
-      ground(mat(0xc8c0b0, { roughness: 0.85 }));
-      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) planter(p, sx * (half - 1.1), sz * (half - 1.1) + cz, s.seed + sx * 3 + sz, 0.5);
-      p.box(mat(0xd9a441, { roughness: 0.3, metalness: 0.85 }), LOT - 3, 0.05, 0.25, 0, KERB, front - 0.6);
-      break;
-    }
-  }
-}
-
-/**
- * Stand-ins for buildings the town provides until they have models: a water
- * tower, and a square or a park on one lot. Local frame: the lot's centre is
+ * The town's lots built here rather than modelled: a water tower, and a
+ * square or a park on one lot. Local frame: the lot's centre is
  * `yard` behind the origin, the street in front (+z).
  */
 function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
@@ -1141,56 +678,27 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const info: ModelInfo = { height: 4, emitters: [], beacons: [], night: [], debris: 0x7a7570 };
   const cz = -s.yard;
   const half = LOT / 2 - 0.4;
-  if (s.style === "water" && hasReal("civic")) {
+  if (s.style === "water") {
     // An elevated steel tank (civic.py), 22 m to its vent; broken, it leans.
     p.box(lawn(), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
     const lean = s.damage >= 2 ? 0.07 : 0;
     civic(p, "water_tower", 0, KERB, cz, { rx: lean, rz: lean * 0.6, damage: s.damage });
-    if (hasReal("street")) fenceRun(p, "fence_rail", -half, cz + half, half, cz + half, 0.9);
+    fenceRun(p, "fence_rail", -half, cz + half, half, cz + half, 0.9);
     info.height = KERB + 21.9;
     info.beacons.push(new THREE.Vector3(0, KERB + 22.0, cz));
-  } else if (s.style === "water") {
-    p.box(lawn(), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
-    const steel = mat(0x8c96a0, { metalness: 0.6, roughness: 0.45 });
-    const tank = mat(s.damage ? 0x6a6e70 : 0xc8ccd0, { metalness: 0.5, roughness: 0.4 });
-    const legH = s.damage >= 2 ? 9 : 13;
-    for (const [lx, lz] of [[-2.4, -2.4], [2.4, -2.4], [-2.4, 2.4], [2.4, 2.4]]) p.box(steel, 0.35, legH, 0.35, lx, KERB, cz + lz);
-    for (const y of [4, 8.5]) {
-      p.box(steel, 5.2, 0.15, 0.15, 0, KERB + y, cz - 2.4);
-      p.box(steel, 5.2, 0.15, 0.15, 0, KERB + y, cz + 2.4);
-      p.box(steel, 0.15, 0.15, 5.2, -2.4, KERB + y, cz);
-      p.box(steel, 0.15, 0.15, 5.2, 2.4, KERB + y, cz);
-    }
-    const top = KERB + legH;
-    p.cyl(tank, 3.4, 3.4, 4.4, 0, top, cz, 24);
-    p.add(tank, new THREE.ConeGeometry(3.6, 1.8, 24), 0, top + 4.4 + 0.9, cz);
-    p.box(steel, 0.5, top + 4.4, 0.1, 0, 0, cz + 3.45);
-    if (hasReal("street")) fenceRun(p, "fence_rail", -half, cz + half, half, cz + half, 0.9);
-    info.height = top + 6.2;
-    info.beacons.push(new THREE.Vector3(0, top + 6.3, cz));
   } else {
     const park = s.style === "park";
-    const real = hasReal("street");
-    p.box(park ? lawn() : real ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 }) : mat(0xb9b2a6, { roughness: 0.9 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
-    if (park) p.box(real ? gravelMat(0xd8ccb0) : mat(0xc8bfae, { roughness: 1 }), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
-    if (hasReal("civic")) {
-      const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
-      civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(0.85, 0.85, 0.85), swap: water });
-      if (s.damage === 0) p.extra(fountainSpray(0, KERB, cz, 0.85));
-    } else {
-      const stone = mat(0xd8d2c4, { roughness: 0.8 });
-      const water = mat(0x4f7d93, { metalness: 0.3, roughness: 0.15 });
-      p.cyl(stone, 2.6, 2.8, 0.6, 0, KERB, cz, 24);
-      p.cyl(water, 2.3, 2.3, 0.08, 0, KERB + 0.5, cz, 24);
-      p.cyl(stone, 0.35, 0.5, 1.8, 0, KERB + 0.6, cz, 10);
-      p.cyl(stone, 0.9, 0.2, 0.3, 0, KERB + 2.4, cz, 12);
-    }
+    p.box(park ? lawn() : groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
+    if (park) p.box(gravelMat(0xd8ccb0), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
+    const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
+    civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(0.85, 0.85, 0.85), swap: water });
+    if (s.damage === 0) p.extra(fountainSpray(0, KERB, cz, 0.85));
     const n = park ? 6 : 4;
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + 0.4;
       tree(p, Math.cos(a) * 5.6, cz + Math.sin(a) * 5.6, 0.8 + r() * 0.3, Math.floor(r() * 1e6), KERB);
     }
-    if (!park && hasReal("street")) for (const x of [-4.5, 4.5]) furniture(p, "bench", x, KERB, cz + 3.6);
+    if (!park) for (const x of [-4.5, 4.5]) furniture(p, "bench", x, KERB, cz + 3.6);
     info.height = 6;
   }
   if (s.damage >= 1) info.emitters.push({ pos: new THREE.Vector3(0, info.height * 0.6, cz), kind: "smoke", rate: s.damage >= 2 ? 6 : 2 });
@@ -1213,22 +721,21 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const g = new THREE.Group();
   const p = new Parts();
   const r = rng(s.seed * 31 + 5);
-  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: realDef(s)?.debris ?? WALLS[s.wall] };
-  const look = looks(s, info);
+  const def = realDef(s);
+  if (!def) throw new Error(`no model for a ${s.kind} (${s.style})`);
+  const info: ModelInfo = { height: s.height, emitters: [], beacons: [], night: [], debris: def.debris };
   const broken = s.damage >= 2;
 
-  const def = realDef(s);
   const yp = new Parts(YARD);
-  if (def) realYard(yp, p, s, def, r);
-  else yard(yp, s, r);
+  realYard(yp, p, s, def, r);
   yp.into(g);
 
   // Heavy damage takes the top quarter off, roof and all.
   const floors = broken ? Math.max(1, Math.round(s.floors * (0.72 + r() * 0.1))) : s.floors;
-  const top = def ? stackReal(p, s, def, floors, !broken, info) : stack(p, s, look, floors, !broken);
+  const top = stackReal(p, s, def, floors, !broken, info);
   if (top.anchors.smoke) info.emitters.push({ pos: top.anchors.smoke, kind: "smoke", rate: s.damage ? 0 : s.style === "factory" || s.style === "powerstation" ? 1.4 : 0.25 });
   if (top.anchors.beacon) info.beacons.push(top.anchors.beacon);
-  if (broken) wreckTop(p, top.w, top.d, top.top, def?.debris ?? (s.kind === "office" ? GLASS[s.wall] : WALLS[s.wall]), r, def ? THREE.MathUtils.clamp(top.top / 20, 0.4, 1) : 1);
+  if (broken) wreckTop(p, top.w, top.d, top.top, def.debris, r, THREE.MathUtils.clamp(top.top / 20, 0.4, 1));
   if (s.shiny && !broken) finial(p, top.top);
 
   if (s.damage >= 1) {
@@ -1270,7 +777,7 @@ function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
   const floors = s.floors > 1 ? Math.max(1, Math.round(s.floors * (0.5 + r() * 0.12))) : 1;
   const top = stackReal(p, burnt, def, floors, false, info);
   info.height = top.top;
-  if (hasReal("civic")) {
+  {
     // The broken top: ragged stumps of wall along each edge (masonry) or
     // charred joists and rafters standing out of it (timber and glass).
     const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
@@ -1299,10 +806,10 @@ function shell(s: Spec, def: RealDef): { group: THREE.Group; info: ModelInfo } {
       civic(p, "rubble_beam", wx + (r() - 0.5) * ww * 0.7, y + 0.2 * k, wz + (r() - 0.5) * wd * 0.7, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 1.2, rz: (r() - 0.5) * 1.2, scale: new THREE.Vector3(k, k, k), damage: 2 });
     }
     for (let i = 0; i < 2; i++) civic(p, "rubble_slab", wx + (r() - 0.5) * ww * 0.5, y + 0.1, wz + (r() - 0.5) * wd * 0.5, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.8, damage: 1 });
-  } else wreckTop(p, top.w, top.d, top.top, def.debris, r, THREE.MathUtils.clamp(top.top / 14, 0.5, 1.1));
+  }
   // Scorch round the walls, and what fell from above heaped against them.
   p.add(mat(0x1a1714, { transparent: true, opacity: 0.7, depthWrite: false }), new THREE.CircleGeometry(Math.max(s.w, s.d) * 0.75, 16), 0, KERB + 0.02, 0, -Math.PI / 2);
-  if (hasReal("civic")) {
+  {
     const paint: Paint = { wall: s.wall, accent: s.accent, roof: 0, signs: 0 };
     const pile = 0.9 + s.grade * 0.4;
     const sides: [number, number, number][] = [
@@ -1336,7 +843,7 @@ export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const r = rng(s.seed * 7 + 1);
   const pile = 1.4 + s.grade * 0.9;
   p.box(mat(0x4a4642), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, -s.yard);
-  if (hasReal("civic")) {
+  {
     // A heap of broken masonry (civic.py) with what is left standing or
     // thrown about on it: wall stumps in the building's brick, broken
     // slabs with their rebar out, bent beams; more of each for bigger buildings.
@@ -1359,27 +866,6 @@ export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
       const d = r() * 0.7;
       civic(p, "rubble_beam", Math.cos(a) * R * d, on(d) + 0.2, Math.sin(a) * R * d, { ry: r() * Math.PI * 2, rx: (r() - 0.5) * 0.5, damage: 2 });
     }
-    p.into(g);
-    g.position.set(s.x, 0, s.z);
-    g.rotation.y = s.rot;
-    const info: ModelInfo = { height: pile, emitters: [{ pos: new THREE.Vector3(0, pile * 0.6, 0), kind: "smoke", rate: 0.8 }], beacons: [], night: [], debris: WALLS[s.wall] };
-    return { group: g, info };
-  }
-  p.add(mat(0x5d5852, { flatShading: true, roughness: 1 }), new THREE.ConeGeometry(s.w * 0.62, pile, 9, 1), 0, pile / 2, 0, 0, r(), 0);
-  const conc = mat(0x7a7570, { roughness: 1, flatShading: true });
-  const wall = mat(new THREE.Color(WALLS[s.wall]).multiplyScalar(0.55).getHex(), { flatShading: true });
-  const burnt = mat(0x221e1c, { roughness: 1 });
-  for (let i = 0; i < 26 + s.grade * 8; i++) {
-    const a = r() * Math.PI * 2;
-    const dist = r() * s.w * 0.6;
-    const sz = 0.4 + r() * (1 + s.grade * 0.4);
-    const y = Math.max(0, pile * (1 - dist / (s.w * 0.62)) - sz * 0.6);
-    const m = [conc, conc, wall, burnt][Math.floor(r() * 4)];
-    p.box(m, sz, sz * (0.3 + r() * 0.6), sz * (0.5 + r() * 0.8), Math.cos(a) * dist, y, Math.sin(a) * dist, r() * 3, r(), r());
-  }
-  const steel = mat(0x2a2422, { metalness: 0.5, roughness: 0.6 });
-  for (let i = 0; i < 4 + s.grade * 2; i++) {
-    p.box(steel, 0.15, 2 + r() * 4, 0.15, (r() - 0.5) * s.w, 0, (r() - 0.5) * s.d, r() * 3, (r() - 0.5) * 1.8, (r() - 0.5) * 1.8);
   }
   p.into(g);
   g.position.set(s.x, 0, s.z);
@@ -1387,6 +873,13 @@ export function rubble(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const info: ModelInfo = { height: pile, emitters: [{ pos: new THREE.Vector3(0, pile * 0.6, 0), kind: "smoke", rate: 0.8 }], beacons: [], night: [], debris: WALLS[s.wall] };
   return { group: g, info };
 }
+
+/** Points on the crane's pieces (civic.py), piece-local: the tie apex, beacons, the counter-jib's end. */
+const CRANE: Record<string, Record<string, THREE.Vector3>> = {
+  crane_slew: { apex: new THREE.Vector3(0, 5.2, 0), beacon: new THREE.Vector3(0, 5.75, 0) },
+  crane_jib_tip: { beacon: new THREE.Vector3(-1.2, 0.75, 0) },
+  crane_counter: { end: new THREE.Vector3(9.3, 0.05, 0) },
+};
 
 /** Construction site: built floors, scaffolding, a blueprint of the goal and a tower crane. */
 export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: THREE.Group; ghost: THREE.Mesh } {
@@ -1409,18 +902,14 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   // Lower floors already finished: the real building, rising floor by floor.
   const clad = Math.max(0, built - 2);
   const def = realDef(s);
-  if (clad > 0) {
-    if (def) stackReal(p, s, def, clad, false, info);
-    else stack(p, s, looks(s, info), clad, false);
-  }
+  if (clad > 0 && def) stackReal(p, s, def, clad, false, info);
 
   // Scaffolding one floor above the work.
-  const scaff = mat(s.surrendering ? 0xc0392b : 0xd08a2a, { metalness: 0.4, roughness: 0.5 });
   const sh = builtH + s.floorH;
   const gap = 0.8;
   const W = s.w + gap * 2;
   const D = s.d + gap * 2;
-  if (hasReal("civic")) {
+  {
     // Tube-and-fitting bays (civic.py), 2.4 m stretched to fit each face,
     // one lift a storey; red tubes while the site is being surrendered.
     const red = s.surrendering ? mat(0xc0392b, { metalness: 0.4, roughness: 0.5 }) : undefined;
@@ -1435,22 +924,6 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
         for (let y = 0; y < sh - 0.01; y += s.floorH) civic(p, "scaffold", ox + dx * t, y, oz + dz * t, { ry, scale, swap });
       }
     }
-  } else for (const [len, axis] of [[W, "x"], [D, "z"]] as const) {
-    const n = Math.max(2, Math.round(len / 2.4));
-    for (let i = 0; i <= n; i++) {
-      const t = -len / 2 + (len * i) / n;
-      for (const side of [-1, 1]) {
-        const [x, z] = axis === "x" ? [t, (side * D) / 2] : [(side * W) / 2, t];
-        p.box(scaff, 0.09, sh, 0.09, x, 0, z);
-      }
-    }
-  }
-  if (!hasReal("civic")) for (let y = s.floorH; y <= sh + 0.01; y += s.floorH) {
-    for (const side of [-1, 1]) {
-      p.box(scaff, W, 0.08, 0.08, 0, y, (side * D) / 2);
-      p.box(scaff, 0.08, 0.08, D, (side * W) / 2, y, 0);
-      p.box(mat(0x8a6a40), W, 0.06, 0.6, 0, y - 0.05, side * (D / 2 - 0.3));
-    }
   }
   p.into(g);
 
@@ -1464,14 +937,11 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
   ghost.add(edges);
   g.add(ghost);
 
-  // Tower crane from the kit: base and mast sections, then a jib that turns
+  // Tower crane (civic.py): base and mast sections, then a jib that turns
   // with its cab, counter-jib, pendant ties, trolley, hook and a load of steel.
-  // The anchors (apex, beacons, the counter-jib's end) are the kit's; the
-  // realistic crane (civic.py) is built to the same sizes.
   const crane = (p: Parts, name: string, x: number, y: number, z: number) => {
-    if (hasReal("civic")) civic(p, name, x, y, z);
-    else for (const { role, geo } of piece(name).parts) p.add(kitMat(ROLES[role] ?? ROLES.metal, 0), geo, x, y, z);
-    return piece(name).anchors;
+    civic(p, name, x, y, z);
+    return CRANE[name] ?? {};
   };
   const cp = new Parts();
   const mx = s.w / 2 + 2.8;
@@ -1520,24 +990,16 @@ export function site(s: SiteSpec): { group: THREE.Group; info: ModelInfo; jib: T
 
 // ---- parks --------------------------------------------------------------------
 
-const PARK_ROLES: Record<string, RoleLook> = { ...ROLES, roof: { color: 0x56606e, rough: 0.8 }, accent: { color: 0x3a6fb5, rough: 0.7 } };
-
 function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = KERB) {
   const scale = new THREE.Vector3(s, s, s);
-  if (name === "bench" && hasReal("street")) return furniture(p, "bench", x, y, z, ry);
+  if (name === "bench") return furniture(p, "bench", x, y, z, ry);
   // A fountain's water moves: calm small ripples, rings from where it lands, streaks down the jet and streams.
   const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [x, z] }) : undefined);
-  if (hasReal("civic")) return civic(p, name, x, y, z, { ry, scale, swap: water });
-  for (const { role, geo } of piece(name).parts) p.add(role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [x, z] }) : kitMat(PARK_ROLES[role] ?? ROLES.metal, 0), geo, x, y, z, 0, ry, 0, scale);
+  civic(p, name, x, y, z, { ry, scale, swap: water });
 }
 
-/** A park lamp: a post with a lantern, lit by `bulb` at night. */
-export function lampPost(p: Parts, pole: THREE.Material, bulb: THREE.Material, x: number, z: number, h = 3.6) {
-  if (hasReal("street")) return furniture(p, "lamp_heritage", x, KERB, z);
-  p.cyl(pole, 0.07, 0.1, h, x, KERB, z, 6);
-  p.box(bulb, 0.36, 0.5, 0.36, x, KERB + h, z);
-  p.box(pole, 0.5, 0.08, 0.5, x, KERB + h + 0.5, z);
-}
+/** A park lamp, lit at night. */
+const lampPost = (p: Parts, x: number, z: number) => furniture(p, "lamp_heritage", x, KERB, z);
 
 /**
  * A park block in place of a district, in world coordinates: a plaza with a
@@ -1548,18 +1010,17 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
   const { x: X, z: Z } = k;
   const W = BLOCK_X;
   const D = BLOCK_Z;
-  const lawn_ = hasReal("trees") ? lawn() : mat(0x6a9a48, { roughness: 1 });
-  const real = hasReal("street");
-  const paving = real ? groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 }) : mat(0xc4bcae, { roughness: 0.9 });
+  const lawn_ = lawn();
+  const paving = groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 });
   const flat = (m: THREE.Material, g: THREE.BufferGeometry, x: number, z: number, y = KERB + 0.02) => p.add(m, g, X + x, y, Z + z, -Math.PI / 2);
   const bench = (x: number, z: number, ry: number) => prop(p, "bench", X + x, Z + z, ry);
   switch (k.kind) {
     case "plaza": {
       p.box(paving, W, KERB, D, X, 0, Z);
-      flat(real ? groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 }) : mat(0x9a8e7e, { roughness: 0.9 }), new THREE.CircleGeometry(10, 48), 0, 0);
-      flat(real ? groundMat("ashlar", 2.4, { roughness: 0.8, color: 0xf0ebe0 }) : mat(0xd8d0c0, { roughness: 0.9 }), new THREE.RingGeometry(10, 10.8, 48), 0, 0, KERB + 0.03);
+      flat(groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 }), new THREE.CircleGeometry(10, 48), 0, 0);
+      flat(groundMat("ashlar", 2.4, { roughness: 0.8, color: 0xf0ebe0 }), new THREE.RingGeometry(10, 10.8, 48), 0, 0, KERB + 0.03);
       prop(p, "fountain", X, Z, 0, 1.45);
-      if (hasReal("civic")) p.extra(fountainSpray(X, KERB, Z, 1.45));
+      p.extra(fountainSpray(X, KERB, Z, 1.45));
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2 + Math.PI / 8;
         // Benches face the fountain (a bench's front is +z before turning).
@@ -1570,13 +1031,13 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
         p.box(lawn_, 12, KERB + 0.12, 9, X + x, 0, Z + z);
         for (let i = 0; i < 5; i++) tree(p, X + x + (r() - 0.5) * 9, Z + z + (r() - 0.5) * 6, 0.35 + r() * 0.2, k.seed + 40 + i + x, KERB + 0.1);
       }
-      for (const [x, z] of [[-14, -6], [14, -6], [-14, 6], [14, 6]]) lampPost(p, pole, bulb, X + x, Z + z);
+      for (const [x, z] of [[-14, -6], [14, -6], [-14, 6], [14, 6]]) lampPost(p, X + x, Z + z);
       break;
     }
     case "park": {
       p.box(lawn_, W, KERB, D, X, 0, Z);
       // A loop path round the lawn, with a cut through the middle.
-      const path = real ? gravelMat(0xe0d0a8) : mat(0xc9b896, { roughness: 1 });
+      const path = gravelMat(0xe0d0a8);
       const ax = W / 2 - 6;
       const az = D / 2 - 4.5;
       const n = 36;
@@ -1584,14 +1045,14 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       ring.forEach(([x0, z0], i) => {
         const [x1, z1] = ring[(i + 1) % n];
         p.box(path, Math.hypot(x1 - x0, z1 - z0) + 0.6, KERB + 0.03, 2.2, X + (x0 + x1) / 2, 0, Z + (z0 + z1) / 2, -Math.atan2(z1 - z0, x1 - x0));
-        if (i % 6 === 3) lampPost(p, pole, bulb, X + x0 * 1.09, Z + z0 * 1.14);
+        if (i % 6 === 3) lampPost(p, X + x0 * 1.09, Z + z0 * 1.14);
         if (i % 6 === 0) bench(x0 * 0.9, z0 * 0.86, Math.atan2(x0, z0));
       });
       p.box(path, 2.2, KERB + 0.03, D, X + 4, 0, Z);
       // A pond with a sandy edge, and the bandstand across the lawn.
       const pond = { x: -12, z: 1, rx: 10, rz: 5.5 };
       const sand = new THREE.CircleGeometry(1, 28).scale(pond.rx + 0.9, pond.rz + 0.9, 1);
-      flat(real ? gravelMat(0xd8c490) : mat(0xb8a87c, { roughness: 1 }), sand, pond.x, pond.z, KERB + 0.025);
+      flat(gravelMat(0xd8c490), sand, pond.x, pond.z, KERB + 0.025);
       flat(waterMat({ amp: 0.9, scale: 1.7, color: 0x1d3c3a }), new THREE.CircleGeometry(1, 28).scale(pond.rx, pond.rz, 1), pond.x, pond.z, KERB + 0.04);
       prop(p, "bandstand", X + 16, Z - 1);
       // Trees wherever the paths, the pond and the bandstand leave room.
@@ -1612,9 +1073,9 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
       const pz = -3;
       const [pw, pd] = [46, 22];
       // A rubber-crumb surround and a mown pitch: light and dark bands of one turf.
-      p.box(real ? gravelMat(0xff8a68, 1.6) : mat(0xa85a40, { roughness: 1 }), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
+      p.box(gravelMat(0xff8a68, 1.6), pw + 6, KERB + 0.02, pd + 5, X, 0, Z + pz);
       for (let i = 0; i < 10; i++) {
-        const turf = real ? groundMat("grass", 1.8, { roughness: 0.95, normal: 0.6, color: i % 2 ? 0xa8c888 : 0xc4dca0 }) : mat(i % 2 ? 0x5e9a3e : 0x6aa646, { roughness: 1 });
+        const turf = groundMat("grass", 1.8, { roughness: 0.95, normal: 0.6, color: i % 2 ? 0xa8c888 : 0xc4dca0 });
         p.box(turf, pw / 10, KERB + 0.04, pd, X - pw / 2 + (i + 0.5) * (pw / 10), 0, Z + pz);
       }
       const white = mat(0xf2f2ea, { roughness: 0.7 });

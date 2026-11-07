@@ -218,3 +218,18 @@ test("the City's power and water get their own models; the public buildings have
   expect(p.buildings[0].model).toBe("p2");
   expect(p.buildings[0].style).toBe("powerstation");
 });
+
+test("every look the plan can give a building has a model", async () => {
+  // real.ts reads the page's URL at load; bun has none.
+  (globalThis as unknown as { location: object }).location ??= { search: "" };
+  const { DEFS } = await import("./real");
+  const { DESIGNS, NEED_LOOKS } = await import("./plan");
+  const drawn = (kind: string, style: string) => Object.values(DEFS).some((d) => d.kind === kind && d.style === style);
+  const built = new Set(["water", "square", "park"]);
+  for (const kind of KINDS) for (const [style] of STYLES[kind]) expect(drawn(kind, style), `${kind} ${style}`).toBe(true);
+  for (const [id, look] of Object.entries(DESIGNS)) expect(DEFS[id]?.style, id).toBe(look.style);
+  for (const look of [...Object.values(PUBLIC), ...Object.values(NEED_LOOKS)]) {
+    if (built.has(look.style)) continue;
+    expect(look.model && DEFS[look.model]?.style, look.style).toBe(look.style);
+  }
+});

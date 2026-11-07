@@ -1,6 +1,5 @@
 # Street furniture for the realistic city: lights, traffic signals, fences
-# and walls, and the small things on a pavement. Replaces the kit's box
-# lamps and the plain boxes the app drew for fences.
+# and walls, and the small things on a pavement.
 #
 # Pieces (base at the origin; the "front", -y here and +z in the app, is the
 # side that faces the street):

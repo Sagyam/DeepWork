@@ -1,5 +1,4 @@
-# Trees, bushes and hedges for the realistic city, replacing the kit's
-# low-poly blobs. Real sizes: street and garden trees are 5-12 m tall.
+# Trees, bushes and hedges for the realistic city. Real sizes: street and garden trees are 5-12 m tall.
 #
 # Trunks and branches are tapered tubes grown recursively from a seed, down
 # to a level of twigs and cut short at the crown's surface; the leaves are
@@ -621,8 +620,8 @@ def _species():
         ("shrub", lambda m, R: bush(m, R, 0.7, 1.0, 130, 0.36)),
         ("flowers", lambda m, R: bush(m, R, 0.65, 0.55, 110, 0.3, role="bloom")),
         ("hedge", lambda m, R: hedge(m, R)),
-        # The woods: light trees at the kit's own sizes (land.ts scales them
-        # as it scaled the kit's forest_a-e): broadleaf, conifer, rainforest
+        # The woods: light trees at a base size land.ts scales per instance
+        # (up to a tree, or a clump far out): broadleaf, conifer, rainforest
         # giant, undergrowth, and a far clump standing for several trees.
         ("forest_a", lambda m, R: light_tree(m, R, 5.0, 1.6, 1.8, 44, 1.1)),
         ("forest_b", lambda m, R: light_conifer(m, R, 5.6, 1.7)),

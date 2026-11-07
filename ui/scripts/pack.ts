@@ -9,7 +9,7 @@
 //
 // The pack is what the app needs on a GPU with BC7 (every GPU Mesa drives
 // with OpenGL 4.2 or later): the glb files, the BC7 textures and bc7.json.
-// No PNGs; a GPU without BC7 keeps the low-poly kit. The glbs are gzipped
+// No PNGs, so a GPU without BC7 shows no city. The glbs are gzipped
 // here (31 MB to 10; the app's loader inflates them), the BC7 files already are.
 //
 // <id> is a hash of the file list with each file's sum, so an unchanged pack
