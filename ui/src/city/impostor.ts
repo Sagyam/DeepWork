@@ -222,11 +222,13 @@ export function nearOnly(m: THREE.Material): THREE.Material {
   const c = m.clone();
   const prev = m.onBeforeCompile.bind(m);
   const key = m.customProgramCacheKey();
+  const clip = `if (distance(cameraPosition, (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz) >= ${IMPOSTOR_NEAR.toFixed(1)}) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`;
   c.onBeforeCompile = (sh, r) => {
     prev(sh, r);
-    sh.vertexShader = sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\nif (distance(cameraPosition, (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz) >= ${IMPOSTOR_NEAR.toFixed(1)}) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
+    sh.vertexShader = sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\n${clip}`);
   };
   c.customProgramCacheKey = () => `${key}:near-only`;
-  c.userData = { ...m.userData };
+  // vertex: the leaves' depth pre-pass (real.ts, leafDepth()) must drop the same trees.
+  c.userData = { ...m.userData, vertex: clip };
   return c;
 }

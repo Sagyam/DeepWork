@@ -58,12 +58,14 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Measure in the real Tauri window (WebKitGTK is usually slower than
       Chromium) with `VITE_FPS=1`. Target: 30 fps end-game city on a
       610M-class iGPU.
-- [ ] Hamlet trees cost ~3.5 ms of its ~21 ms GPU: cut-out leaves at MSAA.
+- [ ] Trees: the leaf pre-pass took ~1.3 ms off the Hamlet's trees. Next,
+      the far woods: a lumpy opaque canopy mesh, or octahedral impostors
+      (the crossed cards show from the city's downward view and look like
+      flat copper sheets under a low sun).
 - [ ] Instancing: one InstancedMesh per piece and material instead of
       merged `Parts`.
 - [ ] Shrink the pack further: the AO bakes are ~90 MB of it, one channel
       stored as BC7; BC4 (RGTC) would halve them.
-- [ ] Retune lighting: it is still tuned for the flat kit.
 
 ## Packaging
 

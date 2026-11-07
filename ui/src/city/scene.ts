@@ -21,7 +21,7 @@ import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
 import { thumbnail } from "./thumbs";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
+import { groundMat, hasReal, interiorUniforms, LEAF_OPT, leafDepth, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
@@ -49,11 +49,18 @@ const SUN_STEP = 0.0125;
 /**
  * ibl: the neutral ambient light that stands in for the environment light
  * rough materials lost, per unit of environment intensity. Unlike the town's
- * faint sky, the room environment is most of the city's fill light (night
- * included); 6.5 matched the old frames' mean brightness by day and by night
- * (scripts/bench-app.ts with LUMA=1).
+ * faint sky, the room environment is most of the city's fill light by night;
+ * 6.5 matched the old frames' mean brightness (scripts/bench-app.ts with
+ * LUMA=1). By day most of it moves to the hemisphere light (DAY_FILL).
  */
 const FILL = 6.5;
+/**
+ * light: share of FILL kept in full day. A flat ambient lights every face
+ * alike, so it flattened the realistic models and their shadows; the
+ * hemisphere light (sky above, warm ground bounce below) gives roofs, sunny
+ * walls and shade their own values for the same cost.
+ */
+const DAY_FILL = 0.45;
 
 /** clamp: caps brightness before the bloom (see the constructor). */
 const CLAMP = {
@@ -105,6 +112,8 @@ export class City {
   /** Materials that took the environment light in prepare(); their intensity follows the day. */
   private glossy = new Set<THREE.MeshStandardMaterial>();
   private prepared = new WeakSet<THREE.Material>();
+  /** Leaf materials with a depth pre-pass (leafPass()): they write no depth in the main pass. */
+  private leafMats = new Set<THREE.Material>();
   /** Cut-out textures the shadow map waits for. */
   private shadowWait = new Set<THREE.Texture>();
   private shadowDir: THREE.Vector3 | null = null;
@@ -120,7 +129,7 @@ export class City {
   private bench: Bench | null = null;
   private stars: THREE.Points;
   private sunLight = new THREE.DirectionalLight(0xffffff, 3);
-  private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x4a5a3a, 1);
+  private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x8a7a60, 1);
   private fill = new THREE.AmbientLight(0xffffff, 0);
   private land = new Land();
   private fx = new Fx();
@@ -1012,10 +1021,11 @@ export class City {
         cam.y += 4;
       }
     }
-    // Haze that softens the hills and fades the mountains, without hiding them.
+    // Haze that sets the city off from the woods behind it and fades the
+    // mountains, without hiding them.
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = Math.max(650, dist * 3.2);
-    fog.far = Math.max(5200, dist * 14);
+    fog.near = Math.max(300, dist * 1.5);
+    fog.far = Math.max(3000, dist * 11);
   }
 
   // ---- light ----------------------------------------------------------------
@@ -1035,14 +1045,17 @@ export class City {
       this.shadowDir = dir.clone();
       this.shadowsDirty();
     }
-    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 3.2, d.day);
-    this.sunLight.color.setHex(d.day > 0.02 ? 0xffffff : 0x9fb4ff).lerp(new THREE.Color(0xffa860), d.golden * 0.7);
-    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 1.1, d.day);
-    this.hemi.color.setHex(0xbcd4ff).lerp(new THREE.Color(0x2a3560), d.night);
+    // Warm sun against cool sky light; late in the day the sun turns orange
+    // and the shade lilac, so the hour reads at a glance.
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day);
+    this.sunLight.color.setHex(d.day > 0.02 ? 0xfff2e0 : 0x9fb4ff).lerp(new THREE.Color(0xff8a3a), d.golden);
+    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day);
+    this.hemi.color.setHex(0xb0c8ff).lerp(new THREE.Color(0x2a3560), d.night).lerp(new THREE.Color(0x9088c0), d.golden * 0.5);
+    this.hemi.groundColor.setHex(0x8a7a60).lerp(new THREE.Color(0x101418), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
-    this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity;
+    this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity * THREE.MathUtils.lerp(1, DAY_FILL, d.day);
     for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
-    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.6, d.day);
+    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15;
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
     const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
@@ -1163,9 +1176,11 @@ export class City {
    * and trees would cast the shadows of bare branches).
    */
   private prepare(root: THREE.Object3D) {
+    const leafy: THREE.Mesh[] = [];
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
+      if (LEAF_OPT && !mesh.userData.leafPass && (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).some((m) => m.userData.foliage)) leafy.push(mesh);
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         const s = m as THREE.MeshStandardMaterial;
         if (mesh.castShadow && m.alphaTest > 0 && s.map && !loaded(s.map)) this.shadowWait.add(s.map);
@@ -1183,7 +1198,40 @@ export class City {
         }
       }
     });
+    for (const mesh of leafy) this.leafPass(mesh);
     this.shadowsDirty();
+  }
+
+  /**
+   * leaves: a crown is many layers of alpha-tested cards, and with a cut-out
+   * the GPU shades every layer before the depth test throws the hidden ones
+   * away. So the leaves draw twice: a child that writes only their depth,
+   * first (renderOrder), then the lit leaves, which write no depth in the
+   * main pass (frame()) and so are tested before shading: each pixel is lit
+   * once. The child shares the geometry and instances, and hides with them.
+   */
+  private leafPass(mesh: THREE.Mesh) {
+    mesh.userData.leafPass = true;
+    const hide = new THREE.MeshBasicMaterial({ visible: false });
+    const depth = (m: THREE.Material) => {
+      if (!m.userData.foliage) return hide;
+      this.leafMats.add(m);
+      return leafDepth(m as THREE.MeshStandardMaterial);
+    };
+    const mats = Array.isArray(mesh.material) ? mesh.material.map(depth) : depth(mesh.material);
+    const src = mesh as THREE.InstancedMesh;
+    let pre: THREE.Mesh;
+    if (src.isInstancedMesh) {
+      const inst = new THREE.InstancedMesh(src.geometry, mats, src.count);
+      inst.instanceMatrix = src.instanceMatrix;
+      pre = inst;
+    } else pre = new THREE.Mesh(mesh.geometry, mats);
+    pre.renderOrder = mesh.renderOrder - 1;
+    pre.frustumCulled = mesh.frustumCulled;
+    pre.castShadow = pre.receiveShadow = false;
+    pre.userData.leafPass = true;
+    pre.raycast = () => {};
+    mesh.add(pre);
   }
 
   /**
@@ -1435,7 +1483,11 @@ export class City {
     }
     this.drawnAt = now;
     this.bench?.begin();
+    // leaves: their depth is already drawn (leafPass()); only for this scene's
+    // pass, as thumbnails and impostors draw the same materials without one.
+    for (const m of this.leafMats) m.depthWrite = false;
     this.composer.render(dt);
+    for (const m of this.leafMats) m.depthWrite = true;
     this.bench?.end();
   }
 }
