@@ -1,0 +1,40 @@
+# Houses: family names and house names, mixed. One per line; a `[design]`
+# header starts names only that blueprint gets (see names.rs).
+The Hart house
+Willowbank
+The Okafor house
+Rosemount
+The Lindqvist house
+Hazeldene
+The Brennan house
+Fernlea
+The Castillo house
+Bramble Cottage
+The Novak house
+Ashgrove
+The Sato house
+Larkspur
+The Haddad house
+Elmhurst
+The Quinn house
+Primrose Cottage
+The Dubois house
+Thornfield
+The Larsen house
+Holly Lodge
+The Varga house
+Meadowcroft
+[c1]
+Hart Farm
+Old Orchard Farm
+Brook Farm
+Fletcher's Farm
+Sorensen Farm
+Hillside Farm
+[c4]
+Pine Hollow
+Larch Cabin
+The Bothy
+Fir Lodge
+Kestrel Cabin
+The Eyrie

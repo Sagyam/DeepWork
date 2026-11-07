@@ -3,6 +3,8 @@
 // building rises with sparks, a lost one collapses into dust and rubble,
 // damage hits with a jolt. Changes since the window was last open are
 // replayed one by one, so a loss is seen, not just counted.
+import { weatherNow, type Weather } from "./weather";
+import { play } from "../sound";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -136,6 +138,9 @@ export class City {
   private world: World | null = null;
   private plan: CityPlan | null = null;
   private hour = 12;
+  private weather: Weather = weatherNow();
+  private rain: THREE.LineSegments | null = null;
+  private rainTime = { value: 0 };
   private night = 0;
   private entries = new Map<number, Entry>();
   private base = new THREE.Group();
@@ -688,6 +693,7 @@ export class City {
     const target = spec(ev.plots[0]);
     if (target) this.focus = { to: this.worldPos(target, target.height * 0.3), t: 0 };
     this.story(describeLive(ev, w));
+    play(ev.kind);
     switch (ev.kind) {
       case "quake":
         this.quake(1.4);
@@ -728,7 +734,7 @@ export class City {
   // ---- static ground ------------------------------------------------------
 
   private buildBase(p: CityPlan) {
-    const key = `${p.blocks.length}:${p.tier}:${p.emptyLots.map((l) => l.seed).join(",")}`;
+    const key = `${p.blocks.map((b) => `${b.x},${b.z},${b.roads.join("")}`).join(";")}:${p.tier}:${p.emptyLots.map((l) => `${l.seed}${l.forSale ? "s" : ""}`).join(",")}:${p.parks.map((k) => (k.decorations ?? []).join("+")).join(";")}:${p.labels.map((l) => l.name).join(";")}`;
     if (key === this.baseKey) return;
     this.baseKey = key;
     this.scene.remove(this.base);
@@ -767,6 +773,9 @@ export class City {
     const parts = chunk("all", 0, 0);
     // Textured streets: asphalt, paving slabs, granite kerbs, drains and manhole covers.
     const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
+    // A lane is gravel until the mayor pays for tarmac.
+    const gravel = groundMat("gravel", 3, { roughness: 1, color: 0xc8bca8 });
+    const surface = (cls: number) => (cls > 0 ? asphalt : gravel);
     const walk = groundMat("pave", 3.6, { roughness: 0.88 });
     const kerbStone = mat(0xb6b2aa, { roughness: 0.8 });
     const pool = lightPool();
@@ -782,7 +791,22 @@ export class City {
       const props = chunk(`${key}:props`, b.x, b.z, SMALL);
       const tiny = chunk(`${key}:tiny`, b.x, b.z, TINY);
       const trees = tile(`block:${key}`, b.x, b.z);
-      surf.box(asphalt, PITCH_X + 0.02, 0.06, PITCH_Z + 0.02, b.x, 0, b.z);
+      // The road around the block, by its streets' classes: half of each
+      // street (to its centre line) and a quarter of each crossing.
+      const [rn, rs, rw, re] = b.roads;
+      const half = ROAD / 2 - pw;
+      const inX = BLOCK_X + 2 * pw;
+      const inZ = BLOCK_Z + 2 * pw;
+      const outX = inX / 2 + half / 2;
+      const outZ = inZ / 2 + half / 2;
+      surf.box(asphalt, inX, 0.06, inZ, b.x, 0, b.z);
+      surf.box(surface(rn), inX, 0.06, half + 0.01, b.x, 0, b.z - outZ);
+      surf.box(surface(rs), inX, 0.06, half + 0.01, b.x, 0, b.z + outZ);
+      surf.box(surface(rw), half + 0.01, 0.06, inZ, b.x - outX, 0, b.z);
+      surf.box(surface(re), half + 0.01, 0.06, inZ, b.x + outX, 0, b.z);
+      for (const [sx, sz, a, c] of [[-1, -1, rw, rn], [1, -1, re, rn], [-1, 1, rw, rs], [1, 1, re, rs]]) {
+        surf.box(surface(Math.max(a, c)), half + 0.01, 0.06, half + 0.01, b.x + sx * outX, 0, b.z + sz * outZ);
+      }
       // Pavement: a raised ring round the block, kerb on the road side.
       for (const sz of [-1, 1]) surf.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
       for (const sx of [-1, 1]) surf.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
@@ -795,26 +819,34 @@ export class City {
       for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) surf.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
       for (const sx of [-1, 1]) surf.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
       for (const t of [-0.35, 0.35]) surf.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
-      // Dashed centre lines on the roads around the block.
-      for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) {
-        surf.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
+      // Dashed centre lines on the paved roads north and west of the block
+      // (the neighbours draw the others).
+      if (rn > 0) {
+        for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) surf.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
       }
-      for (let z = -PITCH_Z / 2; z < PITCH_Z / 2; z += 5) {
-        surf.box(line, 0.25, 0.07, 2.4, b.x - PITCH_X / 2, 0, b.z + z + 1.2);
+      if (rw > 0) {
+        for (let z = -PITCH_Z / 2; z < PITCH_Z / 2; z += 5) surf.box(line, 0.25, 0.07, 2.4, b.x - PITCH_X / 2, 0, b.z + z + 1.2);
       }
-      // Zebra crossings at the corners.
+      // An avenue has solid edge lines along both kerbs.
+      if (rn > 2) surf.box(line, BLOCK_X, 0.07, 0.15, b.x, 0, b.z - inZ / 2 - 0.45);
+      if (rs > 2) surf.box(line, BLOCK_X, 0.07, 0.15, b.x, 0, b.z + inZ / 2 + 0.45);
+      if (rw > 2) surf.box(line, 0.15, 0.07, BLOCK_Z, b.x - inX / 2 - 0.45, 0, b.z);
+      if (re > 2) surf.box(line, 0.15, 0.07, BLOCK_Z, b.x + inX / 2 + 0.45, 0, b.z);
+      // Zebra crossings at the corners, over paved streets.
       const kerb = ROAD - 2 * pw;
       for (const sx of [-1, 1]) {
         const x = b.x + sx * (BLOCK_X / 2 - 2.2);
-        for (let i = 0; i < 6; i++) surf.box(line, 2.6, 0.07, 0.5, x, 0, b.z - BLOCK_Z / 2 - pw - 0.8 - i * ((kerb - 1) / 5));
+        if (rn > 0) for (let i = 0; i < 6; i++) surf.box(line, 2.6, 0.07, 0.5, x, 0, b.z - BLOCK_Z / 2 - pw - 0.8 - i * ((kerb - 1) / 5));
         const z = b.z + (sx < 0 ? -1 : 1) * (BLOCK_Z / 2 - 2.2);
-        for (let i = 0; i < 6; i++) surf.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
+        if (rw > 0) for (let i = 0; i < 6; i++) surf.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
       }
       // Street lamps along the kerb, and trees between them.
       const ex = BLOCK_X / 2 + pw - 0.45;
       const ez = BLOCK_Z / 2 + pw - 0.45;
       for (const lz of [-1, 1]) {
-        for (const t of [-1, -1 / 3, 1 / 3, 1]) {
+        // Lamps from a street up, trees from a boulevard up.
+        const cls = lz < 0 ? rn : rs;
+        if (cls > 0) for (const t of [-1, -1 / 3, 1 / 3, 1]) {
           const x = b.x + t * (BLOCK_X / 2 - 1);
           const z = b.z + lz * ez;
           // The arm reaches out over the road; at night its light pools
@@ -824,14 +856,20 @@ export class City {
           furniture(props, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
           surf.add(pool, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
         }
-        for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
+        if (cls > 1) for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
           treeAt(trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
         }
       }
-      for (const sx of [-1, 1]) treeAt(trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
+      for (const sx of [-1, 1]) if ((sx < 0 ? rw : re) > 1) treeAt(trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
       this.streetFurniture(tiny, b, p.tier);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
+    // Street names in the lane, read from the south and the east.
+    for (const l of p.labels) {
+      const g = new THREE.PlaneGeometry(15, 2.1).rotateX(-Math.PI / 2);
+      if (!l.alongX) g.rotateY(Math.PI / 2);
+      parts.add(streetName(l.name), g, l.x, 0.075, l.z);
+    }
     // Empty lots: rough grass with survey stakes, waiting to be built on.
     const stake = mat(0xc9a36a);
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
@@ -841,6 +879,15 @@ export class City {
       for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
       for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
       for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
+      if (l.forSale) {
+        // A board by the pavement: the plan's land, not bought yet.
+        const rot = l.rot ?? 0;
+        const fx = l.x + Math.sin(rot) * (e - 0.6);
+        const fz = l.z + Math.cos(rot) * (e - 0.6);
+        parts.box(stake, 0.12, 1.9, 0.12, fx - 0.7, KERB, fz);
+        parts.box(stake, 0.12, 1.9, 0.12, fx + 0.7, KERB, fz);
+        parts.add(forSale(), new THREE.PlaneGeometry(1.7, 0.85), fx, KERB + 1.45, fz + Math.cos(rot) * 0.08, 0, rot, 0);
+      }
       const r = rng(l.seed);
       if (r() < 0.35) {
         const [tx, tz] = [l.x + (r() - 0.5) * 8, l.z + (r() - 0.5) * 8];
@@ -1026,9 +1073,12 @@ export class City {
     }
     // Warm sun against cool sky light; late in the day the sun turns orange
     // and the shade lilac, so the hour reads at a glance.
-    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day);
+    // Weather: clouds take the sun's direct light and give some back as sky.
+    this.weather = weatherNow();
+    const cloud = this.weather.cloud;
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day) * (1 - 0.75 * cloud);
     this.sunLight.color.setHex(d.day > 0.02 ? 0xfff2e0 : 0x9fb4ff).lerp(new THREE.Color(0xff8a3a), d.golden);
-    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day);
+    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day) * (1 + 0.35 * cloud);
     this.hemi.color.setHex(0xb0c8ff).lerp(new THREE.Color(0x2a3560), d.night).lerp(new THREE.Color(0x9088c0), d.golden * 0.5);
     this.hemi.groundColor.setHex(0x8a7a60).lerp(new THREE.Color(0x101418), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
@@ -1036,8 +1086,12 @@ export class City {
     for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
     this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15;
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
-    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
+    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6 * (1 - cloud)).lerp(new THREE.Color(0xa8acb0), cloud * 0.7 * d.day).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
+    u.turbidity.value = 6 + 14 * cloud;
+    u.rayleigh.value = 1.6 * (1 - 0.6 * cloud);
+    u.mieCoefficient.value = 0.004 + 0.02 * cloud;
+    this.setRain(this.weather.rain);
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.clamp.enabled = d.night > 0.05;
@@ -1054,6 +1108,45 @@ export class City {
     this.skyEnv(d.sun, d.night);
     this.cubeCam.update(this.renderer, this.skyScene);
     this.dirty = true;
+  }
+
+  /**
+   * Rain: streaks in a box round what the camera looks at, falling in the
+   * vertex shader, so it costs one draw and no CPU work per drop.
+   */
+  private setRain(amount: number) {
+    if (amount <= 0) {
+      if (this.rain) this.scene.remove(this.rain);
+      this.rain = null;
+      return;
+    }
+    if (this.rain) return;
+    const n = 6000;
+    const r = rng(17);
+    // Both ends of a streak share its height, so they wrap together; aLen
+    // drops the lower end.
+    const pos = new Float32Array(n * 6);
+    const len = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const x = (r() - 0.5) * 360;
+      const y = r() * 120;
+      const z = (r() - 0.5) * 360;
+      pos.set([x, y, z, x + 0.15, y, z + 0.1], i * 6);
+      len.set([0, 1.6], i * 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("aLen", new THREE.BufferAttribute(len, 1));
+    const m = new THREE.LineBasicMaterial({ color: 0xc8d4dc, transparent: true, opacity: 0.35, depthWrite: false, fog: true });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = this.rainTime;
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float aLen;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed.y = mod(transformed.y - uTime * 24.0, 120.0) - aLen;");
+    };
+    this.rain = new THREE.LineSegments(g, m);
+    this.rain.frustumCulled = false;
+    this.scene.add(this.rain);
   }
 
   // ---- rendering optimisations ------------------------------------------------
@@ -1411,6 +1504,10 @@ export class City {
     if (!this.dim) this.traffic.update(dt, this.t);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
+    if (this.rain) {
+      this.rainTime.value = this.t;
+      this.rain.position.set(this.controls.target.x, 0, this.controls.target.z);
+    }
 
     let animating = this.dying.length > 0 || this.fx.falling;
     let busy = false;
@@ -1434,7 +1531,7 @@ export class City {
     // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
     // traffic, effects or transitions): a focus timer's city can sit on screen
     // for hours, and a still frame costs as much as a busy one.
-    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
+    const moving = !!this.rain || this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
     if (!moving && !this.dirty && !this.bench) return;
     this.dirty = false;
     if (this.warm) {
@@ -1477,7 +1574,7 @@ function describeLive(ev: WorldEvent, w: World): string {
     case "built":
       return `${names(ev.plots)} was finished.`;
     case "repaired":
-      return `Focus repaired ${names(ev.plots)}.`;
+      return ev.cause === "mayor" ? `The mayor had ${names(ev.plots)} repaired.` : `Focus repaired ${names(ev.plots)}.`;
     case "graduated":
       return "Every need was met. The settlement grew.";
     case "collapsed":
@@ -1492,6 +1589,55 @@ function describeLive(ev: WorldEvent, w: World): string {
 }
 
 let poolMat: THREE.MeshStandardMaterial | null = null;
+
+const nameMats = new Map<string, THREE.MeshStandardMaterial>();
+
+/** A street's name in road paint: spaced white capitals on clear. */
+function streetName(name: string): THREE.MeshStandardMaterial {
+  let m = nameMats.get(name);
+  if (m) return m;
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 144;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "rgba(240,236,224,0.88)";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 92px 'Helvetica Neue', Arial, sans-serif";
+  g.fillText(name.toUpperCase().split("").join(String.fromCharCode(8202)), 512, 76, 1000);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  m = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  nameMats.set(name, m);
+  return m;
+}
+
+let saleMat: THREE.MeshStandardMaterial | null = null;
+
+/** An estate agent's board, both faces: FOR SALE in white on red. */
+function forSale(): THREE.MeshStandardMaterial {
+  if (saleMat) return saleMat;
+  const c = document.createElement("canvas");
+  c.width = 256;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#b8282a";
+  g.fillRect(0, 0, 256, 128);
+  g.strokeStyle = "#f4efe6";
+  g.lineWidth = 6;
+  g.strokeRect(8, 8, 240, 112);
+  g.fillStyle = "#f4efe6";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "800 52px 'Helvetica Neue', Arial, sans-serif";
+  g.fillText("FOR SALE", 128, 66, 224);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  saleMat = new THREE.MeshStandardMaterial({ map: t, roughness: 0.6, side: THREE.DoubleSide });
+  return saleMat;
+}
 
 /**
  * The glow a street light throws on the ground: a warm radial gradient,

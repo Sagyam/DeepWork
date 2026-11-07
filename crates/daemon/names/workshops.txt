@@ -1,0 +1,11 @@
+# Workshops and factories. One per line; a `[design]` header starts names
+# only that blueprint gets (see names.rs).
+[s4]
+Hollis & Ward · Engineers
+Brandt Machine Works
+Northgate Foundry Co.
+Eagle Spring & Axle Co.
+Mercer Bros. · Boilermakers
+Union Box & Paper Co.
+Calder Worsted Mills
+Paragon Castings Ltd.

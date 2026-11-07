@@ -35,6 +35,10 @@ enum Command {
         stopwatch: bool,
         #[arg(long, short)]
         profile: Option<String>,
+        /// Bet coins on finishing: double back, or lost on surrender. Needs a
+        /// countdown at least as long as your usual session.
+        #[arg(long, conflicts_with = "stopwatch")]
+        stake: Option<u64>,
     },
     /// End a stopwatch session (after its minimum time).
     Stop,
@@ -406,6 +410,7 @@ fn main() -> Result<()> {
             duration,
             stopwatch,
             profile,
+            stake,
         } => {
             let kind = match (duration, stopwatch) {
                 (_, true) => SessionKind::Stopwatch,
@@ -414,12 +419,21 @@ fn main() -> Result<()> {
                 },
                 (None, false) => SessionKind::Countdown { secs: 25 * 60 },
             };
-            let Response::Session(s) =
-                expect_ok(request(&cli.socket, &Request::Start { kind, profile })?)?
+            let Response::Session(s) = expect_ok(request(
+                &cli.socket,
+                &Request::Start {
+                    kind,
+                    profile,
+                    stake,
+                },
+            )?)?
             else {
                 bail!("unexpected reply")
             };
-            println!("Session started.");
+            match stake {
+                Some(c) => println!("Session started, {c} coins at stake."),
+                None => println!("Session started."),
+            }
             print_session(&s);
         }
         Command::Stop => {

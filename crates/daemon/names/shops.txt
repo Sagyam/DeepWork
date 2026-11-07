@@ -1,0 +1,49 @@
+# Shops, by blueprint so the sign fits the model. One per line; a
+# `[design]` header starts names only that blueprint gets (see names.rs).
+[s1]
+Rossi & Sons
+Harbour Books
+Marlowe's
+Green & Co.
+Kovac Hardware
+Pier Pharmacy
+Old Mill Tailors
+Fletcher's Bakery
+Moreau Fine Foods
+Whitlock Stationers
+Calloway Cycles
+Delgado Records
+Ashby & Daughters
+Thorne's Butchers
+Bianchi Deli
+Holloway Grocers
+Keane's Ironmongers
+Petrov Florist
+Nakamura Books
+Abernathy's Drapers
+[s2]
+Café des Arts
+Caffè Bellavista
+Kaffeehaus Rose
+Café du Coin
+Café Amadeus
+Café Lumière
+Caffè del Corso
+Café Nova
+Café Marchetti
+Café Mirabelle
+Caffè Sorrento
+Café Belvedere
+Café Aurore
+Caffè Vittoria
+Café Rivoli
+Café Opéra
+[s3]
+Starlite Diner
+Moonbeam Diner
+Silver Spoon
+Parkway Diner
+Night Owl Diner
+Lucky 7 Diner
+Comet Diner
+Sunrise Diner

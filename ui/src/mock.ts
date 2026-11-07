@@ -142,6 +142,7 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
   };
   const city = new MockCity();
   city.streak = 4;
+  city.freeLand = scenario !== "empty";
   const r = rand(7);
   const scar = (share: number) => {
     for (const i of city.built.keys()) if (r() < share) city.hurt(i, 1 + Math.floor(r() * 3), t0 - 20000 + i);
@@ -219,6 +220,8 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
   const pending: PendingConfig | null = empty
     ? null
     : { applies_at: t0 + 61000, applies_in_secs: 61000, reasons: ["profile deep: youtube.com no longer throttled"] };
+  city.freeLand = false;
+  if (scenario !== "empty" && scenario !== "hamlet") city.dress();
   return { city, status, past: empty ? [] : pastSessions(), pending };
 }
 
@@ -247,11 +250,16 @@ export function mockDaemon(req: Request): Response {
       const site = live ? state.city.construction(live.id, Math.max(0, now - live.started_at), live.state === "surrendering") : null;
       return { type: "world", ...state.city.world(now, site) };
     }
-    case "start":
+    case "start": {
       if (s) return { type: "error", message: "a session is already running" };
+      if (req.stake) {
+        const err = state.city.stake(req.stake, req.kind.type === "countdown" ? req.kind.secs : null);
+        if (err) return { type: "error", message: err };
+      }
       state.status.session = session(req.kind, 0);
       state.status.nudge = null;
       return { type: "session", ...state.status.session };
+    }
     case "stop":
       if (!s || s.kind.type !== "stopwatch") return { type: "error", message: "countdowns cannot be stopped" };
       if (s.stop_locked_secs > 0) return { type: "error", message: "too early to stop" };
@@ -267,7 +275,13 @@ export function mockDaemon(req: Request): Response {
     case "buy":
     case "choose":
     case "pause":
-    case "rename": {
+    case "rename":
+    case "buy_land":
+    case "repair":
+    case "upgrade_street":
+    case "decorate":
+    case "rename_street":
+    case "use_item": {
       if (s && req.type !== "rename") return { type: "error", message: "the mayor's desk opens when the session ends" };
       const now = Math.floor(Date.now() / 1000);
       const c = state.city;
@@ -275,6 +289,12 @@ export function mockDaemon(req: Request): Response {
         req.type === "buy" ? c.buy(req.blueprint)
         : req.type === "choose" ? c.choose(req.need, req.blueprint, now)
         : req.type === "pause" ? c.pause()
+        : req.type === "buy_land" ? c.buyLand(req.lot)
+        : req.type === "repair" ? c.repair(req.lot, false)
+        : req.type === "upgrade_street" ? c.upgrade(req.street)
+        : req.type === "decorate" ? c.decorate(req.spot, req.decoration)
+        : req.type === "use_item" ? c.useItem(req.item, req.lot)
+        : req.type === "rename_street" ? c.renameStreet(req.street, req.name)
         : c.rename(req.lot, req.name);
       if (err) return { type: "error", message: err };
       return { type: "world", ...c.world(now, null) };

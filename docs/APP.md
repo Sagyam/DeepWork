@@ -20,13 +20,14 @@ this are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 | Where | What |
 |---|---|
-| HUD | City card (level, progress, condition), the start card (timer / stopwatch, ring dial, profile, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
-| Mayor's desk (`desk.ts`) | Needs, design pick, coins, paused sites, "What next?" |
+| HUD | City card (level, progress, condition), the start card (timer / stopwatch, ring dial, profile, stake, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
+| Mayor's desk (`desk.ts`) | Needs, buy plot, design pick, coins, paused sites, "What next?", today's goals and items |
+| Town hall | Street upgrades and renames, park decorations |
 | Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels as silhouettes |
-| Deed card | A building's memory, rename; hover shows a tag. Picking tests lot rectangles, not meshes |
+| Deed card | A building's memory, rename, paid repair or a repair kit; hover shows a tag. Picking tests lot rectangles, not meshes |
 | Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice |
 | Progress sheet (chart) | Stats (`stats.ts`, pure, tested) and the session log |
-| Moments | Animated collapse, completion, damage, repair; fireworks and a card at level-up; near-miss "extend?" prompt; unseen events replayed on open |
+| Moments | Animated collapse, completion, damage, repair; fireworks and a card at level-up; near-miss "extend?" prompt; unseen events replayed on open; each with a sound (`sound.ts`, WebAudio, no files; mute by the menu) |
 
 A renderer failure only loses the picture: the HUD keeps working.
 
@@ -34,7 +35,8 @@ A renderer failure only loses the picture: the HUD keeps working.
 
 | File | Role |
 |---|---|
-| `plan.ts` | The `World` as places: lots, blocks, parks. `PUBLIC` and `NEED_LOOKS` pick models for public buildings. Pure, tested |
+| `plan.ts` | The `World` as places, from the daemon's layout: a block shows once land in it is bought, parks by level; road classes per block side, street labels. `PUBLIC` and `NEED_LOOKS` pick models for public buildings. Pure, tested |
+| `weather.ts` | The day's weather (clear, haze, overcast, rain) by date; the scene dims the sun and draws rain in one shader-animated draw. Pure, tested |
 | `models.ts` | Builds buildings from model pieces, their yards, construction sites, damage, ruins (`shell()`), parks |
 | `real.ts` | Loads the models, all or none; `DEFS` (size, set-back, the plan style drawn), `PROPS`, materials and shaders |
 | `scene.ts` | Sky, sun by local time, shadows, bloom, camera; carries the performance work below |
@@ -103,6 +105,16 @@ are blueprints and their prices.
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
 pieces, people). Water in the Hamlet and Town is the civic water tower.
+Streets draw by class per block side: gravel lanes; tarmac, centre lines,
+crossings and lamps from a street; trees from a boulevard; edge lines on
+an avenue. Unbought plots carry a FOR SALE board. Park spots draw the
+decorations bought for them (`SPOTS` in `models.ts`).
+
+Signs that carry a name (S1's fascia; the café, diner and works friezes;
+O1 and L1's name panels) show the building's own name: `NameSheet` in
+`real.ts` paints each name into a shared sheet the first time a building
+asks for it. A1's two shop signs are stock, by seed.
+
 Plan parks and the square are laid out in code (`park()` and `utility()` in
 `models.ts`) from these props on the shared ground textures (pave, ashlar,
 gravel, grass).

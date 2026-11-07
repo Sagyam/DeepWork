@@ -30,6 +30,13 @@
               <path d="M18 17v-8"></path>
             </svg>
           </button>
+          <button data-open="sound" id="sound-toggle" aria-label="Sound" title="Sound on or off" aria-pressed="true">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M11 5 6 9H2v6h4l5 4z"></path>
+              <path class="waves" d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14"></path>
+              <path class="mute" d="m16 9 6 6M22 9l-6 6"></path>
+            </svg>
+          </button>
           <button data-open="settings" aria-label="Settings" title="Settings and routines">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <circle cx="12" cy="12" r="3"></circle>
@@ -58,6 +65,17 @@
       </header>
       <div id="shop-main" class="panel-main"></div>
       <p class="error" id="shop-error"></p>
+    </dialog>
+    <dialog id="town" class="panel">
+      <header class="panel-head">
+        <div>
+          <h2>Town hall</h2>
+          <p class="small muted">Pave and widen the streets, dress the parks. <span id="town-coins"></span></p>
+        </div>
+        <button class="close" data-action="close" title="Close (Esc)">×</button>
+      </header>
+      <div id="town-main" class="panel-main"></div>
+      <p class="error" id="town-error"></p>
     </dialog>
     <dialog id="deed" class="panel narrow">
       <header class="panel-head">

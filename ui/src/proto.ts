@@ -5,7 +5,7 @@ export type SessionKind = { type: "countdown"; secs: number } | { type: "stopwat
 
 export type Request =
   | { type: "status" }
-  | { type: "start"; kind: SessionKind; profile: string | null }
+  | { type: "start"; kind: SessionKind; profile: string | null; stake?: number }
   | { type: "stop" }
   | { type: "surrender"; phrase: string }
   | { type: "skip"; routine: string | null }
@@ -23,7 +23,13 @@ export type Request =
   | { type: "choose"; need: string; blueprint: string | null }
   | { type: "pause" }
   | { type: "rename"; lot: string; name: string }
-  | { type: "extend"; secs: number };
+  | { type: "extend"; secs: number }
+  | { type: "buy_land"; lot: string }
+  | { type: "repair"; lot: string }
+  | { type: "upgrade_street"; street: string }
+  | { type: "decorate"; spot: string; decoration: string }
+  | { type: "rename_street"; street: string; name: string }
+  | { type: "use_item"; item: string; lot: string | null };
 
 export type SessionState = "active" | "surrendering" | "completed" | "surrendered";
 
@@ -215,6 +221,8 @@ export interface Plot {
   need?: string;
   shiny?: boolean;
   memory?: Memory;
+  /** What repairing it now costs; null when undamaged. */
+  repair_price?: number | null;
 }
 
 export interface Memory {
@@ -224,6 +232,8 @@ export interface Memory {
   streak_at_finish: number;
   scars: Scar[];
   first: boolean;
+  /** Build time from hired help, not focus. */
+  helped_secs?: number;
 }
 
 export interface BuildPart {
@@ -259,7 +269,7 @@ export interface Construction {
 }
 
 export type WorldEventKind = "built" | "repaired" | "collapsed" | "quake" | "damaged" | "graduated";
-export type WorldCause = "completed" | "surrendered" | "tamper" | "escalation_denied" | "clock_jump" | "tunnel";
+export type WorldCause = "completed" | "surrendered" | "tamper" | "escalation_denied" | "clock_jump" | "tunnel" | "mayor";
 
 export interface WorldEvent {
   ts: number;
@@ -286,6 +296,8 @@ export interface NeedInfo {
   /** Owned blueprints that fit, and ones that would if bought. */
   fits: string[];
   fits_locked: string[];
+  /** The next lot's land, when not bought yet: what it costs. */
+  land_price?: number | null;
 }
 
 export interface BlueprintInfo {
@@ -324,7 +336,93 @@ export interface Award {
   finished: number[];
   freeze_earned: boolean;
   freezes_used: number;
+  /** Coins won on a stake, on top of the stake coming back. */
+  stake_won?: number;
+  boxes?: BoxInfo[];
 }
+
+export interface BoxInfo {
+  goal: string;
+  item: string;
+}
+
+/** The master plan's ground. Block (x, y) holds 4 x 2 lots: slots 0-3 face north, 4-7 south. */
+export interface Layout {
+  blocks: BlockInfo[];
+  streets: StreetInfo[];
+  /** Every lot of the plan, by index. */
+  lots: LotInfo[];
+}
+
+export interface BlockInfo {
+  x: number;
+  y: number;
+  district: string | null;
+  /** `green`, `plaza`, `park` or `sports`. */
+  park: string | null;
+  name: string | null;
+  level: number;
+  /** A park that is part of the town now. */
+  open: boolean;
+  spots: SpotInfo[];
+}
+
+export interface SpotInfo {
+  id: string;
+  decoration: string | null;
+}
+
+/** East-west line k runs between block rows k-1 and k; north-south line k between columns k-1 and k. */
+export interface StreetInfo {
+  id: string;
+  name: string;
+  axis: "ew" | "ns";
+  line: number;
+  from: number;
+  to: number;
+  /** 0 lane, 1 street, 2 boulevard, 3 avenue. */
+  class: number;
+  upgrade_price: number | null;
+  /** Every lot on it is built: the mayor may rename it. */
+  complete?: boolean;
+}
+
+export interface LotInfo {
+  id: string;
+  block: number;
+  slot: number;
+  street: number;
+  address: string;
+  owned: boolean;
+  price: number;
+  for_sale: boolean;
+}
+
+export interface DecorationInfo {
+  id: string;
+  name: string;
+  price: number;
+  level: number;
+  unlocked: boolean;
+}
+
+export interface ItemInfo {
+  id: string;
+  name: string;
+  count: number;
+  rare: boolean;
+}
+
+export interface GoalInfo {
+  id: string;
+  title: string;
+  /** Seconds, or sessions for `sessions`. */
+  progress: number;
+  target: number;
+  done: boolean;
+}
+
+export const ROAD_CLASSES = ["lane", "street", "boulevard", "avenue"];
 
 export interface World {
   tier: number;
@@ -349,6 +447,17 @@ export interface World {
   /** The plan builds itself until the mayor first chooses. */
   auto?: boolean;
   last_award?: Award | null;
+  layout?: Layout;
+  /** The coins held at the start of the day, which prices rise with. */
+  wealth?: number;
+  decorations?: DecorationInfo[];
+  /** Coins at stake on the running session. */
+  stake?: number | null;
+  stake_target_secs?: number;
+  stake_max?: number;
+  inventory?: ItemInfo[];
+  goals?: GoalInfo[];
+  boxes_to_rare?: number;
 }
 
 export const MAX_PAUSED = 3;

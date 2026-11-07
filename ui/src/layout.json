@@ -1,0 +1,1114 @@
+{
+  "blocks": [
+    {
+      "x": -1,
+      "y": -1,
+      "district": "village",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": true,
+      "spots": []
+    },
+    {
+      "x": -1,
+      "y": 0,
+      "district": "village",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 0,
+      "y": -1,
+      "district": "main_street",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 0,
+      "y": 0,
+      "district": "main_street",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 2,
+      "y": -1,
+      "district": "works",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 2,
+      "y": 0,
+      "district": "works",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 1,
+      "y": -1,
+      "district": "civic",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 1,
+      "y": 0,
+      "district": "civic",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 0,
+      "y": 1,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 1,
+      "y": 1,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": -1,
+      "y": 1,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 0,
+      "y": 2,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 1,
+      "y": 2,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": 0,
+      "y": -2,
+      "district": null,
+      "park": "green",
+      "name": "The Green",
+      "level": 0,
+      "open": true,
+      "spots": [
+        {
+          "id": "13:0",
+          "decoration": null
+        },
+        {
+          "id": "13:1",
+          "decoration": null
+        },
+        {
+          "id": "13:2",
+          "decoration": null
+        },
+        {
+          "id": "13:3",
+          "decoration": null
+        },
+        {
+          "id": "13:4",
+          "decoration": null
+        }
+      ]
+    },
+    {
+      "x": 2,
+      "y": 1,
+      "district": null,
+      "park": "plaza",
+      "name": "Market Square",
+      "level": 1,
+      "open": false,
+      "spots": [
+        {
+          "id": "14:0",
+          "decoration": null
+        },
+        {
+          "id": "14:1",
+          "decoration": null
+        },
+        {
+          "id": "14:2",
+          "decoration": null
+        },
+        {
+          "id": "14:3",
+          "decoration": null
+        },
+        {
+          "id": "14:4",
+          "decoration": null
+        }
+      ]
+    },
+    {
+      "x": -2,
+      "y": 1,
+      "district": null,
+      "park": "park",
+      "name": "City Park",
+      "level": 2,
+      "open": false,
+      "spots": [
+        {
+          "id": "15:0",
+          "decoration": null
+        },
+        {
+          "id": "15:1",
+          "decoration": null
+        },
+        {
+          "id": "15:2",
+          "decoration": null
+        },
+        {
+          "id": "15:3",
+          "decoration": null
+        },
+        {
+          "id": "15:4",
+          "decoration": null
+        }
+      ]
+    },
+    {
+      "x": 2,
+      "y": 2,
+      "district": null,
+      "park": "sports",
+      "name": "Riverside Ground",
+      "level": 2,
+      "open": false,
+      "spots": []
+    },
+    {
+      "x": -2,
+      "y": 2,
+      "district": null,
+      "park": "plaza",
+      "name": "Founders' Square",
+      "level": 3,
+      "open": false,
+      "spots": [
+        {
+          "id": "17:0",
+          "decoration": null
+        },
+        {
+          "id": "17:1",
+          "decoration": null
+        },
+        {
+          "id": "17:2",
+          "decoration": null
+        },
+        {
+          "id": "17:3",
+          "decoration": null
+        },
+        {
+          "id": "17:4",
+          "decoration": null
+        }
+      ]
+    }
+  ],
+  "streets": [
+    {
+      "id": "orchard",
+      "name": "Orchard Way",
+      "axis": "ew",
+      "line": -2,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "mill",
+      "name": "Mill Lane",
+      "axis": "ew",
+      "line": -1,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "main",
+      "name": "Main Street",
+      "axis": "ew",
+      "line": 0,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "church",
+      "name": "Church Street",
+      "axis": "ew",
+      "line": 1,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "commerce",
+      "name": "Commerce Avenue",
+      "axis": "ew",
+      "line": 2,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "skyline",
+      "name": "Skyline Boulevard",
+      "axis": "ew",
+      "line": 3,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "west",
+      "name": "West Road",
+      "axis": "ns",
+      "line": -2,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "baker",
+      "name": "Baker Street",
+      "axis": "ns",
+      "line": -1,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "market",
+      "name": "Market Street",
+      "axis": "ns",
+      "line": 0,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "station",
+      "name": "Station Road",
+      "axis": "ns",
+      "line": 1,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "foundry",
+      "name": "Foundry Lane",
+      "axis": "ns",
+      "line": 2,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    },
+    {
+      "id": "river",
+      "name": "River Road",
+      "axis": "ns",
+      "line": 3,
+      "from": -2,
+      "to": 2,
+      "class": 0,
+      "upgrade_price": 150,
+      "complete": false
+    }
+  ],
+  "lots": [
+    {
+      "id": "hamlet-homes-1",
+      "block": 0,
+      "slot": 4,
+      "street": 2,
+      "address": "9 Main Street",
+      "owned": true,
+      "price": 60,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-homes-2",
+      "block": 0,
+      "slot": 5,
+      "street": 2,
+      "address": "11 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-homes-3",
+      "block": 0,
+      "slot": 6,
+      "street": 2,
+      "address": "13 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-homes-4",
+      "block": 0,
+      "slot": 7,
+      "street": 2,
+      "address": "15 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-shops-1",
+      "block": 2,
+      "slot": 4,
+      "street": 2,
+      "address": "17 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-shops-2",
+      "block": 2,
+      "slot": 5,
+      "street": 2,
+      "address": "19 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-jobs-1",
+      "block": 4,
+      "slot": 4,
+      "street": 2,
+      "address": "33 Main Street",
+      "owned": false,
+      "price": 80,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-water-1",
+      "block": 6,
+      "slot": 4,
+      "street": 2,
+      "address": "25 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": true
+    },
+    {
+      "id": "hamlet-power-1",
+      "block": 6,
+      "slot": 5,
+      "street": 2,
+      "address": "27 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": true
+    },
+    {
+      "id": "town-homes-1",
+      "block": 1,
+      "slot": 0,
+      "street": 2,
+      "address": "10 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
+    },
+    {
+      "id": "town-homes-2",
+      "block": 1,
+      "slot": 1,
+      "street": 2,
+      "address": "12 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
+    },
+    {
+      "id": "town-homes-3",
+      "block": 1,
+      "slot": 2,
+      "street": 2,
+      "address": "14 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
+    },
+    {
+      "id": "town-homes-4",
+      "block": 1,
+      "slot": 3,
+      "street": 2,
+      "address": "16 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
+    },
+    {
+      "id": "town-flats-1",
+      "block": 2,
+      "slot": 6,
+      "street": 2,
+      "address": "21 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": false
+    },
+    {
+      "id": "town-flats-2",
+      "block": 2,
+      "slot": 7,
+      "street": 2,
+      "address": "23 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": false
+    },
+    {
+      "id": "town-shops-1",
+      "block": 3,
+      "slot": 0,
+      "street": 2,
+      "address": "18 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": false
+    },
+    {
+      "id": "town-shops-2",
+      "block": 3,
+      "slot": 1,
+      "street": 2,
+      "address": "20 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": false
+    },
+    {
+      "id": "town-shops-3",
+      "block": 3,
+      "slot": 2,
+      "street": 2,
+      "address": "22 Main Street",
+      "owned": false,
+      "price": 120,
+      "for_sale": false
+    },
+    {
+      "id": "town-jobs-1",
+      "block": 4,
+      "slot": 5,
+      "street": 2,
+      "address": "35 Main Street",
+      "owned": false,
+      "price": 80,
+      "for_sale": false
+    },
+    {
+      "id": "town-jobs-2",
+      "block": 4,
+      "slot": 6,
+      "street": 2,
+      "address": "37 Main Street",
+      "owned": false,
+      "price": 80,
+      "for_sale": false
+    },
+    {
+      "id": "town-school-1",
+      "block": 6,
+      "slot": 6,
+      "street": 2,
+      "address": "29 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "town-clinic-1",
+      "block": 6,
+      "slot": 7,
+      "street": 2,
+      "address": "31 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "town-fire-1",
+      "block": 7,
+      "slot": 0,
+      "street": 2,
+      "address": "26 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "town-square-1",
+      "block": 7,
+      "slot": 1,
+      "street": 2,
+      "address": "28 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "town-water-1",
+      "block": 7,
+      "slot": 2,
+      "street": 2,
+      "address": "30 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "town-power-1",
+      "block": 7,
+      "slot": 3,
+      "street": 2,
+      "address": "32 Main Street",
+      "owned": false,
+      "price": 100,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-1",
+      "block": 8,
+      "slot": 0,
+      "street": 3,
+      "address": "18 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-2",
+      "block": 8,
+      "slot": 1,
+      "street": 3,
+      "address": "20 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-3",
+      "block": 8,
+      "slot": 2,
+      "street": 3,
+      "address": "22 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-4",
+      "block": 8,
+      "slot": 3,
+      "street": 3,
+      "address": "24 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-5",
+      "block": 8,
+      "slot": 4,
+      "street": 4,
+      "address": "17 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-offices-6",
+      "block": 8,
+      "slot": 5,
+      "street": 4,
+      "address": "19 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-1",
+      "block": 8,
+      "slot": 6,
+      "street": 4,
+      "address": "21 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-2",
+      "block": 8,
+      "slot": 7,
+      "street": 4,
+      "address": "23 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-3",
+      "block": 9,
+      "slot": 0,
+      "street": 3,
+      "address": "26 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-4",
+      "block": 9,
+      "slot": 1,
+      "street": 3,
+      "address": "28 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-5",
+      "block": 9,
+      "slot": 2,
+      "street": 3,
+      "address": "30 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-flats-6",
+      "block": 9,
+      "slot": 3,
+      "street": 3,
+      "address": "32 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-1",
+      "block": 9,
+      "slot": 4,
+      "street": 4,
+      "address": "25 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-2",
+      "block": 9,
+      "slot": 5,
+      "street": 4,
+      "address": "27 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-3",
+      "block": 9,
+      "slot": 6,
+      "street": 4,
+      "address": "29 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-4",
+      "block": 9,
+      "slot": 7,
+      "street": 4,
+      "address": "31 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-5",
+      "block": 10,
+      "slot": 0,
+      "street": 3,
+      "address": "10 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-shops-6",
+      "block": 10,
+      "slot": 1,
+      "street": 3,
+      "address": "12 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-hospital-1",
+      "block": 6,
+      "slot": 0,
+      "street": 1,
+      "address": "26 Mill Lane",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-police-1",
+      "block": 6,
+      "slot": 1,
+      "street": 1,
+      "address": "28 Mill Lane",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-library-1",
+      "block": 6,
+      "slot": 2,
+      "street": 1,
+      "address": "30 Mill Lane",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-park-1",
+      "block": 6,
+      "slot": 3,
+      "street": 1,
+      "address": "32 Mill Lane",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-hall-1",
+      "block": 7,
+      "slot": 4,
+      "street": 3,
+      "address": "25 Church Street",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-landmark-1",
+      "block": 10,
+      "slot": 2,
+      "street": 3,
+      "address": "14 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "city-water-1",
+      "block": 7,
+      "slot": 5,
+      "street": 3,
+      "address": "27 Church Street",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "city-power-1",
+      "block": 7,
+      "slot": 6,
+      "street": 3,
+      "address": "29 Church Street",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
+    },
+    {
+      "id": "metro-towers-1",
+      "block": 10,
+      "slot": 3,
+      "street": 3,
+      "address": "16 Church Street",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-towers-2",
+      "block": 10,
+      "slot": 4,
+      "street": 4,
+      "address": "9 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-towers-3",
+      "block": 10,
+      "slot": 5,
+      "street": 4,
+      "address": "11 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-1",
+      "block": 10,
+      "slot": 6,
+      "street": 4,
+      "address": "13 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-2",
+      "block": 10,
+      "slot": 7,
+      "street": 4,
+      "address": "15 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-3",
+      "block": 11,
+      "slot": 0,
+      "street": 4,
+      "address": "18 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-4",
+      "block": 11,
+      "slot": 1,
+      "street": 4,
+      "address": "20 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-5",
+      "block": 11,
+      "slot": 2,
+      "street": 4,
+      "address": "22 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-offices-6",
+      "block": 11,
+      "slot": 3,
+      "street": 4,
+      "address": "24 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-1",
+      "block": 11,
+      "slot": 4,
+      "street": 5,
+      "address": "17 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-2",
+      "block": 11,
+      "slot": 5,
+      "street": 5,
+      "address": "19 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-3",
+      "block": 11,
+      "slot": 6,
+      "street": 5,
+      "address": "21 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-4",
+      "block": 11,
+      "slot": 7,
+      "street": 5,
+      "address": "23 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-5",
+      "block": 12,
+      "slot": 0,
+      "street": 4,
+      "address": "26 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-flats-6",
+      "block": 12,
+      "slot": 1,
+      "street": 4,
+      "address": "28 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-shops-1",
+      "block": 12,
+      "slot": 2,
+      "street": 4,
+      "address": "30 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-shops-2",
+      "block": 12,
+      "slot": 3,
+      "street": 4,
+      "address": "32 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-shops-3",
+      "block": 12,
+      "slot": 4,
+      "street": 5,
+      "address": "25 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    },
+    {
+      "id": "metro-shops-4",
+      "block": 12,
+      "slot": 5,
+      "street": 5,
+      "address": "27 Skyline Boulevard",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
+    }
+  ]
+}

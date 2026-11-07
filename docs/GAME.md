@@ -61,12 +61,50 @@ appended, never reordered (`lot_ids_are_pinned`).
 - Water, power and public buildings need no blueprint: the town builds them.
 - Old ledgers with no decisions are built in the plan's default order.
 
+## The ground
+
+`layout.rs` lays the plan out: blocks on a grid by district, named streets
+between them, and for each lot its slot, the street it fronts and its
+number (odd north, even south). The Hamlet strings along Main Street, the
+Town fills the far side, downtown grows south. Parks open by level.
+
+- **Land**: the first plot is free; every other one is bought, by hand
+  (`BuyLand`). A site only starts on bought land; until then focus waits
+  as crew hours.
+- **Streets** start as gravel lanes and upgrade, for coins, to street,
+  boulevard and avenue (`road_upgrade` in `economy.rs` sets price and
+  level). A street whose every lot is built may be renamed by the mayor.
+- **Decorations** stand on a park's five spots (none on the sports
+  ground): trees, benches, fountain, statue, bandstand.
+
+## Coins out
+
+Prices are list price plus `WEALTH_PCT` of the coins held at the start of
+the local day, so a pile costs more to spend but saving always catches up.
+The opening balance, not the current one, so spending first never makes
+the next thing cheaper. It applies to blueprints, land, repairs, streets
+and decorations.
+
+- **Paid repair**: a damaged building fixed now (`REPAIR_PER_DAMAGE`).
+- **Stakes**: a countdown at least as long as the median of the last
+  completed sessions (`stake_target`) may carry up to `STAKE_MAX` coins.
+  Finishing pays the stake back twice; surrendering loses it.
+
+## Goals and boxes
+
+Three goals a day (`Goal` in `economy.rs`): two hours of focus, one
+90-minute session, three sessions. Each pays one box, once a day. A box
+holds a repair kit, hired help or, rarely, a master crew; the roll comes
+from the session id, so it can't be rerolled, and every `PITY`-th box
+without a rare one is rare. Help adds a share of a building's build time
+to the active site; the deed shows it apart from focus.
+
 ## Penalties and repairs
 
 | Ledger event | In the city |
 |---|---|
 | Surrender (severe) | The session builds and earns nothing; fire damages the buildings nearest the site |
-| `tamper` (major) | Earthquake damages a district |
+| `tamper` (major) | Earthquake damages the fullest block |
 | `escalation_denied`, `clock_jump`, `tunnel` (minor) | Light damage to the newest building |
 
 Damage 3 is a ruin, which stands until repaired. Each completed session
@@ -76,9 +114,11 @@ within 10 min count once.
 ## Requests and events
 
 The app and CLI only ask; the daemon checks with the same code the fold
-uses. `Buy`, `Choose`, `Pause` (refused during a session) and `Rename` write
-ledger events `blueprint_bought`, `need_chosen`, `site_paused`,
-`building_renamed`. Backups carry them.
+uses. Decisions write ledger events, all refused during a session except
+the renames: `blueprint_bought`, `need_chosen`, `site_paused`,
+`building_renamed`, `land_bought`, `repair_bought`, `street_upgraded`,
+`street_renamed`, `decorated`, `item_used`, and `stake_placed` with a
+session's start. Backups carry them.
 
 ## Building memories
 
@@ -86,3 +126,8 @@ Each building keeps its story, folded from the sessions that built it:
 name and address (renameable), sessions and focused time, start and finish,
 damage and repairs, firsts. The app shows a hover tag and a click card
 (the deed).
+
+**Names** are dealt when a lot gets its design (`names.rs`), from the pile
+for its class in `crates/daemon/names/`: the first name no other building
+has, the design's own names first, so a diner gets a diner's name and its
+sign shows it. Piles are append-only, like the plan's lots.

@@ -24,6 +24,11 @@ pub enum Request {
     Start {
         kind: SessionKind,
         profile: Option<String>,
+        /// Coins bet on finishing: a countdown at least
+        /// [`World::stake_target_secs`] long wins them back twice, surrender
+        /// loses them.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        stake: Option<u64>,
     },
     /// End a stopwatch session. Refused for countdowns and before the minimum.
     Stop,
@@ -93,7 +98,7 @@ pub enum Request {
     },
     /// Pause the active construction site; focus then banks as crew hours.
     Pause,
-    /// Rename a finished building. An empty name restores the plan's.
+    /// Rename a finished building. An empty name restores the one it was dealt.
     Rename {
         lot: String,
         name: String,
@@ -101,6 +106,38 @@ pub enum Request {
     /// Add minutes to the running countdown, up to the session cap.
     Extend {
         secs: u64,
+    },
+    /// Buy a plot of the plan's land; a site can only start on bought land.
+    /// Refused during a session.
+    BuyLand {
+        lot: String,
+    },
+    /// Pay coins to repair a damaged building now. Refused during a session.
+    Repair {
+        lot: String,
+    },
+    /// Upgrade a street to its next road class. Refused during a session.
+    UpgradeStreet {
+        street: String,
+    },
+    /// Put a decoration on a park's spot, replacing what stands there.
+    /// Refused during a session.
+    Decorate {
+        spot: String,
+        decoration: String,
+    },
+    /// Rename a street whose every planned lot is built. An empty name
+    /// restores the plan's.
+    RenameStreet {
+        street: String,
+        name: String,
+    },
+    /// Use an item won in a box: a repair kit on `lot`, help on the active
+    /// site. Refused during a session.
+    UseItem {
+        item: String,
+        #[serde(default)]
+        lot: Option<String>,
     },
 }
 
@@ -297,6 +334,136 @@ pub struct World {
     /// What the last completed session earned.
     #[serde(default)]
     pub last_award: Option<Award>,
+    /// The master plan's ground: blocks, streets and lots.
+    #[serde(default)]
+    pub layout: Layout,
+    /// The coins held at the start of the day, which prices rise with.
+    #[serde(default)]
+    pub wealth: u64,
+    /// Every decoration, for sale or not.
+    #[serde(default)]
+    pub decorations: Vec<DecorationInfo>,
+    /// Coins at stake on the running session.
+    #[serde(default)]
+    pub stake: Option<u64>,
+    /// A countdown must be at least this long to take a stake.
+    #[serde(default)]
+    pub stake_target_secs: u64,
+    #[serde(default)]
+    pub stake_max: u64,
+    /// Items won in boxes and not used yet.
+    #[serde(default)]
+    pub inventory: Vec<ItemInfo>,
+    /// Today's goals; each pays a box once a day.
+    #[serde(default)]
+    pub goals: Vec<GoalInfo>,
+    /// Boxes until one is sure to hold a rare item.
+    #[serde(default)]
+    pub boxes_to_rare: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Layout {
+    pub blocks: Vec<BlockInfo>,
+    pub streets: Vec<StreetInfo>,
+    /// Every lot of the plan, by index.
+    pub lots: Vec<LotInfo>,
+}
+
+/// A block of the plan's grid. Block (x, y) holds 4 x 2 lots; its front row
+/// (slots 0-3, west to east) faces north, the back row south.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BlockInfo {
+    pub x: i32,
+    pub y: i32,
+    /// The district whose lots it holds, or the park it is.
+    pub district: Option<String>,
+    /// `green`, `plaza`, `park` or `sports`.
+    pub park: Option<String>,
+    pub name: Option<String>,
+    /// A park: part of the town from this level.
+    pub level: u32,
+    /// A park that is part of the town now.
+    pub open: bool,
+    /// A park's places for decorations.
+    pub spots: Vec<SpotInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpotInfo {
+    pub id: String,
+    pub decoration: Option<String>,
+}
+
+/// A named street along a line of the grid. East-west line `k` runs between
+/// block rows k-1 and k, north-south line `k` between columns k-1 and k.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreetInfo {
+    pub id: String,
+    pub name: String,
+    /// `ew` or `ns`.
+    pub axis: String,
+    pub line: i32,
+    /// Block columns (`ew`) or rows (`ns`) it runs past.
+    pub from: i32,
+    pub to: i32,
+    /// 0 lane, 1 street, 2 boulevard, 3 avenue.
+    pub class: u32,
+    /// What the next class costs, when it can be bought now.
+    pub upgrade_price: Option<u64>,
+    /// Every lot on it is built: the mayor may rename it.
+    #[serde(default)]
+    pub complete: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LotInfo {
+    pub id: String,
+    /// Index into [`Layout::blocks`].
+    pub block: u32,
+    pub slot: u32,
+    /// Index into [`Layout::streets`]: the street it fronts.
+    pub street: u32,
+    pub address: String,
+    pub owned: bool,
+    /// What its land costs now.
+    pub price: u64,
+    /// Its level is open, so its land can be bought.
+    pub for_sale: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DecorationInfo {
+    pub id: String,
+    pub name: String,
+    pub price: u64,
+    pub level: u32,
+    pub unlocked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ItemInfo {
+    pub id: String,
+    pub name: String,
+    pub count: u32,
+    pub rare: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoalInfo {
+    pub id: String,
+    pub title: String,
+    /// Seconds, or sessions for `sessions`.
+    pub progress: u64,
+    pub target: u64,
+    /// Its box was won today.
+    pub done: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoxInfo {
+    pub goal: String,
+    pub item: String,
 }
 
 impl World {
@@ -347,6 +514,9 @@ pub struct Plot {
     pub shiny: bool,
     #[serde(default)]
     pub memory: Memory,
+    /// What repairing it now costs; `None` when undamaged.
+    #[serde(default)]
+    pub repair_price: Option<u64>,
 }
 
 /// How a building came to be.
@@ -363,6 +533,9 @@ pub struct Memory {
     pub scars: Vec<Scar>,
     /// It was the first building of the city.
     pub first: bool,
+    /// Build time that came from hired help, not focus.
+    #[serde(default)]
+    pub helped_secs: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -407,6 +580,9 @@ pub struct NeedInfo {
     /// Owned blueprints that fit, and ones that would fit if bought.
     pub fits: Vec<String>,
     pub fits_locked: Vec<String>,
+    /// The next lot's land, when it is not bought yet: what it costs.
+    #[serde(default)]
+    pub land_price: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -457,6 +633,12 @@ pub struct Award {
     /// A streak freeze was earned, or one was spent.
     pub freeze_earned: bool,
     pub freezes_used: u32,
+    /// Coins won on a stake, on top of the stake itself coming back.
+    #[serde(default)]
+    pub stake_won: u64,
+    /// Boxes won by today's goals.
+    #[serde(default)]
+    pub boxes: Vec<BoxInfo>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -517,6 +699,8 @@ pub enum WorldCause {
     ClockJump,
     /// A proxy or tunnel around the throttle (`ssh -D`, Tor, ...).
     Tunnel,
+    /// The mayor's doing: a paid repair, or an item.
+    Mayor,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -622,6 +806,7 @@ mod tests {
         let req = Request::Start {
             kind: SessionKind::Countdown { secs: 1500 },
             profile: Some("deep".into()),
+            stake: Some(50),
         };
         let line = serde_json::to_string(&req).unwrap();
         assert_eq!(serde_json::from_str::<Request>(&line).unwrap(), req);

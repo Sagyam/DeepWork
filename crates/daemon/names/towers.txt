@@ -1,0 +1,11 @@
+# Landmark towers. One per line; a `[design]` header starts names only
+# that blueprint gets (see names.rs).
+[l1]
+The Orion Building
+Halcyon Tower
+Continental Life
+The Zenith Building
+Sterling Trust
+Aurora Tower
+Monarch Building
+The Beacon Building
