@@ -913,8 +913,8 @@ function sheet(c: HTMLCanvasElement): THREE.Texture {
 
 let signCanvas: HTMLCanvasElement | null = null;
 
-/** Shop signs, two columns by four rows of 1024 x 256; a building shows one row, from column `col` on. */
-function signs(row: number, col = 0): THREE.Texture {
+/** Stock shop signs, two columns by four rows of 1024 x 256; a building shows one row (A1's two shops). */
+function signs(row: number): THREE.Texture {
   if (!signCanvas) {
     const c = (signCanvas = document.createElement("canvas"));
     c.width = 2048;
@@ -941,7 +941,7 @@ function signs(row: number, col = 0): THREE.Texture {
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = THREE.RepeatWrapping;
   t.repeat.set(0.5, 0.25);
-  t.offset.set(col * 0.5, row * 0.25);
+  t.offset.set(0, row * 0.25);
   t.anisotropy = 8;
   return t;
 }
@@ -1002,209 +1002,215 @@ function ghosts(row: number): THREE.Texture {
   return t;
 }
 
-const TOWERS = ["MERIDIAN HOUSE", "ONE HARBOUR PLACE", "CARLTON TOWER", "NORTHBRIDGE CENTRE", "THE EXCHANGE", "ATLAS BUILDING", "200 PARK ROW", "SOVEREIGN HOUSE"];
-
-let towerCanvas: HTMLCanvasElement | null = null;
-
-/** Office buildings' names for the fascia, eight rows of 2048 x 128: spaced brushed-steel capitals on clear. */
-function towerNames(row: number): THREE.Texture {
-  if (!towerCanvas) {
-    const c = (towerCanvas = document.createElement("canvas"));
-    c.width = 2048;
-    c.height = 1024;
-    const g = c.getContext("2d")!;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "500 64px 'Helvetica Neue', Helvetica, Arial, sans-serif";
-    TOWERS.forEach((name, i) => {
-      const y = i * 128 + 66;
-      const text = name.split("").join(String.fromCharCode(8202, 8202, 8202));
-      g.fillStyle = "rgba(10,10,12,0.9)";
-      g.fillText(text, 1026, y + 3, 1400);
-      const grad = g.createLinearGradient(0, y - 30, 0, y + 30);
-      grad.addColorStop(0, "#f4f6f8");
-      grad.addColorStop(0.5, "#b8bec4");
-      grad.addColorStop(1, "#e2e6ea");
-      g.fillStyle = grad;
-      g.fillText(text, 1024, y, 1400);
-    });
-  }
-  const t = sheet(towerCanvas);
-  t.flipY = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.set(1, 0.125);
-  t.offset.set(0, row * 0.125);
-  t.anisotropy = 8;
-  return t;
+/** A small stable hash of a name, for picks that must not change between frames. */
+function nameHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
+  return h >>> 0;
 }
 
-const DINERS = ["STARLITE DINER", "MOONBEAM DINER", "SILVER SPOON", "PARKWAY DINER", "NIGHT OWL DINER", "LUCKY 7 DINER", "COMET DINER", "SUNRISE DINER"];
-
-let dinerCanvas: HTMLCanvasElement | null = null;
-
-/** Diners' names for the frieze, eight rows of 2048 x 128: polished letters on clear, a diner shows one row. */
-function dinerNames(row: number): THREE.Texture {
-  if (!dinerCanvas) {
-    const c = (dinerCanvas = document.createElement("canvas"));
-    c.width = 2048;
-    c.height = 1024;
-    const g = c.getContext("2d")!;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "italic 900 100px 'Arial Black', Impact, 'Helvetica Neue', sans-serif";
-    DINERS.forEach((name, i) => {
-      const y = i * 128 + 66;
-      const text = name.split("").join(String.fromCharCode(8202));
-      // A dark edge under the letters, then the polished face, lit from above.
-      g.fillStyle = "rgba(20,20,22,1)";
-      g.fillText(text, 1028, y + 5, 1900);
-      const grad = g.createLinearGradient(0, y - 46, 0, y + 46);
-      grad.addColorStop(0, "#ffffff");
-      grad.addColorStop(0.48, "#d8dce0");
-      grad.addColorStop(0.52, "#9aa0a8");
-      grad.addColorStop(1, "#e8ecf0");
-      g.fillStyle = grad;
-      g.fillText(text, 1024, y, 1900);
-    });
-  }
-  const t = sheet(dinerCanvas);
-  t.flipY = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.set(1, 0.125);
-  t.offset.set(0, row * 0.125);
-  t.anisotropy = 8;
-  return t;
-}
-
-const WORKS = [
-  "HOLLIS & WARD · ENGINEERS",
-  "BRANDT MACHINE WORKS",
-  "NORTHGATE FOUNDRY CO.",
-  "EAGLE SPRING & AXLE CO.",
-  "MERCER BROS. · BOILERMAKERS",
-  "UNION BOX & PAPER CO.",
-  "CALDER WORSTED MILLS",
-  "PARAGON CASTINGS LTD.",
-];
-
-let worksCanvas: HTMLCanvasElement | null = null;
-
-/** Firms' names painted on a factory's frieze, eight rows of 2048 x 128: cream letters, weathered, on clear. */
-function worksNames(row: number): THREE.Texture {
-  if (!worksCanvas) {
-    const c = (worksCanvas = document.createElement("canvas"));
-    c.width = 2048;
-    c.height = 1024;
-    const g = c.getContext("2d")!;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "800 96px Impact, 'Arial Black', 'Helvetica Neue', sans-serif";
-    WORKS.forEach((name, i) => {
-      g.fillStyle = "rgba(236,228,206,0.92)";
-      g.fillText(name.split("").join(String.fromCharCode(8202)), 1024, i * 128 + 66, 1960);
-    });
-    // Weathered: the paint has flaked and washed out of the brick.
-    g.globalCompositeOperation = "destination-out";
-    let seed = 11;
-    const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-    for (let i = 0; i < 14000; i++) {
-      g.globalAlpha = 0.25 + rand() * 0.75;
-      g.fillRect(rand() * 2048, rand() * 1024, 2 + rand() * 7, 2 + rand() * 4);
-    }
-    for (let i = 0; i < 120; i++) {
-      g.globalAlpha = 0.1 + rand() * 0.3;
-      g.fillRect(rand() * 2048, rand() * 1024, 4 + rand() * 12, 30 + rand() * 90);
-    }
-    g.globalCompositeOperation = "source-over";
-  }
-  const t = sheet(worksCanvas);
-  t.flipY = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.set(1, 0.125);
-  t.offset.set(0, row * 0.125);
-  t.anisotropy = 8;
-  return t;
-}
-
-const CAFES = ["CAFÉ DES ARTS", "CAFFÈ BELLAVISTA", "KAFFEEHAUS ROSE", "CAFÉ DU COIN", "CAFÉ AMADEUS", "CAFÉ LUMIÈRE", "CAFFÈ DEL CORSO", "CAFÉ NOVA"];
-
-let cafeCanvas: HTMLCanvasElement | null = null;
-
-/** Cafés' names in gilt serif capitals for a frieze, eight rows of 2048 x 128: gold with a dark edge, on clear. */
-function cafeNames(row: number): THREE.Texture {
-  if (!cafeCanvas) {
-    const c = (cafeCanvas = document.createElement("canvas"));
-    c.width = 2048;
-    c.height = 1024;
-    const g = c.getContext("2d")!;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "700 98px Didot, 'Bodoni 72', Georgia, 'DejaVu Serif', 'Times New Roman', serif";
-    CAFES.forEach((name, i) => {
-      const y = i * 128 + 68;
-      const text = name.split("").join(String.fromCharCode(8202, 8202));
-      g.fillStyle = "rgba(40,28,10,0.9)";
-      g.fillText(text, 1027, y + 4, 1960);
-      const grad = g.createLinearGradient(0, y - 44, 0, y + 44);
-      grad.addColorStop(0, "#fff2b0");
-      grad.addColorStop(0.45, "#d8a83c");
-      grad.addColorStop(0.55, "#a8761e");
-      grad.addColorStop(1, "#e8c060");
-      g.fillStyle = grad;
-      g.fillText(text, 1024, y, 1960);
-    });
-  }
-  const t = sheet(cafeCanvas);
-  t.flipY = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.set(1, 0.125);
-  t.offset.set(0, row * 0.125);
-  t.anisotropy = 8;
-  return t;
-}
-
-const DECOS = ["THE ORION BUILDING", "HALCYON TOWER", "CONTINENTAL LIFE", "THE ZENITH BUILDING", "STERLING TRUST", "AURORA TOWER", "MONARCH BUILDING", "THE BEACON BUILDING"];
-
-let decoCanvas: HTMLCanvasElement | null = null;
+/** Spreads letters apart with hair spaces. */
+const spaced = (text: string, n: number) => text.split("").join(String.fromCharCode(...Array(n).fill(8202)));
 
 /**
- * Art deco towers' names in gilt geometric capitals over the portal, eight
- * rows of 2048 x 128 for a 3.9 x 0.62 m panel: the letters are drawn
- * stretched 2.5 times across, so they come out in proportion on it.
+ * A sheet of names painted for signs: `cols` by `rows` cells of `cw` x `ch`.
+ * A name gets a cell the first time a building asks for it and keeps it,
+ * so a building's sign shows its own name (`docs/APP.md`). A building with
+ * no name shows one of `stock`, by its paint. When every cell is taken,
+ * names share them. Each building's texture is a clone of one base, so the
+ * sheet is uploaded once, and again only when a new name is painted in.
  */
-function decoNames(row: number): THREE.Texture {
-  if (!decoCanvas) {
-    const c = (decoCanvas = document.createElement("canvas"));
-    c.width = 2048;
-    c.height = 1024;
-    const g = c.getContext("2d")!;
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-    g.font = "600 80px Futura, 'Century Gothic', 'Avenir Next', 'DejaVu Sans', sans-serif";
-    const sx = 2.5;
-    DECOS.forEach((name, i) => {
-      const y = i * 128 + 66;
-      const text = name.split("").join(String.fromCharCode(8202, 8202));
-      g.save();
-      g.scale(sx, 1);
-      g.fillStyle = "rgba(30,20,8,0.9)";
-      g.fillText(text, 1026 / sx, y + 3, 1940 / sx);
-      const grad = g.createLinearGradient(0, y - 40, 0, y + 40);
-      grad.addColorStop(0, "#fff0b8");
-      grad.addColorStop(0.5, "#c8963a");
-      grad.addColorStop(1, "#ecc66a");
-      g.fillStyle = grad;
-      g.fillText(text, 1024 / sx, y, 1940 / sx);
-      g.restore();
-    });
+class NameSheet {
+  private canvas: HTMLCanvasElement | null = null;
+  private base: THREE.CanvasTexture | null = null;
+  private names: string[] = [];
+
+  constructor(
+    private readonly cols: number,
+    private readonly rows: number,
+    private readonly cw: number,
+    private readonly ch: number,
+    private readonly stock: string[],
+    private readonly draw: (g: CanvasRenderingContext2D, x: number, y: number, name: string, cell: number) => void,
+  ) {}
+
+  /** The cell that shows `name`, or one of the stock names by `fallback`. */
+  cell(name: string | undefined, fallback: number): number {
+    const text = name?.trim() || this.stock[((fallback % this.stock.length) + this.stock.length) % this.stock.length];
+    const key = text.toUpperCase();
+    const at = this.names.findIndex((n) => n.toUpperCase() === key);
+    if (at >= 0) return at;
+    const size = this.cols * this.rows;
+    if (this.names.length >= size) return nameHash(key) % size;
+    this.names.push(text);
+    if (this.canvas) {
+      this.paint(this.names.length - 1);
+      this.base!.needsUpdate = true;
+    }
+    return this.names.length - 1;
   }
-  const t = sheet(decoCanvas);
-  t.flipY = false;
-  t.colorSpace = THREE.SRGBColorSpace;
-  t.repeat.set(1, 0.125);
-  t.offset.set(0, row * 0.125);
-  t.anisotropy = 8;
-  return t;
+
+  /** A texture showing cell `cell` (for a quad whose u runs 0-1 over one cell, or further over the next ones). */
+  texture(cell: number): THREE.Texture {
+    if (!this.canvas) {
+      const c = (this.canvas = document.createElement("canvas"));
+      c.width = this.cols * this.cw;
+      c.height = this.rows * this.ch;
+      this.base = new THREE.CanvasTexture(c);
+      this.names.forEach((_, i) => this.paint(i));
+    }
+    const t = this.base!.clone();
+    t.flipY = false;
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.wrapS = THREE.RepeatWrapping;
+    t.repeat.set(1 / this.cols, 1 / this.rows);
+    t.offset.set((cell % this.cols) / this.cols, Math.floor(cell / this.cols) / this.rows);
+    t.anisotropy = 8;
+    return t;
+  }
+
+  private paint(i: number) {
+    const g = this.canvas!.getContext("2d")!;
+    const x = (i % this.cols) * this.cw;
+    const y = Math.floor(i / this.cols) * this.ch;
+    g.save();
+    g.clearRect(x, y, this.cw, this.ch);
+    g.beginPath();
+    g.rect(x, y, this.cw, this.ch);
+    g.clip();
+    this.draw(g, x, y, this.names[i], i);
+    g.restore();
+  }
+}
+
+/** Shopfront signs of S1, 1024 x 256 a cell: a painted board, the name and a line under it. */
+const shopNames = new NameSheet(2, 8, 1024, 256, SHOPS.map((s) => s[2]), (g, x, y, name) => {
+  const stock = SHOPS.find((s) => s[2] === name.toUpperCase());
+  const h = nameHash(name.toUpperCase());
+  const [bg, fg] = stock ?? SHOPS[h % SHOPS.length];
+  const sub = stock?.[3] ?? `est. ${1890 + (h >>> 8) % 70}`;
+  g.fillStyle = bg;
+  g.fillRect(x, y, 1024, 256);
+  g.strokeStyle = fg;
+  g.lineWidth = 5;
+  g.strokeRect(x + 14, y + 14, 996, 228);
+  g.fillStyle = fg;
+  g.textAlign = "center";
+  g.font = "600 104px Georgia, 'Times New Roman', serif";
+  g.fillText(name.toUpperCase(), x + 512, y + 148, 960);
+  g.font = "italic 40px Georgia, serif";
+  g.fillText(sub, x + 512, y + 212);
+});
+
+/** Office buildings' names for the fascia, 2048 x 128 a row: spaced brushed-steel capitals on clear. */
+const towerNames = new NameSheet(1, 16, 2048, 128, ["MERIDIAN HOUSE", "ONE HARBOUR PLACE", "CARLTON TOWER", "NORTHBRIDGE CENTRE", "THE EXCHANGE", "ATLAS BUILDING", "200 PARK ROW", "SOVEREIGN HOUSE"], (g, _x, y0, name) => {
+  const y = y0 + 66;
+  const text = spaced(name.toUpperCase(), 3);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "500 64px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  g.fillStyle = "rgba(10,10,12,0.9)";
+  g.fillText(text, 1026, y + 3, 1400);
+  const grad = g.createLinearGradient(0, y - 30, 0, y + 30);
+  grad.addColorStop(0, "#f4f6f8");
+  grad.addColorStop(0.5, "#b8bec4");
+  grad.addColorStop(1, "#e2e6ea");
+  g.fillStyle = grad;
+  g.fillText(text, 1024, y, 1400);
+});
+
+/** Diners' names for the frieze, 2048 x 128 a row: polished letters on clear. */
+const dinerNames = new NameSheet(1, 8, 2048, 128, ["STARLITE DINER", "MOONBEAM DINER", "SILVER SPOON", "PARKWAY DINER", "NIGHT OWL DINER", "LUCKY 7 DINER", "COMET DINER", "SUNRISE DINER"], (g, _x, y0, name) => {
+  const y = y0 + 66;
+  const text = spaced(name.toUpperCase(), 1);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "italic 900 100px 'Arial Black', Impact, 'Helvetica Neue', sans-serif";
+  // A dark edge under the letters, then the polished face, lit from above.
+  g.fillStyle = "rgba(20,20,22,1)";
+  g.fillText(text, 1028, y + 5, 1900);
+  const grad = g.createLinearGradient(0, y - 46, 0, y + 46);
+  grad.addColorStop(0, "#ffffff");
+  grad.addColorStop(0.48, "#d8dce0");
+  grad.addColorStop(0.52, "#9aa0a8");
+  grad.addColorStop(1, "#e8ecf0");
+  g.fillStyle = grad;
+  g.fillText(text, 1024, y, 1900);
+});
+
+/** Firms' names painted on a factory's frieze, 2048 x 128 a row: cream letters, weathered, on clear. */
+const worksNames = new NameSheet(1, 8, 2048, 128, ["HOLLIS & WARD · ENGINEERS", "BRANDT MACHINE WORKS", "NORTHGATE FOUNDRY CO.", "EAGLE SPRING & AXLE CO.", "MERCER BROS. · BOILERMAKERS", "UNION BOX & PAPER CO.", "CALDER WORSTED MILLS", "PARAGON CASTINGS LTD."], (g, _x, y0, name) => {
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "800 96px Impact, 'Arial Black', 'Helvetica Neue', sans-serif";
+  g.fillStyle = "rgba(236,228,206,0.92)";
+  g.fillText(spaced(name.toUpperCase(), 1), 1024, y0 + 66, 1960);
+  // Weathered: the paint has flaked and washed out of the brick.
+  g.globalCompositeOperation = "destination-out";
+  let seed = 11 + nameHash(name.toUpperCase()) % 1000;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 1750; i++) {
+    g.globalAlpha = 0.25 + rand() * 0.75;
+    g.fillRect(rand() * 2048, y0 + rand() * 128, 2 + rand() * 7, 2 + rand() * 4);
+  }
+  for (let i = 0; i < 15; i++) {
+    g.globalAlpha = 0.1 + rand() * 0.3;
+    g.fillRect(rand() * 2048, y0 + rand() * 128, 4 + rand() * 12, 30 + rand() * 90);
+  }
+});
+
+/** Cafés' names in gilt serif capitals for a frieze, 2048 x 128 a row: gold with a dark edge, on clear. */
+const cafeNames = new NameSheet(1, 16, 2048, 128, ["CAFÉ DES ARTS", "CAFFÈ BELLAVISTA", "KAFFEEHAUS ROSE", "CAFÉ DU COIN", "CAFÉ AMADEUS", "CAFÉ LUMIÈRE", "CAFFÈ DEL CORSO", "CAFÉ NOVA"], (g, _x, y0, name) => {
+  const y = y0 + 68;
+  const text = spaced(name.toUpperCase(), 2);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 98px Didot, 'Bodoni 72', Georgia, 'DejaVu Serif', 'Times New Roman', serif";
+  g.fillStyle = "rgba(40,28,10,0.9)";
+  g.fillText(text, 1027, y + 4, 1960);
+  const grad = g.createLinearGradient(0, y - 44, 0, y + 44);
+  grad.addColorStop(0, "#fff2b0");
+  grad.addColorStop(0.45, "#d8a83c");
+  grad.addColorStop(0.55, "#a8761e");
+  grad.addColorStop(1, "#e8c060");
+  g.fillStyle = grad;
+  g.fillText(text, 1024, y, 1960);
+});
+
+/**
+ * Art deco towers' names in gilt geometric capitals over the portal, 2048 x
+ * 128 a row for a 3.9 x 0.62 m panel: the letters are drawn stretched 2.5
+ * times across, so they come out in proportion on it.
+ */
+const decoNames = new NameSheet(1, 8, 2048, 128, ["THE ORION BUILDING", "HALCYON TOWER", "CONTINENTAL LIFE", "THE ZENITH BUILDING", "STERLING TRUST", "AURORA TOWER", "MONARCH BUILDING", "THE BEACON BUILDING"], (g, _x, y0, name) => {
+  const y = y0 + 66;
+  const text = spaced(name.toUpperCase(), 2);
+  const sx = 2.5;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "600 80px Futura, 'Century Gothic', 'Avenir Next', 'DejaVu Sans', sans-serif";
+  g.scale(sx, 1);
+  g.fillStyle = "rgba(30,20,8,0.9)";
+  g.fillText(text, 1026 / sx, y + 3, 1940 / sx);
+  const grad = g.createLinearGradient(0, y - 40, 0, y + 40);
+  grad.addColorStop(0, "#fff0b8");
+  grad.addColorStop(0.5, "#c8963a");
+  grad.addColorStop(1, "#ecc66a");
+  g.fillStyle = grad;
+  g.fillText(text, 1024 / sx, y, 1940 / sx);
+});
+
+/** Which sheet a material role paints a building's name on, if any. */
+function namesFor(id: string, role: string): NameSheet | null {
+  switch (role) {
+    case "sign": return id === "s1" ? shopNames : null;
+    case "towername": return towerNames;
+    case "dinername": return dinerNames;
+    case "works": return worksNames;
+    case "cafename": return cafeNames;
+    case "deconame": return decoNames;
+    default: return null;
+  }
 }
 
 /** Per-building choices: paint colours and the like. Indexes wrap. */
@@ -1214,8 +1220,10 @@ export interface Paint {
   /** Shopfronts, doors and shutters. */
   accent: number;
   roof: number;
-  /** Which shop signs: 0-7, the row and (for one-shop models) the column. */
+  /** Which stock sign, 0-7, where a building has no name of its own to show. */
   signs: number;
+  /** The building's name, for the signs that carry it. */
+  name?: string;
 }
 
 const BRICK_TINTS = [0xffffff, 0xe8d8cc, 0xc8b8b0, 0xf4e0c0];
@@ -1595,7 +1603,9 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
   const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
-  const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}` : ""}`;
+  const names = namesFor(id, role);
+  const cell = names?.cell(paint.name, paint.signs) ?? -1;
+  const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
   let m = cache.get(key);
   if (m) return m;
   const ao = loaded.get(id)!.ao;
@@ -1636,7 +1646,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 0.22;
       break;
     case "works":
-      m = new THREE.MeshStandardMaterial({ map: worksNames(paint.signs), transparent: true, opacity: 0.85, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      m = new THREE.MeshStandardMaterial({ map: worksNames.texture(cell), transparent: true, opacity: 0.85, roughness: 0.9, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       break;
     case "ashlar": m = w(pbr("ashlar", [2.4, 1.8], { roughness: 0.85 }), 1.4); break;
     case "granite": m = w(new THREE.MeshStandardMaterial({ map: tex("granite_col"), roughness: 0.5 }), 0.5); break;
@@ -1681,7 +1691,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "parasol": m = w(plain(pick(PARASOLS, paint.accent + paint.signs), 0.9)); break;
     case "cane": m = w(plain(0xc8a46a, 0.85)); break;
     case "cafename": {
-      const t = cafeNames(paint.signs);
+      const t = cafeNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.7, emissive: 0xffe0a0, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.3;
       break;
@@ -1729,7 +1739,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 3;
       break;
     case "dinername": {
-      const t = dinerNames(paint.signs);
+      const t = dinerNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.25, metalness: 0.6, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.45;
       break;
@@ -1750,7 +1760,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 6;
       break;
     case "sign": {
-      const t = signs(paint.signs % 4, id === "s1" ? Math.floor(paint.signs / 4) % 2 : 0);
+      const t = names ? names.texture(cell) : signs(paint.signs % 4);
       m = w(plain(0xffffff, 0.35, 0, { map: t, emissiveMap: t, emissive: 0xffffff, emissiveIntensity: 0 }));
       if (damage < 2) m.userData.night = 0.35;
       break;
@@ -1851,7 +1861,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "mullion": m = w(plain(pick(MULLIONS, paint.accent), 0.35, 0.6), 0.3); break;
     case "blades": m = w(pbr("blades", [1, 1], { roughness: 0.45, metalness: 0.5, color: new THREE.Color(pick(MULLIONS, paint.accent)).lerp(new THREE.Color(0xffffff), 0.3).getHex() }), 0.8); break;
     case "towername": {
-      const t = towerNames(paint.signs);
+      const t = towerNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.7, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.35;
       break;
@@ -1881,7 +1891,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     case "deconame": {
-      const t = decoNames(paint.signs);
+      const t = decoNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, metalness: 0.8, emissive: 0xffe0a0, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.3;
       break;

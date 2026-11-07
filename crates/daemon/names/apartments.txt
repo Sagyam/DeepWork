@@ -1,0 +1,29 @@
+# Apartment blocks. One per line; a `[design]` header starts names only
+# that blueprint gets (see names.rs).
+Ardmore Court
+Belgrave Mansions
+Carlisle Court
+Danbury House
+Edgewood Court
+Fairview Mansions
+Glenmore Court
+Harcourt House
+Inverness Court
+Kingsley Mansions
+Langham Court
+Marlborough House
+Norfolk Court
+Oakley Mansions
+Pembroke Court
+Queensway House
+Rutland Court
+Somerset Mansions
+Tavistock Court
+Wellesley House
+[a2]
+Linden Row
+Chestnut Row
+Gramercy Row
+Bedford Terrace
+Clifton Terrace
+Hamilton Row

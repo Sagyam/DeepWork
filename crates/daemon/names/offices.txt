@@ -1,0 +1,22 @@
+# Office buildings. One per line; a `[design]` header starts names only
+# that blueprint gets (see names.rs).
+Meridian House
+One Harbour Place
+Carlton Tower
+Northbridge Centre
+The Exchange
+Atlas Building
+200 Park Row
+Sovereign House
+Pinnacle House
+Riverside Plaza
+The Foundry Building
+Quayside Centre
+Lancaster Place
+Vantage House
+Kingsgate
+Mercury House
+Fulcrum Building
+Albion Place
+Cornerstone House
+Greyfriars Centre

@@ -80,6 +80,23 @@ for (const [ni, n] of NEEDS.entries()) {
   }
 }
 
+/** A few names from the daemon's piles (`crates/daemon/names/`), by design; the first free one is dealt. */
+const PILES: Record<string, string[]> = {
+  c1: ["Hart Farm", "Old Orchard Farm", "Brook Farm", "Fletcher's Farm"],
+  c2: ["The Hart house", "Willowbank", "The Okafor house", "Rosemount"],
+  c3: ["The Hart house", "Willowbank", "The Okafor house", "Rosemount"],
+  c4: ["Pine Hollow", "Larch Cabin", "The Bothy", "Fir Lodge"],
+  s1: ["Rossi & Sons", "Harbour Books", "Marlowe's", "Green & Co.", "Kovac Hardware", "Pier Pharmacy", "Fletcher's Bakery", "Moreau Fine Foods"],
+  s2: ["Café des Arts", "Caffè Bellavista", "Kaffeehaus Rose", "Café du Coin", "Café Amadeus", "Café Lumière"],
+  s3: ["Starlite Diner", "Moonbeam Diner", "Silver Spoon"],
+  s4: ["Hollis & Ward · Engineers", "Brandt Machine Works", "Northgate Foundry Co."],
+  a1: ["Ardmore Court", "Belgrave Mansions", "Carlisle Court", "Danbury House", "Edgewood Court", "Fairview Mansions"],
+  a2: ["Linden Row", "Chestnut Row", "Ardmore Court", "Belgrave Mansions", "Carlisle Court", "Danbury House"],
+  a3: ["Ardmore Court", "Belgrave Mansions", "Carlisle Court", "Danbury House", "Edgewood Court", "Fairview Mansions"],
+  o1: ["Meridian House", "One Harbour Place", "Carlton Tower", "Northbridge Centre", "The Exchange", "Atlas Building", "200 Park Row", "Sovereign House", "Pinnacle House", "Riverside Plaza", "The Foundry Building", "Quayside Centre"],
+  l1: ["The Orion Building", "Halcyon Tower", "Continental Life", "The Zenith Building"],
+};
+
 const fits = (b: { kind: string; districts: string[] }, n: Need) => b.kind === n.kind && b.districts.includes(n.district);
 const buildSecs = (i: number) => BUILD[NEEDS[LOTS[i].need].kind] * MIN;
 
@@ -98,6 +115,24 @@ export class MockCity {
   focused = 0;
   streak = 0;
   history: WorldEvent[] = [];
+  /** Names dealt when a lot got its design, as the daemon deals them. */
+  dealt = new Map<number, string>();
+
+  /** The lot's name: the mayor's, else the one dealt for its design, else the plan's. */
+  nameOf(i: number, design: string | null): string {
+    const own = this.built.get(i)?.name;
+    if (own) return own;
+    if (!design || !PILES[design]) return LOTS[i].name;
+    let name = this.dealt.get(i);
+    if (!name) {
+      const taken = new Set([...this.dealt.entries()].filter(([j]) => j !== i).map(([, n]) => n.toUpperCase()));
+      for (const b of this.built.values()) if (b.name) taken.add(b.name.toUpperCase());
+      const pile = PILES[design];
+      name = pile.find((n) => !taken.has(n.toUpperCase())) ?? `${pile[0]} No. ${i}`;
+      this.dealt.set(i, name);
+    }
+    return name;
+  }
   award: Award | null = null;
   private sessionId = 1000;
 
@@ -262,7 +297,7 @@ export class MockCity {
     return {
       session_id: sessionId, index: site, grade: GRADE[n.kind], seed: site * 7919 + 13, surrendering,
       progress_permille: Math.floor((Math.min(total, done + elapsed) * 1000) / total),
-      lot: LOTS[site].id, kind: n.kind, design, name: LOTS[site].name, need: n.id, remaining_secs: total - done,
+      lot: LOTS[site].id, kind: n.kind, design, name: this.nameOf(site, design), need: n.id, remaining_secs: total - done,
     };
   }
 
@@ -276,12 +311,12 @@ export class MockCity {
       return {
         index: i, district: Math.floor(i / 8), grade: GRADE[n.kind], damage: b.damage, rubble: b.damage >= 3, seed: i * 7919 + 13,
         session_id: b.parts[0]?.session_id ?? 0, built_at: b.at, lot: LOTS[i].id, kind: n.kind, design: b.design,
-        name: b.name ?? LOTS[i].name, address: LOTS[i].address, need: n.id, shiny: b.shiny,
+        name: this.nameOf(i, b.design), address: LOTS[i].address, need: n.id, shiny: b.shiny,
         memory: { started_at: b.at - buildSecs(i), parts: b.parts, focused_secs: buildSecs(i), streak_at_finish: this.streak, scars: b.damage ? [{ ts: now - 7200, cause: "surrendered", damage: b.damage, repaired: false }] : [], first: i === 0 },
       };
     });
     const sites: SiteInfo[] = [...this.sites.entries()].map(([i, s]) => ({
-      index: i, lot: LOTS[i].id, need: NEEDS[LOTS[i].need].id, name: LOTS[i].name, kind: NEEDS[LOTS[i].need].kind,
+      index: i, lot: LOTS[i].id, need: NEEDS[LOTS[i].need].id, name: this.nameOf(i, s.design), kind: NEEDS[LOTS[i].need].kind,
       design: s.design, done_secs: s.done, build_secs: buildSecs(i), active: this.active === i, seed: i * 7919 + 13,
     })).sort((a, b) => Number(b.active) - Number(a.active));
     const needs: NeedInfo[] = NEEDS.map((n, ni) => ({ n, ni })).filter(({ n }) => n.level === level).map(({ n, ni }) => {

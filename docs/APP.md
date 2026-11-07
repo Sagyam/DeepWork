@@ -103,6 +103,11 @@ are blueprints and their prices.
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
 pieces, people). Water in the Hamlet and Town is the civic water tower.
+Signs that carry a name (S1's fascia; the café, diner and works friezes;
+O1 and L1's name panels) show the building's own name: `NameSheet` in
+`real.ts` paints each name into a shared sheet the first time a building
+asks for it. A1's two shop signs are stock, by seed.
+
 Plan parks and the square are laid out in code (`park()` and `utility()` in
 `models.ts`) from these props on the shared ground textures (pave, ashlar,
 gravel, grass).

@@ -86,3 +86,10 @@ Each building keeps its story, folded from the sessions that built it:
 name and address (renameable), sessions and focused time, start and finish,
 damage and repairs, firsts. The app shows a hover tag and a click card
 (the deed).
+
+**Names** are dealt when a lot gets its design (`names.rs`), from the pile
+for its class in `crates/daemon/names/`: the first name no other building
+has, the design's own names first, so a diner gets a diner's name and its
+sign shows it. Piles are append-only, like the plan's lots. The daemon
+writes a `names_by_design` event once; buildings started before it keep
+the plan's names (`default_name` in `plan.rs`).

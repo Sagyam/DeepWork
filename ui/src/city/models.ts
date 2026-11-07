@@ -141,7 +141,7 @@ export function fitReal<T extends Spec>(s: T): T {
   return { ...s, w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), yard, x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard };
 }
 
-const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 8 });
+const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 8, ...(s.name ? { name: s.name } : {}) });
 
 /** Adds a piece of a realistic model; glass gets window ids of its own from `shift`. */
 function putReal(p: Parts, def: RealDef, piece: string, paint: Paint, damage: number, info: ModelInfo | null, x: number, y: number, z: number, ry = 0, scale?: THREE.Vector3, shift = 0) {

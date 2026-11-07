@@ -58,6 +58,8 @@ pub enum EventKind {
     NeedChosen,
     SitePaused,
     BuildingRenamed,
+    /// From here on, new buildings are named by design (`world.rs`).
+    NamesByDesign,
     /// A running countdown was made longer; `detail` is the added seconds.
     Extend,
 }
@@ -111,6 +113,7 @@ impl EventKind {
             EventKind::NeedChosen => "need_chosen",
             EventKind::SitePaused => "site_paused",
             EventKind::BuildingRenamed => "building_renamed",
+            EventKind::NamesByDesign => "names_by_design",
             EventKind::Extend => "extend",
         }
     }
@@ -343,7 +346,7 @@ impl Store {
     pub fn penalty_events(&self) -> Result<Vec<BackupEvent>> {
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'names_by_design')
              ORDER BY ts, id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -503,6 +506,24 @@ impl Store {
         Ok(())
     }
 
+    /// Marks when this ledger started naming buildings by design, once:
+    /// buildings started before keep the names they were shown with.
+    pub fn mark_names_by_design(&self, ts: i64) -> Result<()> {
+        let kind = EventKind::NamesByDesign.as_str();
+        let seen: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM events WHERE kind = ?1 LIMIT 1",
+                [kind],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if seen.is_none() {
+            self.log_event(ts, None, EventKind::NamesByDesign, "")?;
+        }
+        Ok(())
+    }
+
     /// Everything the world is built from: ended sessions and penalty events.
     pub fn world_facts(&self) -> Result<Vec<Fact>> {
         let mut facts = Vec::new();
@@ -534,7 +555,7 @@ impl Store {
         }
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail, id FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')",
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'names_by_design')",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -599,6 +620,7 @@ fn world_fact(kind: &str, detail: &str) -> Option<FactKind> {
             }
         }
         "site_paused" => FactKind::Paused,
+        "names_by_design" => FactKind::NamesByDesign,
         "building_renamed" => {
             let d = d();
             FactKind::Renamed {
@@ -620,6 +642,7 @@ fn penalty_kind(kind: &str) -> Option<EventKind> {
         "need_chosen" => Some(EventKind::NeedChosen),
         "site_paused" => Some(EventKind::SitePaused),
         "building_renamed" => Some(EventKind::BuildingRenamed),
+        "names_by_design" => Some(EventKind::NamesByDesign),
         _ => None,
     }
 }
@@ -761,6 +784,25 @@ mod tests {
         assert_eq!(store.get("a").unwrap().as_deref(), Some("2"));
         store.set("a", None).unwrap();
         assert_eq!(store.get("a").unwrap(), None);
+    }
+
+    #[test]
+    fn names_by_design_is_marked_once_and_backed_up() {
+        let store = Store::in_memory().unwrap();
+        store.mark_names_by_design(100).unwrap();
+        store.mark_names_by_design(200).unwrap();
+        let facts = store.world_facts().unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(
+            (facts[0].ts, &facts[0].kind),
+            (100, &FactKind::NamesByDesign)
+        );
+        let events = store.penalty_events().unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(
+            penalty_kind(&events[0].kind),
+            Some(EventKind::NamesByDesign)
+        );
     }
 
     #[test]

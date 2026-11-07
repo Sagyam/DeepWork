@@ -7,6 +7,7 @@ mod enforcer;
 mod engine;
 mod free;
 mod loosen;
+mod names;
 mod nfqueue;
 mod plan;
 mod schedule;
@@ -169,6 +170,7 @@ async fn main() -> Result<()> {
     let unix_now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| d.as_secs() as i64);
+    store.mark_names_by_design(unix_now)?;
     let (cfg_state, outcome) = cfgstate::sync(&store, &args.config, unix_now)?;
     let cfg = cfg_state.config.clone();
 

@@ -50,6 +50,8 @@ with a root shell open in another terminal for the PAM checks.
       remove one (24 h notice), export and re-import (0 new sessions).
 - [ ] Progression: `deepwork world` shows the existing city rebuilt on the
       plan; `deepwork build <need>` takes over.
+- [ ] Names: after the upgrade, finished buildings keep their names; the
+      next one gets a name from its pile, and its sign shows it.
 - [ ] Model pack: `deepwork-ui` from the next release shows the download
       line, then the realistic city.
 - [ ] Install on a real Debian / Ubuntu and Fedora machine and repeat.
@@ -100,19 +102,6 @@ street, and the street each lot fronts.
   morning, shops at midday, home at dusk, by local time like the sun),
   park and vanish. Buses on fixed lines with stops; yield at roundabouts.
   Volume follows what is built. Budget the CPU on the iGPU.
-
-### Names
-
-- **A name pile per class**: one file per kind (`houses`, `apartments`,
-  `offices`, `shops`, `workshops`, `towers`) loaded with `include_str!`,
-  instead of `SURNAMES` and `TRADES` shared by all. Houses mix family and
-  house names ("Willowbank"); apartments "Ardmore Court"; offices
-  "Meridian House".
-- **Names that match the model**: shops name by blueprint, so the diner is
-  a diner and the café a café, and the model's sign shows the name. This
-  means naming at fold time, when the design is known, not in `lots()`.
-  No two buildings share a name. Buildings that already exist keep the
-  names they have.
 
 ### Coin sinks
 

@@ -94,6 +94,9 @@ pub enum FactKind {
         lot: String,
         name: String,
     },
+    /// From here on, buildings are named from the piles in `names.rs` when
+    /// their design is set; those started before keep the plan's names.
+    NamesByDesign,
 }
 
 /// Ordered by time first, so sorting gives a fixed fold order.
@@ -167,7 +170,10 @@ struct LotState {
     /// When, and by which session, it was finished.
     finished: Option<(i64, i64)>,
     damage: u32,
+    /// The mayor's name for it.
     name: Option<String>,
+    /// The name dealt from the piles when its design was set.
+    dealt: Option<String>,
     shiny: bool,
     memory: Memory,
 }
@@ -197,6 +203,8 @@ pub struct City {
     finished_count: u32,
     history: Vec<WorldEvent>,
     award: Option<Award>,
+    /// When names started being dealt by design (the first `NamesByDesign`).
+    names_from: Option<i64>,
 }
 
 impl Default for City {
@@ -220,6 +228,7 @@ impl Default for City {
             finished_count: 0,
             history: Vec::new(),
             award: None,
+            names_from: None,
         }
     }
 }
@@ -283,6 +292,9 @@ impl City {
                 if let Ok((i, name)) = self.check_rename(lot, name) {
                     self.lots[i].name = name;
                 }
+            }
+            (FactKind::NamesByDesign, _) => {
+                self.names_from.get_or_insert(f.ts);
             }
         }
     }
@@ -371,7 +383,7 @@ impl City {
                 Some(b) if Some(b) != site.design => {
                     return Err(format!(
                         "{} is already half built from another blueprint",
-                        plan::lots()[lot].name
+                        self.name(lot)
                     ));
                 }
                 _ => site.design,
@@ -413,7 +425,7 @@ impl City {
         let lot = plan::lot_by_id(id).ok_or_else(|| format!("no lot {id:?}"))?;
         let i = lot.index as usize;
         if !self.finished(i) {
-            return Err(format!("{} is not built yet", lot.name));
+            return Err(format!("{} is not built yet", self.name(i)));
         }
         let name = name.trim();
         if name.chars().count() > NAME_MAX {
@@ -428,7 +440,7 @@ impl City {
     fn choose(&mut self, ts: i64, ni: usize, design: Option<&'static str>) {
         let Some(lot) = self.next_lot(ni) else { return };
         if self.lots[lot].done_secs == 0 {
-            self.lots[lot].design = design;
+            self.set_design(lot, design, ts);
         }
         self.lots[lot].site = true;
         self.active = Some(lot);
@@ -441,7 +453,7 @@ impl City {
     /// The plan's own pick while the mayor has chosen nothing: the first open
     /// need in plan order that can be built, buying its cheapest blueprint
     /// when none is owned and the coins are there.
-    fn auto_pick(&mut self) -> Option<usize> {
+    fn auto_pick(&mut self, ts: i64) -> Option<usize> {
         for (ni, need) in NEEDS.iter().enumerate() {
             if !self.open(ni) {
                 continue;
@@ -466,8 +478,8 @@ impl City {
                 None
             };
             let lot = self.next_lot(ni)?;
+            self.set_design(lot, design, ts);
             self.lots[lot].site = true;
-            self.lots[lot].design = design;
             return Some(lot);
         }
         None
@@ -479,7 +491,7 @@ impl City {
         while left > 0 {
             let site = match self.active {
                 Some(a) => Some(a),
-                None if !self.manual => self.auto_pick(),
+                None if !self.manual => self.auto_pick(ts),
                 None => None,
             };
             let Some(a) = site else { break };
@@ -551,13 +563,35 @@ impl City {
             && self.open(ni)
             && let Some(next) = self.next_lot(ni)
         {
-            let l = &mut self.lots[next];
-            if !l.site {
-                l.site = true;
-                l.design = design;
+            if !self.lots[next].site {
+                self.set_design(next, design, ts);
+                self.lots[next].site = true;
             }
             self.active = Some(next);
         }
+    }
+
+    /// Sets a lot's design and deals it a name to match, once names are
+    /// dealt by design; a lot whose design stays keeps its name.
+    fn set_design(&mut self, i: usize, design: Option<&'static str>, ts: i64) {
+        let lot = &self.lots[i];
+        if lot.site && lot.design == design {
+            return;
+        }
+        self.lots[i].design = design;
+        self.lots[i].dealt = None;
+        let (Some(d), Some(from)) = (design, self.names_from) else {
+            return;
+        };
+        if ts < from {
+            return;
+        }
+        let names: Vec<String> = (0..self.lots.len())
+            .filter(|&j| j != i && self.lots[j].site)
+            .map(|j| self.name(j))
+            .collect();
+        let taken: Vec<&str> = names.iter().map(String::as_str).collect();
+        self.lots[i].dealt = crate::names::deal(need_of(i).kind, d, &taken);
     }
 
     fn record(
@@ -804,9 +838,10 @@ impl City {
     }
 
     fn name(&self, i: usize) -> String {
-        self.lots[i]
-            .name
+        let lot = &self.lots[i];
+        lot.name
             .clone()
+            .or_else(|| lot.dealt.clone())
             .unwrap_or_else(|| plan::lots()[i].name.clone())
     }
 
@@ -895,7 +930,7 @@ impl City {
                 if preview.manual {
                     None
                 } else {
-                    preview.auto_pick()
+                    preview.auto_pick(now.as_second())
                 }
             })?;
             let lot = &preview.lots[site];
@@ -1436,6 +1471,58 @@ mod tests {
         );
         assert!(w.plots.is_empty());
         assert_eq!(w.history.len(), 3);
+    }
+
+    #[test]
+    fn buildings_are_named_by_design_and_never_twice() {
+        let mut facts = vec![mayor(0, FactKind::NamesByDesign)];
+        facts.extend(daily(12, 60));
+        let w = world(&facts, 13 * DAY);
+        let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
+        assert_eq!(w.plots[0].name, homes[0]);
+        assert_eq!(w.plots[1].name, homes[1]);
+        let shop = w.plots.iter().find(|p| p.kind == "shop").unwrap();
+        let s1 = crate::names::candidates(plan::Kind::Shop, "s1");
+        assert!(s1.contains(&shop.name.as_str()), "{}", shop.name);
+        let mut names: Vec<&str> = w.plots.iter().map(|p| p.name.as_str()).collect();
+        let n = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), n);
+    }
+
+    #[test]
+    fn buildings_started_before_names_by_design_keep_theirs() {
+        let mut facts = daily(2, 60);
+        facts.push(mayor(2 * DAY + 1, FactKind::NamesByDesign));
+        facts.extend((3..=4).map(|d| done(d * DAY, d, 60)));
+        // A second marker (from an imported backup) changes nothing.
+        facts.push(mayor(3 * DAY + 1, FactKind::NamesByDesign));
+        let w = world(&facts, 5 * DAY);
+        assert_eq!(w.plots[0].name, plan::lots()[0].name);
+        assert_eq!(w.plots[1].name, plan::lots()[1].name);
+        let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
+        assert_eq!(w.plots[2].name, homes[0]);
+    }
+
+    #[test]
+    fn a_mayors_name_is_not_dealt_again() {
+        let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
+        let facts = vec![
+            mayor(0, FactKind::NamesByDesign),
+            done(DAY, 1, 60),
+            mayor(
+                DAY + 1,
+                FactKind::Renamed {
+                    lot: "hamlet-homes-1".into(),
+                    name: homes[1].into(),
+                },
+            ),
+            done(2 * DAY, 2, 60),
+        ];
+        let w = world(&facts, 3 * DAY);
+        assert_eq!(w.plots[0].name, homes[1]);
+        assert_eq!(w.plots[1].name, homes[0]);
     }
 
     #[test]
