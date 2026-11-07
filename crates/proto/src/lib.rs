@@ -93,7 +93,7 @@ pub enum Request {
     },
     /// Pause the active construction site; focus then banks as crew hours.
     Pause,
-    /// Rename a finished building. An empty name restores the plan's.
+    /// Rename a finished building. An empty name restores the one it was dealt.
     Rename {
         lot: String,
         name: String,

@@ -50,8 +50,7 @@ with a root shell open in another terminal for the PAM checks.
       remove one (24 h notice), export and re-import (0 new sessions).
 - [ ] Progression: `deepwork world` shows the existing city rebuilt on the
       plan; `deepwork build <need>` takes over.
-- [ ] Names: after the upgrade, finished buildings keep their names; the
-      next one gets a name from its pile, and its sign shows it.
+- [ ] Names: a new building gets a name from its pile, and its sign shows it.
 - [ ] Model pack: `deepwork-ui` from the next release shows the download
       line, then the realistic city.
 - [ ] Install on a real Debian / Ubuntu and Fedora machine and repeat.

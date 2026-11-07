@@ -94,9 +94,6 @@ pub enum FactKind {
         lot: String,
         name: String,
     },
-    /// From here on, buildings are named from the piles in `names.rs` when
-    /// their design is set; those started before keep the plan's names.
-    NamesByDesign,
 }
 
 /// Ordered by time first, so sorting gives a fixed fold order.
@@ -203,8 +200,6 @@ pub struct City {
     finished_count: u32,
     history: Vec<WorldEvent>,
     award: Option<Award>,
-    /// When names started being dealt by design (the first `NamesByDesign`).
-    names_from: Option<i64>,
 }
 
 impl Default for City {
@@ -228,7 +223,6 @@ impl Default for City {
             finished_count: 0,
             history: Vec::new(),
             award: None,
-            names_from: None,
         }
     }
 }
@@ -292,9 +286,6 @@ impl City {
                 if let Ok((i, name)) = self.check_rename(lot, name) {
                     self.lots[i].name = name;
                 }
-            }
-            (FactKind::NamesByDesign, _) => {
-                self.names_from.get_or_insert(f.ts);
             }
         }
     }
@@ -420,7 +411,7 @@ impl City {
         }
     }
 
-    /// The lot's index and its new name (`None`: the plan's).
+    /// The lot's index and its new name (`None`: the one it was dealt).
     pub fn check_rename(&self, id: &str, name: &str) -> Result<(usize, Option<String>), String> {
         let lot = plan::lot_by_id(id).ok_or_else(|| format!("no lot {id:?}"))?;
         let i = lot.index as usize;
@@ -440,7 +431,7 @@ impl City {
     fn choose(&mut self, ts: i64, ni: usize, design: Option<&'static str>) {
         let Some(lot) = self.next_lot(ni) else { return };
         if self.lots[lot].done_secs == 0 {
-            self.set_design(lot, design, ts);
+            self.set_design(lot, design);
         }
         self.lots[lot].site = true;
         self.active = Some(lot);
@@ -453,7 +444,7 @@ impl City {
     /// The plan's own pick while the mayor has chosen nothing: the first open
     /// need in plan order that can be built, buying its cheapest blueprint
     /// when none is owned and the coins are there.
-    fn auto_pick(&mut self, ts: i64) -> Option<usize> {
+    fn auto_pick(&mut self) -> Option<usize> {
         for (ni, need) in NEEDS.iter().enumerate() {
             if !self.open(ni) {
                 continue;
@@ -478,7 +469,7 @@ impl City {
                 None
             };
             let lot = self.next_lot(ni)?;
-            self.set_design(lot, design, ts);
+            self.set_design(lot, design);
             self.lots[lot].site = true;
             return Some(lot);
         }
@@ -491,7 +482,7 @@ impl City {
         while left > 0 {
             let site = match self.active {
                 Some(a) => Some(a),
-                None if !self.manual => self.auto_pick(ts),
+                None if !self.manual => self.auto_pick(),
                 None => None,
             };
             let Some(a) = site else { break };
@@ -564,28 +555,23 @@ impl City {
             && let Some(next) = self.next_lot(ni)
         {
             if !self.lots[next].site {
-                self.set_design(next, design, ts);
+                self.set_design(next, design);
                 self.lots[next].site = true;
             }
             self.active = Some(next);
         }
     }
 
-    /// Sets a lot's design and deals it a name to match, once names are
-    /// dealt by design; a lot whose design stays keeps its name.
-    fn set_design(&mut self, i: usize, design: Option<&'static str>, ts: i64) {
+    /// Sets a lot's design and deals it a name to match; a site whose design
+    /// stays keeps its name.
+    fn set_design(&mut self, i: usize, design: Option<&'static str>) {
         let lot = &self.lots[i];
         if lot.site && lot.design == design {
             return;
         }
         self.lots[i].design = design;
         self.lots[i].dealt = None;
-        let (Some(d), Some(from)) = (design, self.names_from) else {
-            return;
-        };
-        if ts < from {
-            return;
-        }
+        let Some(d) = design else { return };
         let names: Vec<String> = (0..self.lots.len())
             .filter(|&j| j != i && self.lots[j].site)
             .map(|j| self.name(j))
@@ -930,7 +916,7 @@ impl City {
                 if preview.manual {
                     None
                 } else {
-                    preview.auto_pick(now.as_second())
+                    preview.auto_pick()
                 }
             })?;
             let lot = &preview.lots[site];
@@ -1475,8 +1461,7 @@ mod tests {
 
     #[test]
     fn buildings_are_named_by_design_and_never_twice() {
-        let mut facts = vec![mayor(0, FactKind::NamesByDesign)];
-        facts.extend(daily(12, 60));
+        let facts = daily(12, 60);
         let w = world(&facts, 13 * DAY);
         let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
         assert_eq!(w.plots[0].name, homes[0]);
@@ -1492,24 +1477,9 @@ mod tests {
     }
 
     #[test]
-    fn buildings_started_before_names_by_design_keep_theirs() {
-        let mut facts = daily(2, 60);
-        facts.push(mayor(2 * DAY + 1, FactKind::NamesByDesign));
-        facts.extend((3..=4).map(|d| done(d * DAY, d, 60)));
-        // A second marker (from an imported backup) changes nothing.
-        facts.push(mayor(3 * DAY + 1, FactKind::NamesByDesign));
-        let w = world(&facts, 5 * DAY);
-        assert_eq!(w.plots[0].name, plan::lots()[0].name);
-        assert_eq!(w.plots[1].name, plan::lots()[1].name);
-        let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
-        assert_eq!(w.plots[2].name, homes[0]);
-    }
-
-    #[test]
     fn a_mayors_name_is_not_dealt_again() {
         let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
         let facts = vec![
-            mayor(0, FactKind::NamesByDesign),
             done(DAY, 1, 60),
             mayor(
                 DAY + 1,
@@ -1548,7 +1518,8 @@ mod tests {
             },
         ));
         let w = world(&facts, 50);
-        assert_eq!(w.plots[0].name, plan::lots()[0].name);
+        let homes = crate::names::candidates(plan::Kind::Cottage, "c1");
+        assert_eq!(w.plots[0].name, homes[0], "back to its dealt name");
         assert!(w.auto, "a rename is not a building decision");
     }
 
