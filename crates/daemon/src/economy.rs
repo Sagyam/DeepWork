@@ -77,9 +77,6 @@ pub fn decoration(id: &str) -> Option<&'static Decoration> {
     DECORATIONS.iter().find(|d| d.id == id)
 }
 
-/// Spots on a park block: the centre and the four quarters.
-pub const PARK_SPOTS: u32 = 5;
-
 /// A stake may be at most this many coins.
 pub const STAKE_MAX: u64 = 1000;
 /// Completed sessions the stake target looks back on, and the target with

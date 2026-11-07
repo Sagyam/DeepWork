@@ -1001,9 +1001,51 @@ function prop(p: Parts, name: string, x: number, z: number, ry = 0, s = 1, y = K
 /** A park lamp, lit at night. */
 const lampPost = (p: Parts, x: number, z: number) => furniture(p, "lamp_heritage", x, KERB, z);
 
+/** The master plan's park spots in block-local coordinates: the centre, then the quarters. Matches `PARK_SPOTS` in economy.rs. */
+export const SPOTS: [number, number][] = [[0, 0], [-17, -8], [17, -8], [-17, 8], [17, 8]];
+
+/** A decoration the mayor bought, on its spot (world coordinates). */
+function decoration(p: Parts, id: string, x: number, z: number, seed: number, onLawn: boolean) {
+  const flat = (m: THREE.Material, g: THREE.BufferGeometry, y = KERB + 0.025) => p.add(m, g, x, y, z, -Math.PI / 2);
+  if (onLawn && id !== "trees") flat(gravelMat(0xdccfae), new THREE.CircleGeometry(5.6, 32));
+  switch (id) {
+    case "trees":
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + 0.3;
+        tree(p, x + Math.cos(a) * 4.4, z + Math.sin(a) * 4.4, 0.75, seed + i, KERB);
+      }
+      break;
+    case "benches":
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + Math.PI / 4;
+        prop(p, "bench", x + Math.cos(a) * 3.6, z + Math.sin(a) * 3.6, Math.atan2(-Math.cos(a), -Math.sin(a)));
+      }
+      for (const sx of [-1, 1]) lampPost(p, x + sx * 4.8, z);
+      break;
+    case "fountain":
+      flat(groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 }), new THREE.CircleGeometry(5, 40), KERB + 0.03);
+      prop(p, "fountain", x, z, 0, 1.1);
+      p.extra(fountainSpray(x, KERB, z, 1.1));
+      break;
+    case "statue": {
+      // The founder in bronze on a stepped granite plinth.
+      const stone = mat(0x8e8a84, { roughness: 0.6 });
+      p.box(stone, 2.6, 0.4, 2.6, x, KERB, z);
+      p.box(stone, 1.6, 2.2, 1.6, x, KERB + 0.4, z);
+      const bronze = mat(0x6a5236, { metalness: 0.85, roughness: 0.38 });
+      for (const { geo } of realPiece("civic", "person")) p.add(bronze, geo, x, KERB + 2.6, z, 0, Math.PI, 0, new THREE.Vector3(1.35, 1.35, 1.35));
+      break;
+    }
+    case "bandstand":
+      prop(p, "bandstand", x, z, 0, 0.9);
+      break;
+  }
+}
+
 /**
- * A park block in place of a district, in world coordinates: a plaza with a
- * fountain, a park with a pond and a bandstand, or a football ground.
+ * A park block in place of a district, in world coordinates: a green or a
+ * park (lawn and paths), a plaza or a football ground. The master plan's
+ * decorations stand on its spots; without a plan, the old dressing stands.
  */
 export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Material) {
   const r = rng(k.seed);
@@ -1014,6 +1056,33 @@ export function park(p: Parts, k: ParkSpec, pole: THREE.Material, bulb: THREE.Ma
   const paving = groundMat("pave", 3.6, { roughness: 0.88, color: 0xf2eee6 });
   const flat = (m: THREE.Material, g: THREE.BufferGeometry, x: number, z: number, y = KERB + 0.02) => p.add(m, g, X + x, y, Z + z, -Math.PI / 2);
   const bench = (x: number, z: number, ry: number) => prop(p, "bench", X + x, Z + z, ry);
+  const planned = k.decorations !== undefined;
+  if (planned && k.kind !== "sports") {
+    const onLawn = k.kind !== "plaza";
+    if (onLawn) {
+      // A green: lawn, paths crossing it, trees round the edge.
+      p.box(lawn_, W, KERB, D, X, 0, Z);
+      const path = gravelMat(0xe0d0a8);
+      p.box(path, W, KERB + 0.03, 2.2, X, 0, Z);
+      p.box(path, 2.2, KERB + 0.03, D, X, 0, Z);
+      for (let i = 0; i < 14; i++) {
+        const t = (i + 0.5) / 14;
+        tree(p, X - W / 2 + 2 + t * (W - 4), Z + (i % 2 ? 1 : -1) * (D / 2 - 1.6), 0.55 + r() * 0.3, k.seed + i, KERB);
+      }
+      for (const [x, z] of [[-4, -4], [4, 4]]) lampPost(p, X + x, Z + z);
+    } else {
+      // A plaza: paving with a stone ring at its heart, planters at the ends.
+      p.box(paving, W, KERB, D, X, 0, Z);
+      flat(groundMat("ashlar", 2.4, { roughness: 0.8, color: 0xf0ebe0 }), new THREE.RingGeometry(7.2, 8, 48), 0, 0, KERB + 0.03);
+      for (const x of [-29, 29]) for (const z of [-12, 0, 12]) planter(p, X + x, Z + z, k.seed + x * 3 + z, 0.75);
+      for (const [x, z] of [[-8, -12], [8, -12], [-8, 12], [8, 12]]) lampPost(p, X + x, Z + z);
+    }
+    k.decorations!.forEach((d, i) => {
+      const [sx, sz] = SPOTS[i] ?? [0, 0];
+      if (d) decoration(p, d, X + sx, Z + sz, k.seed + i * 101, onLawn);
+    });
+    return;
+  }
   switch (k.kind) {
     case "plaza": {
       p.box(paving, W, KERB, D, X, 0, Z);

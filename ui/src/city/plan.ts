@@ -2,11 +2,13 @@
 // Pure and deterministic (seeded per plot) so it is unit tested; the
 // three.js side only builds meshes from what this returns.
 //
-// Each district is a city block of 8 lots (4 x 2) ringed by road. Blocks
-// fill the grid outward from the centre in rings, so the city grows round,
-// and every fourth block is a park: a plaza, a park with a pond or a
-// football ground. Lots are roomy, with yards, drives and parking.
-import { DISTRICT_SIZE, type Construction, type Plot, type SiteInfo, type World } from "../proto";
+// Each block holds 8 lots (4 x 2) ringed by road. Where the blocks go, and
+// which lot is where, is the daemon's master plan (`World.layout`): a block
+// shows once land in it is bought, a park once its level opens. A world
+// with no layout (tests, an older daemon) fills blocks outward from the
+// centre in rings, every fourth one a park. Lots are roomy, with yards,
+// drives and parking.
+import { DISTRICT_SIZE, type Construction, type Layout, type Plot, type SiteInfo, type World } from "../proto";
 
 export const LOT = 16;
 /** Kerb to kerb plus the pavements either side. */
@@ -141,18 +143,32 @@ export interface ParkSpec {
   z: number;
   kind: ParkKind;
   seed: number;
+  /** From the master plan: the block's index, and what stands on each of its spots. */
+  block?: number;
+  decorations?: (string | null)[];
 }
+
+/** A block centre and the road class (0 lane to 3 avenue) of its north, south, west and east streets. */
+export interface BlockSpec {
+  x: number;
+  z: number;
+  roads: [number, number, number, number];
+}
+
+/** Without a master plan, every street looks like a boulevard. */
+const BOULEVARDS: BlockSpec["roads"] = [2, 2, 2, 2];
 
 export interface CityPlan {
   /** Block centres in use (including the one the site is on, and parks), growth order. */
-  blocks: { x: number; z: number }[];
+  blocks: BlockSpec[];
   parks: ParkSpec[];
   buildings: Spec[];
   site: SiteSpec | null;
   /** Sites standing half built while another is worked on. */
   paused: SiteSpec[];
   /** Empty lots in used blocks: grass, maybe a tree. */
-  emptyLots: { x: number; z: number; seed: number }[];
+  /** `forSale`: its land is not bought yet. */
+  emptyLots: { x: number; z: number; rot?: number; seed: number; forSale?: boolean }[];
   /** Trees outside the city, more with the tier. */
   trees: { x: number; z: number; s: number; seed: number }[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -231,10 +247,19 @@ export function blockCentre(district: number): { x: number; z: number } {
   return cellCentre(districtCell(district));
 }
 
+/** The master plan of the world last laid out by `plan()`. */
+let layout: Layout | null = null;
+
 /** Lot centre and facing for a plot index. Front row faces -z, back row +z. */
 export function lot(index: number): { x: number; z: number; rot: number } {
-  const c = blockCentre(Math.floor(index / DISTRICT_SIZE));
-  const k = index % DISTRICT_SIZE;
+  const planned = layout?.lots[index];
+  const block = planned && layout!.blocks[planned.block];
+  if (block) return slotPlace({ x: block.x * PITCH_X, z: block.y * PITCH_Z }, planned.slot);
+  return slotPlace(blockCentre(Math.floor(index / DISTRICT_SIZE)), index % DISTRICT_SIZE);
+}
+
+/** A slot of the block centred on `c`: 0-3 west to east facing -z, 4-7 facing +z. */
+function slotPlace(c: { x: number; z: number }, k: number): { x: number; z: number; rot: number } {
   const col = k % 4;
   const back = k >= 4;
   return {
@@ -344,23 +369,58 @@ function pausedSpec(site: SiteInfo): SiteSpec {
   };
 }
 
+/** How the plan's park kinds are drawn. */
+const PARK_LOOKS: Record<string, ParkKind> = { green: "park", plaza: "plaza", park: "park", sports: "sports" };
+
 export function plan(w: World, elapsedSecs = 0): CityPlan {
+  layout = w.layout?.lots.length ? w.layout : null;
   const siteIndex = w.construction?.index ?? -1;
   // Sites standing between sessions; the session's own one is drawn live.
   const standing = (w.sites ?? []).filter((s) => s.index !== siteIndex);
-  const lots = Math.max(0, siteIndex + 1, ...w.plots.map((p) => p.index + 1), ...standing.map((s) => s.index + 1));
-  const districts = Math.max(1, Math.ceil(lots / DISTRICT_SIZE));
-  const last = districtCell(districts - 1);
-  const parks: ParkSpec[] = [];
-  for (let c = 0, n = 0; c < last; c++) if (isPark(c)) parks.push({ ...cellCentre(c), kind: PARKS[n++ % PARKS.length], seed: c * 7919 + 17 });
-  const blocks = [...Array.from({ length: districts }, (_, d) => blockCentre(d)), ...parks.map(({ x, z }) => ({ x, z }))];
   const buildings = w.plots.filter((p) => p.index !== siteIndex).map(spec);
   const site = w.construction ? siteSpec(w.construction, elapsedSecs) : null;
   const paused = standing.map(pausedSpec);
-
   const taken = new Set([...buildings.map((b) => b.index), ...paused.map((s) => s.index), siteIndex]);
+
+  let blocks: BlockSpec[];
+  /** Blocks of lots, without parks. */
+  let districts: number;
+  const parks: ParkSpec[] = [];
   const emptyLots: CityPlan["emptyLots"] = [];
-  for (let i = 0; i < districts * DISTRICT_SIZE; i++) if (!taken.has(i)) emptyLots.push({ ...lot(i), seed: i * 2654435761 });
+  if (layout) {
+    const L = layout;
+    // A block shows once land in it is bought (or something stands on it).
+    const shown = new Set(L.lots.flatMap((l, i) => (l.owned || taken.has(i) ? [l.block] : [])));
+    L.blocks.forEach((b, i) => {
+      if (b.park && b.open) parks.push({ x: b.x * PITCH_X, z: b.y * PITCH_Z, kind: PARK_LOOKS[b.park] ?? "park", seed: i * 7919 + 17, block: i, decorations: b.spots.map((s) => s.decoration) });
+    });
+    if (shown.size === 0) shown.add(L.lots[0]?.block ?? 0);
+    districts = shown.size;
+    const roadClass = (axis: "ew" | "ns", line: number, along: number) => L.streets.find((s) => s.axis === axis && s.line === line && along >= s.from && along <= s.to)?.class ?? 0;
+    const spec = (bx: number, by: number): BlockSpec => ({
+      x: bx * PITCH_X,
+      z: by * PITCH_Z,
+      roads: [roadClass("ew", by, bx), roadClass("ew", by + 1, bx), roadClass("ns", bx, by), roadClass("ns", bx + 1, by)],
+    });
+    blocks = [...[...shown].sort((a, b) => a - b).map((i) => spec(L.blocks[i].x, L.blocks[i].y)), ...L.blocks.filter((b) => b.park && b.open).map((b) => spec(b.x, b.y))];
+    L.lots.forEach((l, i) => {
+      if (shown.has(l.block) && !taken.has(i)) emptyLots.push({ ...lot(i), seed: i * 2654435761, ...(l.owned ? {} : { forSale: true }) });
+    });
+    // Slots the plan has no lot for yet are grass, not for sale.
+    for (const bi of shown) {
+      const b = L.blocks[bi];
+      for (let k = 0; k < DISTRICT_SIZE; k++) {
+        if (!L.lots.some((l) => l.block === bi && l.slot === k)) emptyLots.push({ ...slotPlace({ x: b.x * PITCH_X, z: b.y * PITCH_Z }, k), seed: (bi * 8 + k) * 40503 + 7 });
+      }
+    }
+  } else {
+    const lots = Math.max(0, siteIndex + 1, ...w.plots.map((p) => p.index + 1), ...standing.map((s) => s.index + 1));
+    districts = Math.max(1, Math.ceil(lots / DISTRICT_SIZE));
+    const last = districtCell(districts - 1);
+    for (let c = 0, n = 0; c < last; c++) if (isPark(c)) parks.push({ ...cellCentre(c), kind: PARKS[n++ % PARKS.length], seed: c * 7919 + 17 });
+    blocks = [...Array.from({ length: districts }, (_, d) => blockCentre(d)), ...parks.map(({ x, z }) => ({ x, z }))].map((b) => ({ ...b, roads: BOULEVARDS }));
+    for (let i = 0; i < districts * DISTRICT_SIZE; i++) if (!taken.has(i)) emptyLots.push({ ...lot(i), seed: i * 2654435761 });
+  }
 
   const half = { x: PITCH_X / 2, z: PITCH_Z / 2 };
   const bounds = {

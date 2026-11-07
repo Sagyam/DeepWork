@@ -56,6 +56,15 @@ pub enum ParkKind {
 }
 
 impl ParkKind {
+    /// Places for decorations: the centre and four quarters, except on a
+    /// sports ground, whose pitch fills the block.
+    pub fn spots(self) -> u32 {
+        match self {
+            ParkKind::Sports => 0,
+            _ => 5,
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             ParkKind::Green => "green",

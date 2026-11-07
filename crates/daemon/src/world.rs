@@ -579,14 +579,17 @@ impl City {
         spot: &str,
         id: &str,
     ) -> Result<(&'static economy::Decoration, u64), String> {
-        let (b, _) = spot
+        let (b, n) = spot
             .split_once(':')
             .and_then(|(b, n)| Some((b.parse::<usize>().ok()?, n.parse::<u32>().ok()?)))
-            .filter(|&(b, n)| b < layout::blocks().len() && n < economy::PARK_SPOTS)
+            .filter(|&(b, _)| b < layout::blocks().len())
             .ok_or_else(|| format!("no spot {spot:?}"))?;
-        let Ground::Park(_, name) = layout::blocks()[b].ground else {
+        let Ground::Park(kind, name) = layout::blocks()[b].ground else {
             return Err(format!("no spot {spot:?}"));
         };
+        if n >= kind.spots() {
+            return Err(format!("no spot {spot:?}"));
+        }
         if !self.block_open(b) {
             return Err(format!("{name} is not laid out yet"));
         }
@@ -1498,8 +1501,8 @@ impl City {
                         (None, Some(kind.name().to_string()), Some(name.to_string()))
                     }
                 };
-                let spots = if park.is_some() {
-                    (0..economy::PARK_SPOTS)
+                let spots = if let Ground::Park(kind, _) = block.ground {
+                    (0..kind.spots())
                         .map(|n| {
                             let id = format!("{b}:{n}");
                             SpotInfo {
@@ -2339,6 +2342,20 @@ mod tests {
                 .unwrap_err()
                 .contains("no hired help")
         );
+    }
+
+    /// The mock daemon (`ui/src/mockcity.ts`) lays the city out from this
+    /// fixture. `UPDATE_FIXTURES=1 cargo test` rewrites it.
+    #[test]
+    fn ui_layout_fixture_is_current() {
+        let w = City::default().world(None, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
+        let json = serde_json::to_string_pretty(&w.layout).unwrap() + "\n";
+        let path = concat!(env!("CARGO_MANIFEST_DIR"), "/../../ui/src/layout.json");
+        if std::env::var_os("UPDATE_FIXTURES").is_some() {
+            std::fs::write(path, &json).unwrap();
+        }
+        let file = std::fs::read_to_string(path).unwrap_or_default();
+        assert!(file == json, "ui/src/layout.json is stale: run UPDATE_FIXTURES=1 cargo test");
     }
 
     #[test]

@@ -1,8 +1,28 @@
 // The mock daemon's city: a small mirror of the daemon's fold
 // (crates/daemon/src/world.rs, plan.rs) so the mayor's desk, the shop and
 // the renderer can be developed in a browser. Simplified on purpose (no
-// streak bonuses, freezes or repairs); the daemon is the truth.
-import type { Award, BlueprintInfo, Construction, NeedInfo, Plot, SiteInfo, World, WorldEvent } from "./proto";
+// streak bonuses, freezes, session repairs or wealth in prices; the
+// scenarios get their land free); the daemon is the truth. The layout is
+// the daemon's own (`layout.json`, kept current by a Rust test).
+import FIXTURE from "./layout.json";
+import type { Award, BlueprintInfo, Construction, GoalInfo, Layout, NeedInfo, Plot, SiteInfo, World, WorldEvent } from "./proto";
+
+const LAYOUT = FIXTURE as Layout;
+const LAND: Record<string, number> = { village: 60, works: 80, civic: 100, main_street: 120, downtown: 250 };
+const ROADS: [number, number][] = [[0, 0], [150, 0], [400, 1], [900, 2]];
+const DECORATIONS = [
+  { id: "trees", name: "A ring of trees", price: 80, level: 0 },
+  { id: "benches", name: "Benches and lamps", price: 120, level: 0 },
+  { id: "fountain", name: "Fountain", price: 350, level: 1 },
+  { id: "statue", name: "Statue of the founder", price: 450, level: 1 },
+  { id: "bandstand", name: "Bandstand", price: 600, level: 2 },
+];
+const GOALS = [
+  { id: "daily_focus", title: "Two hours of focus today", target: 7200 },
+  { id: "long_stretch", title: "One 90-minute session", target: 5400 },
+  { id: "sessions", title: "Three sessions today", target: 3 },
+];
+const ITEMS: Record<string, string> = { repair_kit: "Repair kit", hired_help: "Hired help", master_crew: "Master crew" };
 
 interface Need { id: string; level: number; title: string; words: string; kind: string; district: string; lots: number }
 
@@ -76,7 +96,7 @@ for (const [ni, n] of NEEDS.entries()) {
     const i = LOTS.length;
     const sur = SURNAMES[(i * 7 + 3) % SURNAMES.length];
     const name = ({ cottage: `The ${sur} house`, shop: `${sur}'s ${TRADES[(i * 5) % TRADES.length]}`, workshop: `${sur} & Sons Works`, apartment: `${sur} Court`, office: `${sur} Building`, tower: `${sur} Tower`, water: "Water tower", power: "Substation" } as Record<string, string>)[n.kind] ?? n.title.replace(/^An? /, "The ");
-    LOTS.push({ index: i, id: `${n.id}-${k}`, need: ni, name, address: `${2 * k - 1} ${["Mill Lane", "High Street", "Commerce Avenue", "Skyline Boulevard"][n.level]}` });
+    LOTS.push({ index: i, id: `${n.id}-${k}`, need: ni, name, address: LAYOUT.lots[i]?.address ?? "" });
   }
 }
 
@@ -117,6 +137,15 @@ export class MockCity {
   history: WorldEvent[] = [];
   /** Names dealt when a lot got its design, as the daemon deals them. */
   dealt = new Map<number, string>();
+  /** Land bought: the first plot is free. Scenarios set `freeLand` while they grow. */
+  land = new Set([0]);
+  freeLand = false;
+  roads: number[] = LAYOUT.streets.map(() => 0);
+  spots = new Map<string, string>();
+  inventory = new Map<string, number>();
+  today = { day: -1, focus: 0, sessions: 0, longest: 0, paid: new Set<string>() };
+  stakes = new Map<number, number>();
+  recent: number[] = [];
 
   /** The lot's name: the mayor's, else the one dealt for its design, else the plan's. */
   nameOf(i: number, design: string | null): string {
@@ -128,7 +157,8 @@ export class MockCity {
       const taken = new Set([...this.dealt.entries()].filter(([j]) => j !== i).map(([, n]) => n.toUpperCase()));
       for (const b of this.built.values()) if (b.name) taken.add(b.name.toUpperCase());
       const pile = PILES[design];
-      name = pile.find((n) => !taken.has(n.toUpperCase())) ?? `${pile[0]} No. ${i}`;
+      // The mock's piles are short: past them, the plan's name.
+      name = pile.find((n) => !taken.has(n.toUpperCase())) ?? LOTS[i].name;
       this.dealt.set(i, name);
     }
     return name;
@@ -148,9 +178,14 @@ export class MockCity {
     return NEEDS[ni].level === this.level && this.nextLot(ni) !== null;
   }
 
+  private owns(i: number): boolean {
+    if (this.freeLand) this.land.add(i);
+    return this.land.has(i);
+  }
+
   private autoPick(): number | null {
     for (const [ni, n] of NEEDS.entries()) {
-      if (!this.open(ni)) continue;
+      if (!this.open(ni) || !this.owns(this.nextLot(ni)!)) continue;
       let design: string | null = null;
       if (DESIGNED.has(n.kind)) {
         const own = BLUEPRINTS.find((b) => fits(b, n) && this.owned.has(b.id));
@@ -198,7 +233,7 @@ export class MockCity {
     }
     const ni = LOTS[i].need;
     const next = this.nextLot(ni);
-    if (this.manual && this.open(ni) && next !== null) {
+    if (this.manual && this.open(ni) && next !== null && this.owns(next)) {
       if (!this.sites.has(next)) this.sites.set(next, { design, done: 0 });
       this.active = next;
     }
@@ -212,8 +247,128 @@ export class MockCity {
     const coins = Math.floor(units / 6);
     this.focused += secs;
     this.earned += coins;
-    this.award = { session_id: id, ts, coins, length_bonus: coins - Math.floor((mins * 10) / 6), streak_bonus: 0, rested_bonus: 0, build_secs: secs, finished: [], freeze_earned: false, freezes_used: 0 };
+    this.award = { session_id: id, ts, coins, length_bonus: coins - Math.floor((mins * 10) / 6), streak_bonus: 0, rested_bonus: 0, build_secs: secs, finished: [], freeze_earned: false, freezes_used: 0, boxes: [] };
+    const stake = this.stakes.get(id) ?? 0;
+    if (stake) {
+      this.stakes.delete(id);
+      this.spent -= stake;
+      this.earned += stake;
+      this.award.stake_won = stake;
+    }
+    this.recent = [...this.recent, secs].slice(-10);
+    const day = Math.floor(ts / 86400);
+    if (this.today.day !== day) this.today = { day, focus: 0, sessions: 0, longest: 0, paid: new Set() };
+    const t = this.today;
+    t.focus += secs;
+    t.longest = Math.max(t.longest, secs);
+    if (secs >= 1500) t.sessions++;
+    for (const g of GOALS) {
+      if (t.paid.has(g.id) || this.progress(g.id) < g.target) continue;
+      t.paid.add(g.id);
+      const item = ["repair_kit", "hired_help", "master_crew"][(id + g.id.length) % 3];
+      this.inventory.set(item, (this.inventory.get(item) ?? 0) + 1);
+      this.award.boxes!.push({ goal: g.id, item });
+    }
     this.pour(secs, ts, id, secs);
+  }
+
+  private progress(goal: string): number {
+    const t = this.today;
+    return goal === "daily_focus" ? t.focus : goal === "long_stretch" ? t.longest : t.sessions;
+  }
+
+  /** The id the next session gets, for a stake placed at its start. */
+  nextSessionId(): number {
+    return this.sessionId + 1;
+  }
+
+  stakeTarget(): number {
+    if (this.recent.length < 3) return 1500;
+    return [...this.recent].sort((a, b) => a - b)[Math.floor(this.recent.length / 2)];
+  }
+
+  stake(coins: number, secs: number | null): string | null {
+    const target = this.stakeTarget();
+    if (secs === null || secs < target) return `a stake needs a countdown of at least ${Math.ceil(target / 60)} minutes, your usual length`;
+    if (coins <= 0) return "stake at least one coin";
+    if (coins > Math.min(1000, this.coins())) return `the most you can stake now is ${Math.min(1000, this.coins())} coins`;
+    this.spent += coins;
+    this.stakes.set(this.nextSessionId(), coins);
+    return null;
+  }
+
+  /** A surrendered session: its stake is lost. */
+  surrendered(id: number) {
+    this.stakes.delete(id);
+  }
+
+  private landPrice(i: number): number {
+    const n = NEEDS[LOTS[i].need];
+    return LAND[n.district] * (1 + Math.floor(n.level / 2));
+  }
+
+  buyLand(lot: string): string | null {
+    const l = LOTS.find((l) => l.id === lot);
+    if (!l) return `no lot ${lot}`;
+    if (this.land.has(l.index)) return `the plot at ${l.address} is already yours`;
+    if (NEEDS[l.need].level > this.level) return `the plot at ${l.address} is for sale from a later level`;
+    const price = this.landPrice(l.index);
+    if (this.coins() < price) return `the plot at ${l.address} costs ${price} coins; you have ${this.coins()}`;
+    this.spent += price;
+    this.land.add(l.index);
+    return null;
+  }
+
+  repair(lot: string, kit: boolean): string | null {
+    const l = LOTS.find((l) => l.id === lot);
+    const b = l && this.built.get(l.index);
+    if (!b) return `${lot} is not built yet`;
+    if (!b.damage) return "it needs no repair";
+    const price = 40 * b.damage;
+    if (!kit && this.coins() < price) return `repairing it costs ${price} coins; you have ${this.coins()}`;
+    if (!kit) this.spent += price;
+    b.damage = 0;
+    this.history.push({ ts: Math.floor(Date.now() / 1000), kind: "repaired", cause: "mayor", session_id: null, plots: [l.index], ruined: [] });
+    return null;
+  }
+
+  upgrade(street: string): string | null {
+    const si = LAYOUT.streets.findIndex((s) => s.id === street);
+    if (si < 0) return `no street ${street}`;
+    const next = ROADS[this.roads[si] + 1];
+    if (!next) return "it is already an avenue";
+    if (next[1] > this.level) return "not before a later level";
+    if (this.coins() < next[0]) return `that costs ${next[0]} coins; you have ${this.coins()}`;
+    this.spent += next[0];
+    this.roads[si]++;
+    return null;
+  }
+
+  decorate(spot: string, id: string): string | null {
+    const d = DECORATIONS.find((d) => d.id === id);
+    if (!d) return `no decoration ${id}`;
+    if (d.level > this.level) return `a ${d.name.toLowerCase()} is for sale from a later level`;
+    if (this.coins() < d.price) return `a ${d.name.toLowerCase()} costs ${d.price} coins; you have ${this.coins()}`;
+    this.spent += d.price;
+    this.spots.set(spot, id);
+    return null;
+  }
+
+  useItem(item: string, lot: string | null): string | null {
+    const n = this.inventory.get(item) ?? 0;
+    if (!n) return `you have no ${(ITEMS[item] ?? item).toLowerCase()}`;
+    if (item === "repair_kit") {
+      const err = this.repair(lot ?? "", true);
+      if (err) return err;
+    } else {
+      if (this.active === null) return "there is no construction site to help on";
+      const site = this.sites.get(this.active)!;
+      const total = buildSecs(this.active);
+      site.done = Math.min(total, site.done + Math.floor((total * (item === "master_crew" ? 50 : 25)) / 100));
+      if (site.done >= total) this.finish(this.active, Math.floor(Date.now() / 1000), 0, 0, site.design);
+    }
+    this.inventory.set(item, n - 1);
+    return null;
   }
 
   buy(id: string): string | null {
@@ -234,6 +389,7 @@ export class MockCity {
     const n = NEEDS[ni];
     if (!this.open(ni)) return `"${n.title}" is not open`;
     const lot = this.nextLot(ni)!;
+    if (!this.owns(lot)) return `buy the plot at ${LOTS[lot].address} first`;
     let design: string | null = null;
     if (DESIGNED.has(n.kind)) {
       design = blueprint ?? BLUEPRINTS.find((b) => fits(b, n) && this.owned.has(b.id))?.id ?? null;
@@ -270,6 +426,15 @@ export class MockCity {
     return null;
   }
 
+  /** For the scenarios: streets paved and parks dressed as a town of its level would be. */
+  dress() {
+    this.roads = this.roads.map((_, i) => Math.min(3, this.level + (i % 3 === 0 ? 1 : 0)));
+    const looks = ["fountain", "trees", "benches", "statue", "trees"];
+    LAYOUT.blocks.forEach((b, bi) => {
+      if (b.park && b.level <= this.level) b.spots.forEach((s, n) => (n === 0 || this.level >= 2) && this.spots.set(s.id, looks[(n + bi) % looks.length]));
+    });
+  }
+
   /** Damage for the scenarios: a building, how much. */
   hurt(i: number, damage: number, ts: number, cause: WorldEvent["cause"] = "surrendered") {
     const b = this.built.get(i);
@@ -284,7 +449,7 @@ export class MockCity {
     let design = site !== null ? this.sites.get(site)!.design : null;
     let done = site !== null ? this.sites.get(site)!.done : 0;
     if (site === null && !this.manual) {
-      const ni = NEEDS.findIndex((_, ni) => this.open(ni));
+      const ni = NEEDS.findIndex((_, ni) => this.open(ni) && this.land.has(this.nextLot(ni)!));
       if (ni >= 0) {
         site = this.nextLot(ni);
         design = DESIGNED.has(NEEDS[ni].kind) ? (BLUEPRINTS.find((b) => fits(b, NEEDS[ni]) && this.owned.has(b.id))?.id ?? null) : null;
@@ -309,9 +474,9 @@ export class MockCity {
     const plots: Plot[] = [...this.built.entries()].sort((a, b) => a[0] - b[0]).map(([i, b]) => {
       const n = NEEDS[LOTS[i].need];
       return {
-        index: i, district: Math.floor(i / 8), grade: GRADE[n.kind], damage: b.damage, rubble: b.damage >= 3, seed: i * 7919 + 13,
+        index: i, district: LAYOUT.lots[i]?.block ?? 0, grade: GRADE[n.kind], damage: b.damage, rubble: b.damage >= 3, seed: i * 7919 + 13,
         session_id: b.parts[0]?.session_id ?? 0, built_at: b.at, lot: LOTS[i].id, kind: n.kind, design: b.design,
-        name: this.nameOf(i, b.design), address: LOTS[i].address, need: n.id, shiny: b.shiny,
+        name: this.nameOf(i, b.design), address: LOTS[i].address, need: n.id, shiny: b.shiny, repair_price: b.damage ? 40 * b.damage : null,
         memory: { started_at: b.at - buildSecs(i), parts: b.parts, focused_secs: buildSecs(i), streak_at_finish: this.streak, scars: b.damage ? [{ ts: now - 7200, cause: "surrendered", damage: b.damage, repaired: false }] : [], first: i === 0 },
       };
     });
@@ -327,6 +492,7 @@ export class MockCity {
         next_lot: next === null ? null : LOTS[next].id, site: next !== null && this.sites.has(next), designed: DESIGNED.has(n.kind),
         fits: BLUEPRINTS.filter((b) => fits(b, n) && this.owned.has(b.id)).map((b) => b.id),
         fits_locked: BLUEPRINTS.filter((b) => fits(b, n) && !this.owned.has(b.id)).map((b) => b.id),
+        land_price: next !== null && !this.land.has(next) ? this.landPrice(next) : null,
       };
     });
     return {
@@ -349,6 +515,35 @@ export class MockCity {
       freezes: this.streak >= 7 ? 1 : 0,
       auto: !this.manual,
       last_award: this.award,
+      layout: this.layout(level),
+      wealth: 0,
+      decorations: DECORATIONS.map((d) => ({ ...d, unlocked: d.level <= level })),
+      stake: this.stakes.get(this.nextSessionId()) ?? null,
+      stake_target_secs: this.stakeTarget(),
+      stake_max: Math.min(1000, this.coins()),
+      inventory: [...this.inventory.entries()].filter(([, n]) => n > 0).map(([id, count]) => ({ id, name: ITEMS[id] ?? id, count, rare: id === "master_crew" })),
+      goals: this.goals(now),
+      boxes_to_rare: 5,
     };
+  }
+
+  private goals(now: number): GoalInfo[] {
+    const on = this.today.day === Math.floor(now / 86400);
+    return GOALS.map((g) => ({ ...g, progress: on ? this.progress(g.id) : 0, done: on && this.today.paid.has(g.id) }));
+  }
+
+  private layout(level: number): Layout {
+    const taken = new Set([...this.built.keys(), ...this.sites.keys()]);
+    const lots = LAYOUT.lots.map((l, i) => ({ ...l, owned: this.land.has(i) || taken.has(i), price: this.landPrice(i), for_sale: NEEDS[LOTS[i].need].level <= level }));
+    const blocks = LAYOUT.blocks.map((b, bi) => ({
+      ...b,
+      open: b.park ? b.level <= level : lots.some((l) => l.block === bi && l.owned),
+      spots: b.spots.map((s) => ({ id: s.id, decoration: this.spots.get(s.id) ?? null })),
+    }));
+    const streets = LAYOUT.streets.map((s, si) => {
+      const next = ROADS[this.roads[si] + 1];
+      return { ...s, class: this.roads[si], upgrade_price: next && next[1] <= level ? next[0] : null };
+    });
+    return { blocks, streets, lots };
   }
 }

@@ -1,6 +1,6 @@
 import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, world as getWorld } from "./daemon";
 import { TIERS, clock, escapeHtml, hm } from "./format";
-import { deedHtml, deskHtml, levelUpHtml, nearMiss, shopHtml, tagHtml } from "./desk";
+import { deedHtml, deskHtml, levelUpHtml, nearMiss, shopHtml, tagHtml, townHtml } from "./desk";
 import { notice } from "./panels";
 import { SURRENDER_PHRASE, type SessionInfo, type Status, type World } from "./proto";
 import { openProgress, progressUpdate } from "./progress";
@@ -237,6 +237,7 @@ function controls(st: Status): string {
           <select id="profile" aria-label="Profile" title="Profile">${profiles}</select>
           <button class="start-button primary" data-action="start-selected">${startMode === "stopwatch" ? "Start stopwatch" : "Start focus"}</button>
         </div>
+        ${stakeRow()}
       </div>
       ${skip}${freeControls(st)}`;
   }
@@ -247,7 +248,20 @@ function controls(st: Status): string {
     ? `<div class="near-miss">${Math.round(nm.secs / 60)} more minutes finishes ${escapeHtml(nm.name)}.
         <button class="primary" data-action="extend" data-secs="${nm.secs}">Extend</button></div>`
     : "";
-  return `${prompt}<div class="row">${stop}<button class="link" data-action="surrender">Surrender…</button></div>`;
+  const stake = world?.stake ? `<div class="stake-on">${world.stake} coins at stake: finish to win them twice.</div>` : "";
+  return `${prompt}${stake}<div class="row">${stop}<button class="link" data-action="surrender">Surrender…</button></div>`;
+}
+
+/** Coins to bet on finishing, for a countdown at least as long as the usual session. */
+function stakeRow(): string {
+  const max = world?.stake_max ?? 0;
+  const target = world?.stake_target_secs ?? 0;
+  if (startMode !== "timer" || max <= 0 || !target) return "";
+  const long = startMins * 60 >= target;
+  return `<label class="stake-row" title="Finish and the stake comes back twice; surrender and it is gone.">
+      Stake <input id="stake" type="number" min="0" max="${max}" step="10" placeholder="0" ${long ? "" : "disabled"} /> coins
+      <span class="small muted">${long ? `up to ${max}` : `from ${Math.ceil(target / 60)} min`}</span>
+    </label>`;
 }
 
 function freeControls(st: Status): string {
@@ -264,7 +278,7 @@ function renderSession(st: Status) {
   card.querySelector(".live")!.innerHTML = st.session ? liveSession(st.session) : liveIdle(st);
   // Rebuilt only when its shape changes, so typing in it survives polls.
   const s = st.session;
-  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}:${nearMiss(world, s)?.secs ?? 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}:${st.free?.spending}:${Math.floor((st.free?.balance_secs ?? 0) / 60)}`;
+  const key = s ? `${s.id}:${s.state}:${s.kind.type}:${s.stop_locked_secs > 0}:${nearMiss(world, s)?.secs ?? 0}:${world?.stake ?? 0}` : `idle:${st.profiles}:${st.upcoming.map((u) => u.routine + u.skipped)}:${st.skip_tokens_left}:${st.free?.spending}:${Math.floor((st.free?.balance_secs ?? 0) / 60)}:${world?.stake_max ?? 0}:${world?.stake_target_secs ?? 0}`;
   if (key !== controlsKey) {
     controlsKey = key;
     card.querySelector(".controls")!.innerHTML = controls(st);
@@ -290,7 +304,8 @@ async function act(fn: () => Promise<unknown>) {
 function start(kind: { type: "countdown"; secs: number } | { type: "stopwatch" }) {
   const profile =
     startProfile ?? (document.getElementById("profile") as HTMLSelectElement | null)?.value ?? null;
-  return act(() => call({ type: "start", kind, profile }));
+  const stake = Number((document.getElementById("stake") as HTMLInputElement | null)?.value || 0);
+  return act(() => call({ type: "start", kind, profile, ...(stake > 0 && kind.type === "countdown" ? { stake } : {}) }));
 }
 
 function redrawControls() {
@@ -343,13 +358,26 @@ function renderDesk(force = false) {
   if (!world) return;
   const s = status?.session ?? null;
   // Rebuilt when what it shows changes, so an open blueprint pick survives polls.
-  const key = JSON.stringify([world.needs, world.sites, world.coins, world.idle_secs, world.construction?.index, s?.state, s ? Math.floor(s.elapsed_secs / 30) : 0]);
+  const key = JSON.stringify([world.needs, world.sites, world.coins, world.idle_secs, world.construction?.index, world.goals, world.inventory, s?.state, s ? Math.floor(s.elapsed_secs / 30) : 0]);
   if (!force && key === deskKey) return;
   deskKey = key;
   $("#desk").innerHTML = deskHtml(world, s);
 }
 
 const shopDialog = $("#shop") as HTMLDialogElement;
+const townDialog = $("#town") as HTMLDialogElement;
+
+function renderTown() {
+  if (!world) return;
+  $("#town-coins").textContent = `You have ${world.coins ?? 0} coins.`;
+  $("#town-main").innerHTML = townHtml(world, status?.session != null);
+}
+
+function openTown() {
+  $("#town-error").textContent = "";
+  renderTown();
+  if (!townDialog.open) townDialog.showModal();
+}
 const deedDialog = $("#deed") as HTMLDialogElement;
 let deedIndex: number | null = null;
 
@@ -412,10 +440,26 @@ $("#desk").addEventListener("click", (ev) => {
       return decide({ type: "pause" }, "#action-error");
     case "shop":
       return openShop();
+    case "town":
+      return openTown();
+    case "buy-land":
+      return decide({ type: "buy_land", lot: btn.dataset.lot! }, "#action-error");
+    case "use-item":
+      return decide({ type: "use_item", item: btn.dataset.item!, lot: null }, "#action-error");
   }
 });
 
-for (const d of [shopDialog, deedDialog]) {
+townDialog.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+  if (btn?.dataset.action === "upgrade") void decide({ type: "upgrade_street", street: btn.dataset.street! }, "#town-error", renderTown);
+  if (btn?.dataset.action === "decorate") {
+    const spot = btn.dataset.spot!;
+    const pick = townDialog.querySelector<HTMLSelectElement>(`select[data-spot-pick="${CSS.escape(spot)}"]`);
+    if (pick?.value) void decide({ type: "decorate", spot, decoration: pick.value }, "#town-error", renderTown);
+  }
+});
+
+for (const d of [shopDialog, deedDialog, townDialog]) {
   d.addEventListener("click", (ev) => {
     if (ev.target === d || (ev.target as HTMLElement).closest("[data-action=close]")) d.close();
   });
@@ -425,6 +469,9 @@ shopDialog.addEventListener("click", (ev) => {
   if (btn) void decide({ type: "buy", blueprint: btn.dataset.blueprint! }, "#shop-error", renderShop);
 });
 deedDialog.addEventListener("click", (ev) => {
+  const btn = (ev.target as HTMLElement).closest<HTMLButtonElement>("button[data-action]");
+  if (btn?.dataset.action === "repair") void decide({ type: "repair", lot: btn.dataset.lot! }, "#deed-error", renderDeed);
+  if (btn?.dataset.action === "repair-kit") void decide({ type: "use_item", item: "repair_kit", lot: btn.dataset.lot! }, "#deed-error", renderDeed);
   if ((ev.target as HTMLElement).closest("[data-action=rename-open]")) {
     const form = deedDialog.querySelector<HTMLFormElement>("form.rename")!;
     form.hidden = false;

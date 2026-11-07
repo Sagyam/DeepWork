@@ -1,7 +1,8 @@
 import { describe as group, expect, test } from "bun:test";
 import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, PUBLIC, ROAD, STYLES, blockLoop, cells, onStreets, districtCell, isPark, lookOf, lot, plan, rng, shape, spiral } from "./plan";
 import { clock, describe, hm } from "../format";
-import type { Plot, World } from "../proto";
+import type { Layout, Plot, World } from "../proto";
+import FIXTURE from "../layout.json";
 
 function plot(index: number, grade = 2, damage = 0, rubble = false): Plot {
   return { index, district: Math.floor(index / 8), grade, damage, rubble, seed: 1e15 + index * 7919, session_id: index + 1, built_at: 0 };
@@ -248,4 +249,38 @@ test("every road strip counts as street, and the grass past it does not", () => 
   const { maxX, minZ } = p.bounds;
   expect(onStreets(p.blocks, maxX + 3, (minZ + p.bounds.maxZ) / 2, 1.5)).toBe(false);
   expect(onStreets(p.blocks, (p.bounds.minX + maxX) / 2, minZ - 3, 1.5)).toBe(false);
+});
+
+group("the master plan's layout", () => {
+  const base = FIXTURE as Layout;
+  const laid = (owned: number[]): Layout => ({
+    ...base,
+    lots: base.lots.map((l, i) => ({ ...l, owned: owned.includes(i) })),
+    blocks: base.blocks.map((b) => ({ ...b, open: b.park ? b.level === 0 : b.open })),
+  });
+
+  test("lots stand in their block's slot, facing their street", () => {
+    const L = laid([0, 1]);
+    const p = plan(world([plot(0, 0), plot(1, 0)], { layout: L }));
+    const b = L.blocks[L.lots[0].block];
+    const first = lot(0);
+    expect(first.z).toBe(b.y * PITCH_Z + LOT / 2);
+    expect(first.rot).toBe(0);
+    expect(first.x).toBe(b.x * PITCH_X - BLOCK_X / 2 + LOT / 2 + (L.lots[0].slot % 4) * LOT);
+    expect(p.buildings.map((s) => s.index)).toEqual([0, 1]);
+  });
+
+  test("only blocks with bought land show, and the open parks", () => {
+    const L = laid([0]);
+    const p = plan(world([plot(0, 0)], { layout: L }));
+    const green = L.blocks.findIndex((b) => b.park && b.level === 0);
+    expect(p.parks.map((k) => k.block)).toEqual([green]);
+    expect(p.blocks).toHaveLength(2);
+    // The rest of the first block is grass: the plan's next homes for
+    // sale, the slots it has no lot for yet not.
+    expect(p.emptyLots).toHaveLength(7);
+    expect(p.emptyLots.filter((l) => l.forSale)).toHaveLength(3);
+    const bought = plan(world([plot(0, 0)], { layout: laid([0, 1]) }));
+    expect(bought.emptyLots.filter((l) => l.forSale)).toHaveLength(2);
+  });
 });

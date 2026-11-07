@@ -2,7 +2,7 @@
 // the blueprint shop, a building's deed and its hover tag. Text only; main.ts
 // wires the clicks to the daemon, which decides everything.
 import { TIERS, ago, escapeHtml, hm } from "./format";
-import type { BlueprintInfo, NeedInfo, Plot, SessionInfo, SiteInfo, World } from "./proto";
+import { ROAD_CLASSES, type BlueprintInfo, type NeedInfo, type Plot, type SessionInfo, type SiteInfo, type World } from "./proto";
 
 const KIND_NAMES: Record<string, string> = {
   cottage: "Cottage", shop: "Shop", workshop: "Workshop", apartment: "Apartments", office: "Office", tower: "Tower",
@@ -43,8 +43,13 @@ function needRow(w: World, n: NeedInfo, active: SiteInfo | undefined): string {
   const building = active?.need === n.id;
   const count = n.lots > 1 ? `${n.lots_done} of ${n.lots} · ` : "";
   let act: string;
+  const plot = n.next_lot ? w.layout?.lots.find((l) => l.id === n.next_lot) : undefined;
   if (building) act = `<span class="tag on">Building</span>`;
-  else if (!n.designed || n.fits.length) {
+  else if (n.land_price != null && plot) {
+    // Land first: a site starts only on a bought plot.
+    const short = (w.coins ?? 0) < n.land_price;
+    act = `<span class="small muted">Plot at ${escapeHtml(plot.address)} · ${n.land_price} coins</span><button data-action="buy-land" data-lot="${escapeHtml(plot.id)}" ${short ? "disabled" : ""}>Buy plot</button>`;
+  } else if (!n.designed || n.fits.length) {
     const pick =
       n.designed && n.fits.length > 1 && !n.site
         ? `<select data-need-design="${escapeHtml(n.id)}" aria-label="Blueprint">${n.fits
@@ -88,9 +93,92 @@ export function deskHtml(w: World, session: SessionInfo | null): string {
   }
   parts.push(`<div class="needs">${w.needs.map((n) => needRow(w, n, active)).join("")}</div>`);
   if (w.auto) parts.push(`<div class="small muted">Until you choose, the plan builds itself in order.</div>`);
+  parts.push(goalsHtml(w, active));
   const next = w.next_needs?.length ? `<div class="small muted">Then the ${TIERS[Math.min(3, w.tier + 1)]}: ${w.next_needs.slice(0, 4).map(escapeHtml).join(", ")}${w.next_needs.length > 4 ? ", …" : ""}</div>` : "";
-  parts.push(`<div class="desk-foot">${next}<button data-action="shop">Blueprints</button></div>`);
+  parts.push(`<div class="desk-foot">${next}<span class="row"><button data-action="town">Town</button><button data-action="shop">Blueprints</button></span></div>`);
   return parts.join("");
+}
+
+/** Today's goals, each worth a box once a day, and the items won so far. */
+function goalsHtml(w: World, active: SiteInfo | undefined): string {
+  if (!w.goals?.length) return "";
+  const amount = (id: string, v: number) => (id === "sessions" ? String(v) : hm(v));
+  const goals = w.goals
+    .map((g) => {
+      const pct = Math.min(100, (g.progress / Math.max(1, g.target)) * 100);
+      return `<li class="goal${g.done ? " done" : ""}">
+          <div class="goal-head"><span>${g.done ? "✓ " : ""}${escapeHtml(g.title)}</span><span class="small muted num">${amount(g.id, Math.min(g.progress, g.target))} / ${amount(g.id, g.target)}</span></div>
+          <div class="bar thin"><div style="width:${pct.toFixed(1)}%"></div></div>
+        </li>`;
+    })
+    .join("");
+  const rare = w.boxes_to_rare ? `<span class="small muted">A rare item within ${plural(w.boxes_to_rare, "box", "boxes")}</span>` : "";
+  const items = (w.inventory ?? [])
+    .map((i) => {
+      const use =
+        i.id === "repair_kit"
+          ? `<span class="small muted">Use on a damaged building's deed</span>`
+          : active
+            ? `<button class="link" data-action="use-item" data-item="${escapeHtml(i.id)}">Use on ${escapeHtml(active.name)}</button>`
+            : `<span class="small muted">Use on a site</span>`;
+      return `<li class="item${i.rare ? " rare" : ""}"><span>${escapeHtml(i.name)}${i.count > 1 ? ` ×${i.count}` : ""}</span>${use}</li>`;
+    })
+    .join("");
+  return `<div class="goals">
+      <div class="desk-head"><p class="eyebrow">Today's goals</p>${rare}</div>
+      <ul class="goal-list">${goals}</ul>
+      ${items ? `<ul class="items">${items}</ul>` : ""}
+    </div>`;
+}
+
+const DECO_NAMES: Record<string, string> = { trees: "Trees", benches: "Benches", fountain: "Fountain", statue: "Statue", bandstand: "Bandstand" };
+const SPOT_NAMES = ["Centre", "North-west", "North-east", "South-west", "South-east"];
+
+/** The town sheet: streets to pave and widen, parks to dress. */
+export function townHtml(w: World, inSession: boolean): string {
+  const L = w.layout;
+  if (!L) return "";
+  const coins = w.coins ?? 0;
+  const closed = inSession ? "disabled" : "";
+  const shown = new Set(L.lots.filter((l) => l.owned).map((l) => l.block));
+  L.blocks.forEach((b, i) => b.park && b.open && shown.add(i));
+  const borders = (st: (typeof L.streets)[number]) =>
+    [...shown].some((i) => {
+      const b = L.blocks[i];
+      return st.axis === "ew" ? (b.y === st.line || b.y + 1 === st.line) && b.x >= st.from && b.x <= st.to : (b.x === st.line || b.x + 1 === st.line) && b.y >= st.from && b.y <= st.to;
+    });
+  const streets = L.streets
+    .filter(borders)
+    .map((st) => {
+      const next = ROAD_CLASSES[st.class + 1];
+      const price = st.upgrade_price;
+      const act = !next
+        ? `<span class="tag pass">Avenue</span>`
+        : price == null
+          ? `<span class="small muted">A ${next} later</span>`
+          : `<button data-action="upgrade" data-street="${escapeHtml(st.id)}" ${coins < price ? "disabled" : ""} ${closed}>Make it a ${next} · ${price}</button>`;
+      return `<li><div><strong>${escapeHtml(st.name)}</strong><div class="small muted">A ${ROAD_CLASSES[st.class]}</div></div>${act}</li>`;
+    })
+    .join("");
+  const decos = (w.decorations ?? []).filter((d) => d.unlocked);
+  const parks = L.blocks
+    .filter((b) => b.park && b.open && b.spots.length)
+    .map((b) => {
+      const spots = b.spots
+        .map((sp, i) => {
+          const options = decos.map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} · ${d.price}</option>`).join("");
+          return `<li><div><strong>${SPOT_NAMES[i] ?? `Spot ${i + 1}`}</strong><div class="small muted">${sp.decoration ? escapeHtml(DECO_NAMES[sp.decoration] ?? sp.decoration) : "Empty"}</div></div>
+              <span class="row"><select data-spot-pick="${escapeHtml(sp.id)}" aria-label="Decoration">${options}</select><button data-action="decorate" data-spot="${escapeHtml(sp.id)}" ${closed}>Place</button></span></li>`;
+        })
+        .join("");
+      return `<h3>${escapeHtml(b.name ?? "Park")}</h3><ul class="town-list">${spots}</ul>`;
+    })
+    .join("");
+  const wealth = w.wealth ? `<p class="small muted">Prices are list price plus a tenth of the ${w.wealth} coins you held this morning.</p>` : "";
+  return `${inSession ? `<p class="small muted">The town hall opens when the session ends.</p>` : ""}${wealth}
+    <h3>Streets</h3><p class="small muted">Lanes are gravel. A street gets tarmac and lamps, a boulevard trees, an avenue edge lines.</p>
+    <ul class="town-list">${streets || `<li class="small muted">No streets yet.</li>`}</ul>
+    ${parks ? `<h3 class="sep">Parks</h3>${parks}` : ""}`;
 }
 
 /** A blueprint's picture (its realistic model, drawn by the city), or null to use the outline. */
@@ -156,6 +244,7 @@ const CAUSES: Record<string, string> = {
   escalation_denied: "after a refused root attempt",
   clock_jump: "after a wall clock jump",
   tunnel: "after a proxy around the throttle",
+  mayor: "by the mayor",
 };
 
 /** The deed: everything a building remembers of how it was built. */
@@ -190,6 +279,11 @@ export function deedHtml(w: World, p: Plot, now: number): string {
     }
   }
   const state = p.damage >= 3 ? `<span class="tag loss">In ruins</span>` : p.damage ? `<span class="tag loss">Damaged</span>` : "";
+  const kit = w.inventory?.find((i) => i.id === "repair_kit");
+  const repair = p.repair_price != null
+    ? `<div class="row repair">${kit ? `<button data-action="repair-kit" data-lot="${escapeHtml(p.lot ?? "")}">Use a repair kit</button>` : ""}<button data-action="repair" data-lot="${escapeHtml(p.lot ?? "")}" ${(w.coins ?? 0) < p.repair_price ? "disabled" : ""}>Repair now · ${p.repair_price} coins</button></div>`
+    : "";
+  if (m?.helped_secs) rows.push(`<div class="small muted">${hm(m.helped_secs)} of it was hired help.</div>`);
   return `<p class="eyebrow">${escapeHtml(p.address ?? `Plot ${p.index + 1}`)}</p>
     <div class="deed-name">
       <h2 id="deed-title">${escapeHtml(p.name ?? `Plot ${p.index + 1}`)}</h2>${state}
@@ -200,6 +294,7 @@ export function deedHtml(w: World, p: Plot, now: number): string {
       <button class="primary" type="submit">Save</button>
     </form>
     <div class="small muted">${what}</div>
+    ${repair}
     ${rows.join("")}
     <div class="small muted">Finished ${ago(now - p.built_at)} ago.</div>`;
 }
