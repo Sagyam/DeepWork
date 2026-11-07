@@ -280,6 +280,7 @@ export function mockDaemon(req: Request): Response {
     case "repair":
     case "upgrade_street":
     case "decorate":
+    case "rename_street":
     case "use_item": {
       if (s && req.type !== "rename") return { type: "error", message: "the mayor's desk opens when the session ends" };
       const now = Math.floor(Date.now() / 1000);
@@ -293,6 +294,7 @@ export function mockDaemon(req: Request): Response {
         : req.type === "upgrade_street" ? c.upgrade(req.street)
         : req.type === "decorate" ? c.decorate(req.spot, req.decoration)
         : req.type === "use_item" ? c.useItem(req.item, req.lot)
+        : req.type === "rename_street" ? c.renameStreet(req.street, req.name)
         : c.rename(req.lot, req.name);
       if (err) return { type: "error", message: err };
       return { type: "world", ...c.world(now, null) };

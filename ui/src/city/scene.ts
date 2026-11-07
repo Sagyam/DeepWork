@@ -728,7 +728,7 @@ export class City {
   // ---- static ground ------------------------------------------------------
 
   private buildBase(p: CityPlan) {
-    const key = `${p.blocks.map((b) => `${b.x},${b.z},${b.roads.join("")}`).join(";")}:${p.tier}:${p.emptyLots.map((l) => `${l.seed}${l.forSale ? "s" : ""}`).join(",")}:${p.parks.map((k) => (k.decorations ?? []).join("+")).join(";")}`;
+    const key = `${p.blocks.map((b) => `${b.x},${b.z},${b.roads.join("")}`).join(";")}:${p.tier}:${p.emptyLots.map((l) => `${l.seed}${l.forSale ? "s" : ""}`).join(",")}:${p.parks.map((k) => (k.decorations ?? []).join("+")).join(";")}:${p.labels.map((l) => l.name).join(";")}`;
     if (key === this.baseKey) return;
     this.baseKey = key;
     this.scene.remove(this.base);
@@ -858,6 +858,12 @@ export class City {
       this.streetFurniture(tiny, b, p.tier);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
+    // Street names in the lane, read from the south and the east.
+    for (const l of p.labels) {
+      const g = new THREE.PlaneGeometry(15, 2.1).rotateX(-Math.PI / 2);
+      if (!l.alongX) g.rotateY(Math.PI / 2);
+      parts.add(streetName(l.name), g, l.x, 0.075, l.z);
+    }
     // Empty lots: rough grass with survey stakes, waiting to be built on.
     const stake = mat(0xc9a36a);
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
@@ -1527,6 +1533,29 @@ function describeLive(ev: WorldEvent, w: World): string {
 }
 
 let poolMat: THREE.MeshStandardMaterial | null = null;
+
+const nameMats = new Map<string, THREE.MeshStandardMaterial>();
+
+/** A street's name in road paint: spaced white capitals on clear. */
+function streetName(name: string): THREE.MeshStandardMaterial {
+  let m = nameMats.get(name);
+  if (m) return m;
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 144;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "rgba(240,236,224,0.88)";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 92px 'Helvetica Neue', Arial, sans-serif";
+  g.fillText(name.toUpperCase().split("").join(String.fromCharCode(8202)), 512, 76, 1000);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  m = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  nameMats.set(name, m);
+  return m;
+}
 
 let saleMat: THREE.MeshStandardMaterial | null = null;
 

@@ -141,6 +141,7 @@ export class MockCity {
   land = new Set([0]);
   freeLand = false;
   roads: number[] = LAYOUT.streets.map(() => 0);
+  streetNames = new Map<number, string>();
   spots = new Map<string, string>();
   inventory = new Map<string, number>();
   today = { day: -1, focus: 0, sessions: 0, longest: 0, paid: new Set<string>() };
@@ -344,6 +345,20 @@ export class MockCity {
     return null;
   }
 
+  private streetComplete(si: number): boolean {
+    const on = LAYOUT.lots.flatMap((l, i) => (l.street === si ? [i] : []));
+    return on.length > 0 && on.every((i) => this.built.has(i));
+  }
+
+  renameStreet(street: string, name: string): string | null {
+    const si = LAYOUT.streets.findIndex((s) => s.id === street);
+    if (si < 0) return `no street ${street}`;
+    if (!this.streetComplete(si)) return "a street can be renamed once every lot on it is built";
+    if (name.trim()) this.streetNames.set(si, name.trim());
+    else this.streetNames.delete(si);
+    return null;
+  }
+
   decorate(spot: string, id: string): string | null {
     const d = DECORATIONS.find((d) => d.id === id);
     if (!d) return `no decoration ${id}`;
@@ -542,7 +557,7 @@ export class MockCity {
     }));
     const streets = LAYOUT.streets.map((s, si) => {
       const next = ROADS[this.roads[si] + 1];
-      return { ...s, class: this.roads[si], upgrade_price: next && next[1] <= level ? next[0] : null };
+      return { ...s, name: this.streetNames.get(si) ?? s.name, class: this.roads[si], upgrade_price: next && next[1] <= level ? next[0] : null, complete: this.streetComplete(si) };
     });
     return { blocks, streets, lots };
   }

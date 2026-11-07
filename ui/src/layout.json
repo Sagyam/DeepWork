@@ -274,7 +274,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "mill",
@@ -284,7 +285,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "main",
@@ -294,7 +296,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "church",
@@ -304,7 +307,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "commerce",
@@ -314,7 +318,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "skyline",
@@ -324,7 +329,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "west",
@@ -334,7 +340,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "baker",
@@ -344,7 +351,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "market",
@@ -354,7 +362,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "station",
@@ -364,7 +373,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "foundry",
@@ -374,7 +384,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     },
     {
       "id": "river",
@@ -384,7 +395,8 @@
       "from": -2,
       "to": 2,
       "class": 0,
-      "upgrade_price": 150
+      "upgrade_price": 150,
+      "complete": false
     }
   ],
   "lots": [

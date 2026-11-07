@@ -28,6 +28,7 @@ export type Request =
   | { type: "repair"; lot: string }
   | { type: "upgrade_street"; street: string }
   | { type: "decorate"; spot: string; decoration: string }
+  | { type: "rename_street"; street: string; name: string }
   | { type: "use_item"; item: string; lot: string | null };
 
 export type SessionState = "active" | "surrendering" | "completed" | "surrendered";
@@ -382,6 +383,8 @@ export interface StreetInfo {
   /** 0 lane, 1 street, 2 boulevard, 3 avenue. */
   class: number;
   upgrade_price: number | null;
+  /** Every lot on it is built: the mayor may rename it. */
+  complete?: boolean;
 }
 
 export interface LotInfo {

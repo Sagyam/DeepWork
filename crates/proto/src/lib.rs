@@ -126,6 +126,12 @@ pub enum Request {
         spot: String,
         decoration: String,
     },
+    /// Rename a street whose every planned lot is built. An empty name
+    /// restores the plan's.
+    RenameStreet {
+        street: String,
+        name: String,
+    },
     /// Use an item won in a box: a repair kit on `lot`, help on the active
     /// site. Refused during a session.
     UseItem {
@@ -405,6 +411,9 @@ pub struct StreetInfo {
     pub class: u32,
     /// What the next class costs, when it can be bought now.
     pub upgrade_price: Option<u64>,
+    /// Every lot on it is built: the mayor may rename it.
+    #[serde(default)]
+    pub complete: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

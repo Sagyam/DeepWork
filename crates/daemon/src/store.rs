@@ -61,6 +61,7 @@ pub enum EventKind {
     LandBought,
     RepairBought,
     StreetUpgraded,
+    StreetRenamed,
     Decorated,
     /// Coins bet on the event's session; `detail` is a decision with `coins`.
     StakePlaced,
@@ -121,6 +122,7 @@ impl EventKind {
             EventKind::LandBought => "land_bought",
             EventKind::RepairBought => "repair_bought",
             EventKind::StreetUpgraded => "street_upgraded",
+            EventKind::StreetRenamed => "street_renamed",
             EventKind::Decorated => "decorated",
             EventKind::StakePlaced => "stake_placed",
             EventKind::ItemUsed => "item_used",
@@ -356,7 +358,7 @@ impl Store {
     pub fn penalty_events(&self) -> Result<Vec<BackupEvent>> {
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'decorated', 'stake_placed', 'item_used')
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'street_renamed', 'decorated', 'stake_placed', 'item_used')
              ORDER BY ts, id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -547,7 +549,7 @@ impl Store {
         }
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail, id FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'decorated', 'stake_placed', 'item_used')",
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'street_renamed', 'decorated', 'stake_placed', 'item_used')",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -634,6 +636,13 @@ fn world_fact(kind: &str, detail: &str) -> Option<FactKind> {
         "street_upgraded" => FactKind::StreetUpgraded {
             street: d().street?,
         },
+        "street_renamed" => {
+            let d = d();
+            FactKind::StreetRenamed {
+                street: d.street?,
+                name: d.name.unwrap_or_default(),
+            }
+        }
         "decorated" => {
             let d = d();
             FactKind::Decorated {
@@ -666,6 +675,7 @@ fn penalty_kind(kind: &str) -> Option<EventKind> {
         "land_bought" => Some(EventKind::LandBought),
         "repair_bought" => Some(EventKind::RepairBought),
         "street_upgraded" => Some(EventKind::StreetUpgraded),
+        "street_renamed" => Some(EventKind::StreetRenamed),
         "decorated" => Some(EventKind::Decorated),
         "stake_placed" => Some(EventKind::StakePlaced),
         "item_used" => Some(EventKind::ItemUsed),

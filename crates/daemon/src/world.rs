@@ -104,6 +104,10 @@ pub enum FactKind {
     StreetUpgraded {
         street: String,
     },
+    StreetRenamed {
+        street: String,
+        name: String,
+    },
     Decorated {
         spot: String,
         decoration: String,
@@ -226,6 +230,8 @@ pub struct City {
     land: Vec<bool>,
     /// Road class by street (`STREETS`).
     roads: Vec<u32>,
+    /// The mayor's names for finished streets.
+    street_names: BTreeMap<usize, String>,
     /// Decorations by park spot.
     spots: BTreeMap<String, &'static str>,
     /// The balance at the start of `wealth_day`, which prices rise with.
@@ -288,6 +294,7 @@ impl Default for City {
                 land
             },
             roads: vec![0; STREETS.len()],
+            street_names: BTreeMap::new(),
             spots: BTreeMap::new(),
             wealth: 0,
             wealth_day: None,
@@ -424,6 +431,14 @@ impl City {
                     self.roads[si] += 1;
                 }
             }
+            (FactKind::StreetRenamed { street, name }, _) => {
+                if let Ok((si, name)) = self.check_street_name(street, name) {
+                    match name {
+                        Some(n) => self.street_names.insert(si, n),
+                        None => self.street_names.remove(&si),
+                    };
+                }
+            }
             (FactKind::Decorated { spot, decoration }, _) => {
                 if let Ok((d, price)) = self.check_decorate(spot, decoration) {
                     self.coins_spent += price;
@@ -460,7 +475,7 @@ impl City {
             ));
         }
         let price = self.land_cost(i);
-        self.afford(&format!("the plot at {}", lot.address), price)?;
+        self.afford(&format!("the plot at {}", self.address(i)), price)?;
         Ok((i, price))
     }
 
@@ -571,6 +586,53 @@ impl City {
             price,
         )?;
         Ok((si, price))
+    }
+
+    /// Every planned lot on the street is built.
+    fn street_complete(&self, si: usize) -> bool {
+        let mut on = plan::lots()
+            .iter()
+            .filter(|l| l.place.street == si)
+            .peekable();
+        on.peek().is_some() && on.all(|l| self.finished(l.index as usize))
+    }
+
+    pub fn street_name(&self, si: usize) -> &str {
+        self.street_names
+            .get(&si)
+            .map_or(STREETS[si].name, String::as_str)
+    }
+
+    fn address(&self, i: usize) -> String {
+        let p = plan::lots()[i].place;
+        format!("{} {}", p.number, self.street_name(p.street))
+    }
+
+    /// The street and its new name (`None`: the plan's). Finishing a street
+    /// earns the right to name it.
+    pub fn check_street_name(
+        &self,
+        id: &str,
+        name: &str,
+    ) -> Result<(usize, Option<String>), String> {
+        let si = STREETS
+            .iter()
+            .position(|s| s.id == id)
+            .ok_or_else(|| format!("no street {id:?}"))?;
+        if !self.street_complete(si) {
+            return Err(format!(
+                "{} can be renamed once every lot on it is built",
+                self.street_name(si)
+            ));
+        }
+        let name = name.trim();
+        if name.chars().count() > NAME_MAX {
+            return Err(format!("a name can be at most {NAME_MAX} characters"));
+        }
+        if name.chars().any(char::is_control) {
+            return Err("a name cannot hold control characters".into());
+        }
+        Ok((si, (!name.is_empty()).then(|| name.to_string())))
     }
 
     /// A spot is `<block>:<n>`: the park block's index and the spot on it.
@@ -1303,7 +1365,7 @@ impl City {
             kind: need.kind.name().into(),
             design: lot.design.map(str::to_string),
             name: self.name(i),
-            address: plan_lot.address.clone(),
+            address: self.address(i),
             need: need.id.into(),
             shiny: lot.shiny,
             memory: lot.memory.clone(),
@@ -1531,7 +1593,8 @@ impl City {
             .enumerate()
             .map(|(si, s)| StreetInfo {
                 id: s.id.into(),
-                name: s.name.into(),
+                name: self.street_name(si).into(),
+                complete: self.street_complete(si),
                 axis: match s.axis {
                     Axis::EastWest => "ew".into(),
                     Axis::NorthSouth => "ns".into(),
@@ -1558,7 +1621,7 @@ impl City {
                     block: l.place.block as u32,
                     slot: l.place.slot,
                     street: l.place.street as u32,
-                    address: l.address.clone(),
+                    address: self.address(i),
                     owned: self.land[i],
                     price: self.land_cost(i),
                     for_sale: need_of(i).level <= self.level,
@@ -2359,6 +2422,33 @@ mod tests {
             file == json,
             "ui/src/layout.json is stale: run UPDATE_FIXTURES=1 cargo test"
         );
+    }
+
+    #[test]
+    fn a_finished_street_can_be_renamed() {
+        let mut facts = daily(5, 180);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
+        assert!(
+            c.check_street_name("main", "High Street")
+                .unwrap_err()
+                .contains("every lot")
+        );
+        // The Town's last lots finish Main Street.
+        facts = daily(20, 180);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
+        assert_eq!(c.level, 2);
+        c.check_street_name("main", "High Street").unwrap();
+        facts.push(mayor(
+            21 * DAY,
+            FactKind::StreetRenamed {
+                street: "main".into(),
+                name: "High Street".into(),
+            },
+        ));
+        let w = world(&facts, 21 * DAY + 10);
+        assert_eq!(w.plots[0].address, "9 High Street");
+        let main = w.layout.streets.iter().find(|s| s.id == "main").unwrap();
+        assert!(main.complete && main.name == "High Street");
     }
 
     #[test]

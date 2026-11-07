@@ -388,6 +388,17 @@ impl Core {
                     },
                 )
             }
+            Request::RenameStreet { street, name } => {
+                let (_, name) = self.city()?.check_street_name(&street, &name)?;
+                self.decide(
+                    EventKind::StreetRenamed,
+                    Decision {
+                        street: Some(street),
+                        name: Some(name.unwrap_or_default()),
+                        ..Decision::default()
+                    },
+                )
+            }
             Request::Decorate { spot, decoration } => {
                 self.mayor_closed()?;
                 self.city()?.check_decorate(&spot, &decoration)?;

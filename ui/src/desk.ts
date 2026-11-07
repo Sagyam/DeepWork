@@ -157,7 +157,10 @@ export function townHtml(w: World, inSession: boolean): string {
         : price == null
           ? `<span class="small muted">A ${next} later</span>`
           : `<button data-action="upgrade" data-street="${escapeHtml(st.id)}" ${coins < price ? "disabled" : ""} ${closed}>Make it a ${next} · ${price}</button>`;
-      return `<li><div><strong>${escapeHtml(st.name)}</strong><div class="small muted">A ${ROAD_CLASSES[st.class]}</div></div>${act}</li>`;
+      const rename = st.complete
+        ? `<form class="street-name" data-street="${escapeHtml(st.id)}"><input name="name" maxlength="40" value="${escapeHtml(st.name)}" aria-label="Street name" ${closed} /><button type="submit" ${closed}>Name it</button></form>`
+        : "";
+      return `<li><div><strong>${escapeHtml(st.name)}</strong><div class="small muted">A ${ROAD_CLASSES[st.class]}${st.complete ? " · every lot built: yours to name" : ""}</div>${rename}</div>${act}</li>`;
     })
     .join("");
   const decos = (w.decorations ?? []).filter((d) => d.unlocked);

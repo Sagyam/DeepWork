@@ -404,6 +404,8 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .item.rare > span:first-child::after { content: " ✦"; color: var(--brand); }
 .town-list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; background: var(--background); border: 1px solid var(--border); }
 .town-list select { max-width: 200px; }
+.street-name { display: flex; gap: 6px; margin-top: 6px; }
+.street-name input { width: 180px; }
 #town-main h3 { font-size: 14px; margin: 14px 0 6px; }
 .repair { margin: 8px 0; justify-content: flex-end; }
 .stake-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 12.5px; }

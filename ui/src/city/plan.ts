@@ -169,6 +169,8 @@ export interface CityPlan {
   /** Empty lots in used blocks: grass, maybe a tree. */
   /** `forSale`: its land is not bought yet. */
   emptyLots: { x: number; z: number; rot?: number; seed: number; forSale?: boolean }[];
+  /** Street names painted on the road, mid-way along each street's built stretch. */
+  labels: { name: string; x: number; z: number; alongX: boolean }[];
   /** Trees outside the city, more with the tier. */
   trees: { x: number; z: number; s: number; seed: number }[];
   bounds: { minX: number; maxX: number; minZ: number; maxZ: number };
@@ -387,6 +389,7 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
   let districts: number;
   const parks: ParkSpec[] = [];
   const emptyLots: CityPlan["emptyLots"] = [];
+  const labels: CityPlan["labels"] = [];
   if (layout) {
     const L = layout;
     // A block shows once land in it is bought (or something stands on it).
@@ -406,6 +409,17 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
     L.lots.forEach((l, i) => {
       if (shown.has(l.block) && !taken.has(i)) emptyLots.push({ ...lot(i), seed: i * 2654435761, ...(l.owned ? {} : { forSale: true }) });
     });
+    // Each street's name, on the middle block along it of those shown.
+    const cellsShown = blocks.map((b) => [Math.round(b.x / PITCH_X), Math.round(b.z / PITCH_Z)]);
+    for (const st of L.streets) {
+      const along = cellsShown
+        .filter(([bx, by]) => (st.axis === "ew" ? (by === st.line || by + 1 === st.line) && bx >= st.from && bx <= st.to : (bx === st.line || bx + 1 === st.line) && by >= st.from && by <= st.to))
+        .map(([bx, by]) => (st.axis === "ew" ? bx : by));
+      if (!along.length) continue;
+      const sorted = [...new Set(along)].sort((a, b) => a - b);
+      const mid = sorted[Math.floor((sorted.length - 1) / 2)];
+      labels.push(st.axis === "ew" ? { name: st.name, x: mid * PITCH_X, z: (st.line - 0.5) * PITCH_Z + 2, alongX: true } : { name: st.name, x: (st.line - 0.5) * PITCH_X + 2, z: mid * PITCH_Z, alongX: false });
+    }
     // Slots the plan has no lot for yet are grass, not for sale.
     for (const bi of shown) {
       const b = L.blocks[bi];
@@ -442,7 +456,7 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
     if (!inside) trees.push({ x, z, s: between(r, 0.7, 1.4), seed: Math.floor(r() * 2 ** 31) });
   }
 
-  return { blocks, parks, buildings, site, paused, emptyLots, trees, bounds, tier: w.tier };
+  return { blocks, parks, buildings, site, paused, emptyLots, labels, trees, bounds, tier: w.tier };
 }
 
 /**

@@ -459,6 +459,13 @@ townDialog.addEventListener("click", (ev) => {
   }
 });
 
+townDialog.addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  const form = ev.target as HTMLFormElement;
+  const name = (form.elements.namedItem("name") as HTMLInputElement).value;
+  void decide({ type: "rename_street", street: form.dataset.street!, name }, "#town-error", renderTown);
+});
+
 for (const d of [shopDialog, deedDialog, townDialog]) {
   d.addEventListener("click", (ev) => {
     if (ev.target === d || (ev.target as HTMLElement).closest("[data-action=close]")) d.close();
