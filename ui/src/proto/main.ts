@@ -16,10 +16,9 @@ import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { loadKit } from "../city/kit";
 import { building, fitReal, furniture, KERB, Parts, rubble } from "../city/models";
 import { LOT, PAVEMENT, type Spec } from "../city/plan";
-import { DEFS, hasReal, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
+import { DEFS, interiorUniforms, loadReal, PROPS, realAo, realMat, realPiece, realPieces, setRealEnv, setSignals } from "../city/real";
 
 const q = new URLSearchParams(location.search);
 const hour = Number(q.get("hour") ?? 15);
@@ -162,40 +161,21 @@ function street(cz: number) {
       g.add(m);
     }
   }
-  const pole = new THREE.MeshStandardMaterial({ color: 0x232527, roughness: 0.5, metalness: 0.5 });
-  const bulb = new THREE.MeshStandardMaterial({ color: 0xfff2d8, emissive: 0xffd9a0, emissiveIntensity: night ? 6 : 0.2 });
-  if (hasReal("street")) {
-    // The realistic street furniture: lamps reaching over the road, signals
-    // at the near corner, a hydrant and a bin.
-    const parts = new Parts();
-    const e = pw / 2 - 0.55;
-    furniture(parts, "lamp_led", -pw / 2 + 0.6, KERB, cz + e, 0);
-    furniture(parts, "lamp_led", pw / 2 - 0.6, KERB, cz - e, Math.PI);
-    furniture(parts, "signal_mast", e, KERB, cz + e, Math.PI / 2, undefined, "a");
-    furniture(parts, "signal_post", -e, KERB, cz - e, Math.PI, undefined, "b");
-    furniture(parts, "hydrant", 3, KERB, cz + pw / 2 - 0.4);
-    furniture(parts, "bin", pw / 2 - 0.4, KERB, cz + 4);
-    parts.into(g);
-    g.traverse((o) => {
-      const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
-      if (m?.userData?.night) m.emissiveIntensity = night ? m.userData.night : 0;
-    });
-    return g;
-  }
-  for (const [x, z] of [[pw / 2 - 0.6, cz + pw / 2 - 0.6], [-pw / 2 + 0.6, cz + pw / 2 - 0.6], [pw / 2 - 0.6, cz - pw / 2 + 0.6]]) {
-    const s = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.11, 5.5, 12), pole);
-    s.position.set(x, 2.75 + KERB, z);
-    s.castShadow = true;
-    g.add(s);
-    const head = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.32, 0.45, 12), bulb);
-    head.position.set(x, 5.6 + KERB, z);
-    g.add(head);
-    if (night) {
-      const l = new THREE.PointLight(0xffc98a, 18, 16, 1.6);
-      l.position.set(x, 5.2 + KERB, z);
-      g.add(l);
-    }
-  }
+  // The realistic street furniture: lamps reaching over the road, signals
+  // at the near corner, a hydrant and a bin.
+  const parts = new Parts();
+  const e = pw / 2 - 0.55;
+  furniture(parts, "lamp_led", -pw / 2 + 0.6, KERB, cz + e, 0);
+  furniture(parts, "lamp_led", pw / 2 - 0.6, KERB, cz - e, Math.PI);
+  furniture(parts, "signal_mast", e, KERB, cz + e, Math.PI / 2, undefined, "a");
+  furniture(parts, "signal_post", -e, KERB, cz - e, Math.PI, undefined, "b");
+  furniture(parts, "hydrant", 3, KERB, cz + pw / 2 - 0.4);
+  furniture(parts, "bin", pw / 2 - 0.4, KERB, cz + 4);
+  parts.into(g);
+  g.traverse((o) => {
+    const m = (o as THREE.Mesh).material as THREE.MeshStandardMaterial | undefined;
+    if (m?.userData?.night) m.emissiveIntensity = night ? m.userData.night : 0;
+  });
   return g;
 }
 
@@ -253,7 +233,7 @@ function lineup() {
   scene.add(g);
 }
 
-Promise.all([loadKit(), loadReal([id, ...PROPS], renderer)]).then(() => {
+loadReal([id, ...PROPS], renderer, true).then(() => {
   if (props) {
     lineup();
     frames = 0;

@@ -1,6 +1,5 @@
 # Vehicles for the realistic city: the cars that park on drives and in
-# bays and drive round the blocks (ui/src/city/traffic.ts), replacing the
-# low-poly kit's four cars and bus.
+# bays and drive round the blocks (ui/src/city/traffic.ts).
 #
 # Built the way car models are: a coarse cage of cross-sections along the
 # car (underbody, rocker, side, shoulder, belt, roof rail, roof), smoothed

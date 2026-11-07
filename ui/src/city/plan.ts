@@ -21,20 +21,21 @@ export type Kind = "cottage" | "shop" | "apartment" | "office" | "landmark";
 export const KINDS: Kind[] = ["cottage", "shop", "apartment", "office", "landmark"];
 
 /**
- * Building types per kind, from the seed. "classic" is the original kit
- * (several variants each); the rest are the skyline styles.
+ * Building types per kind, from the seed, for a lot with no blueprint (the
+ * plan gives every designed lot one). Each is drawn by a model in DEFS
+ * (real.ts); plan.test.ts checks that.
  */
 export const STYLES: Record<Kind, [string, number][]> = {
   cottage: [["classic", 0.55], ["modern", 0.25], ["aframe", 0.2]],
   shop: [["classic", 0.5], ["diner", 0.25], ["factory", 0.25]],
   apartment: [["classic", 0.6], ["townhouse", 0.4]],
-  office: [["classic", 0.6], ["round", 0.4]],
-  landmark: [["deco", 0.25], ["glass", 0.25], ["twist", 0.25], ["tvtower", 0.25]],
+  office: [["classic", 1]],
+  landmark: [["deco", 1]],
 };
 
 /**
- * What a blueprint is drawn as: the kit style its realistic model replaces
- * (DEFS in real.ts), and the model itself. Kept here so the plan stays pure.
+ * What a blueprint is drawn as: its model's kind and style (DEFS in
+ * real.ts), and the model itself. Kept here so the plan stays pure.
  */
 export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
   c1: { kind: "cottage", style: "classic" },
@@ -53,9 +54,8 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
 };
 
 /**
- * Buildings the town provides have no models yet: stand-ins until they do
- * (docs/GAME.md). `water`, `square` and `park` are
- * drawn by models.ts itself.
+ * How the town's buildings (docs/GAME.md) are drawn: by their model, or,
+ * for `water`, `square` and `park`, laid out by models.ts itself.
  */
 export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string }> = {
   water: { kind: "shop", style: "water" },

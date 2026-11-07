@@ -19,15 +19,13 @@ import { shadowTaps, type ShadowTaps } from "./shadow";
 import { onQuality, QUALITY, qualityPref, type QualitySpec } from "./quality";
 import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
-import { loadKit } from "./kit";
 import { thumbnail } from "./thumbs";
-import { groundMat, hasReal, interiorUniforms, LEAF_OPT, leafDepth, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
+import { groundMat, interiorUniforms, LEAF_OPT, leafDepth, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
-import { piece } from "./kit";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
-import { building, fitReal, furniture, KERB, kitLook, mat, park, Parts, rubble, site, SPECIES, tree, type ModelInfo } from "./models";
+import { building, fitReal, furniture, KERB, mat, park, Parts, rubble, site, SPECIES, tree, type ModelInfo } from "./models";
 import { BLOCK_X, BLOCK_Z, LOT, lot, PAVEMENT, PITCH_X, PITCH_Z, ROAD, plan, rng, type CityPlan, type SiteSpec, type Spec } from "./plan";
 
 const SEEN_KEY = "deepwork.seen";
@@ -373,8 +371,9 @@ export class City {
     // The renderer first: it picks the format compressed textures transcode to (real.ts).
     const city = new City(el, story);
     const models = (city.models = await modelsStatus());
-    if (models.state === "ready") useModels(models.base, models.png ?? false);
-    await Promise.all([loadKit(), models.state === "ready" ? loadReal(undefined, city.renderer) : null]);
+    if (models.state !== "ready") throw new Error("the city's models are not downloaded yet");
+    useModels(models.base, models.png ?? false);
+    await loadReal(undefined, city.renderer);
     return city;
   }
 
@@ -746,12 +745,12 @@ export class City {
     };
     // trees: past IMPOSTOR_NEAR a tile's trees are drawn as impostors
     // (impostor.ts); the real ones still draw the shadow map, and come back up close.
-    const impostors = hasReal("trees") ? this.impostors : null;
-    type Tile = { real: Parts; imp: Parts | null; centre: THREE.Vector3 };
+    const impostors = this.impostors;
+    type Tile = { real: Parts; imp: Parts; centre: THREE.Vector3 };
     const tiles = new Map<string, Tile>();
     const tile = (key: string, x: number, z: number) => {
       let t = tiles.get(key);
-      if (!t) tiles.set(key, (t = { real: new Parts(), imp: impostors && new Parts(), centre: new THREE.Vector3(x, 0, z) }));
+      if (!t) tiles.set(key, (t = { real: new Parts(), imp: new Parts(), centre: new THREE.Vector3(x, 0, z) }));
       return t;
     };
     const gridTile = (x: number, z: number) => {
@@ -762,17 +761,15 @@ export class City {
     /** A tree as tree() places it, plus its impostor. */
     const treeAt = (t: Tile, x: number, z: number, s: number, seed: number, y: number) => {
       tree(t.real, x, z, s, seed, y);
-      if (t.imp) impostors!.tree(t.imp, x, z, s, seed, y, SPECIES);
+      impostors.tree(t.imp, x, z, s, seed, y, SPECIES);
     };
     // Parks, empty lots and the bridge: always drawn.
     const parts = chunk("all", 0, 0);
-    // With the realistic street furniture come textured streets: asphalt,
-    // paving slabs, granite kerbs, drains and manhole covers.
-    const real = hasReal("street");
-    const asphalt = real ? groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 }) : mat(0x3a3c40, { roughness: 0.95 });
-    const walk = real ? groundMat("pave", 3.6, { roughness: 0.88 }) : mat(0xa8a49c, { roughness: 0.9 });
+    // Textured streets: asphalt, paving slabs, granite kerbs, drains and manhole covers.
+    const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
+    const walk = groundMat("pave", 3.6, { roughness: 0.88 });
     const kerbStone = mat(0xb6b2aa, { roughness: 0.8 });
-    const pool = real ? lightPool() : null;
+    const pool = lightPool();
     const iron = mat(0x2a2b2d, { roughness: 0.55, metalness: 0.5 });
     const line = mat(0xe8e0c0, { roughness: 0.6 });
     const pole = mat(0x3c4046, { metalness: 0.6, roughness: 0.4 });
@@ -789,17 +786,15 @@ export class City {
       // Pavement: a raised ring round the block, kerb on the road side.
       for (const sz of [-1, 1]) surf.box(walk, BLOCK_X + 2 * pw, KERB, pw, b.x, 0, b.z + sz * (BLOCK_Z / 2 + pw / 2));
       for (const sx of [-1, 1]) surf.box(walk, pw, KERB, BLOCK_Z, b.x + sx * (BLOCK_X / 2 + pw / 2), 0, b.z);
-      if (real) {
-        // Granite kerbs on the road side, a drain grate by each kerb, and
-        // manhole covers in the carriageway.
-        const kx = BLOCK_X / 2 + pw - 0.09;
-        const kz = BLOCK_Z / 2 + pw - 0.09;
-        for (const sz of [-1, 1]) surf.box(kerbStone, BLOCK_X + 2 * pw, KERB + 0.004, 0.18, b.x, 0, b.z + sz * kz);
-        for (const sx of [-1, 1]) surf.box(kerbStone, 0.18, KERB + 0.004, BLOCK_Z + 2 * pw - 0.36, b.x + sx * kx, 0, b.z);
-        for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) surf.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
-        for (const sx of [-1, 1]) surf.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
-        for (const t of [-0.35, 0.35]) surf.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
-      }
+      // Granite kerbs on the road side, a drain grate by each kerb, and
+      // manhole covers in the carriageway.
+      const kx = BLOCK_X / 2 + pw - 0.09;
+      const kz = BLOCK_Z / 2 + pw - 0.09;
+      for (const sz of [-1, 1]) surf.box(kerbStone, BLOCK_X + 2 * pw, KERB + 0.004, 0.18, b.x, 0, b.z + sz * kz);
+      for (const sx of [-1, 1]) surf.box(kerbStone, 0.18, KERB + 0.004, BLOCK_Z + 2 * pw - 0.36, b.x + sx * kx, 0, b.z);
+      for (const sz of [-1, 1]) for (const t of [-0.6, 0.6]) surf.box(iron, 0.6, 0.065, 0.36, b.x + t * BLOCK_X / 2, 0, b.z + sz * (kz + 0.3));
+      for (const sx of [-1, 1]) surf.box(iron, 0.36, 0.065, 0.6, b.x + sx * (kx + 0.3), 0, b.z + 4);
+      for (const t of [-0.35, 0.35]) surf.add(iron, new THREE.CircleGeometry(0.33, 14), b.x + t * BLOCK_X, 0.066, b.z - PITCH_Z / 2 + 1.6, -Math.PI / 2);
       // Dashed centre lines on the roads around the block.
       for (let x = -PITCH_X / 2; x < PITCH_X / 2; x += 5) {
         surf.box(line, 2.4, 0.07, 0.25, b.x + x + 1.2, 0, b.z - PITCH_Z / 2);
@@ -822,25 +817,19 @@ export class City {
         for (const t of [-1, -1 / 3, 1 / 3, 1]) {
           const x = b.x + t * (BLOCK_X / 2 - 1);
           const z = b.z + lz * ez;
-          if (real) {
-            // The arm reaches out over the road; at night its light pools
-            // on the road and pavement below (lit faces point down, so from
-            // the usual overhead view the pool is what shows). The pool
-            // stays when the lamp drops out with distance.
-            furniture(props, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
-            surf.add(pool!, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
-            continue;
-          }
-          props.cyl(pole, 0.08, 0.12, 5, x, KERB, z, 6);
-          props.box(pole, 0.2, 0.15, 1.4, x, KERB + 4.9, z + lz * 0.6);
-          props.box(bulb, 0.5, 0.18, 0.5, x, KERB + 4.75, z + lz * 1.1);
+          // The arm reaches out over the road; at night its light pools
+          // on the road and pavement below (lit faces point down, so from
+          // the usual overhead view the pool is what shows). The pool
+          // stays when the lamp drops out with distance.
+          furniture(props, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
+          surf.add(pool, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
         }
         for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
           treeAt(trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
         }
       }
       for (const sx of [-1, 1]) treeAt(trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
-      if (real) this.streetFurniture(tiny, b, p.tier);
+      this.streetFurniture(tiny, b, p.tier);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
     // Empty lots: rough grass with survey stakes, waiting to be built on.
@@ -848,7 +837,7 @@ export class City {
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
     const e = LOT / 2 - 1.4;
     for (const l of p.emptyLots) {
-      parts.box(real && hasReal("trees") ? groundMat("grass", 2.2, { roughness: 1, color: 0xc4b080 }) : mat(0x7a8f55, { roughness: 1 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
+      parts.box(groundMat("grass", 2.2, { roughness: 1, color: 0xc4b080 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
       for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
       for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
       for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
@@ -889,39 +878,29 @@ export class City {
       const mesh = new THREE.Mesh(g, asphalt);
       mesh.receiveShadow = true;
       this.base.add(mesh);
-      if (real) {
-        // Lane markings over the hills: a dashed centre line, solid edge lines.
-        const mp: number[] = [];
-        const quad = (xa: number, xb: number, z0: number, z1: number) => {
-          const ya = ground.height(xa, ROAD_Z) + 0.07;
-          const yb = ground.height(xb, ROAD_Z) + 0.07;
-          mp.push(xa, ya, z0, xb, yb, z0, xb, yb, z1, xa, ya, z0, xb, yb, z1, xa, ya, z1);
-        };
-        for (let x = x0; x + 3 < x1; x += 9) quad(x, x + 3, ROAD_Z - 0.07, ROAD_Z + 0.07);
-        for (let x = x0; x < x1; x += 4) {
-          const xb = Math.min(x1, x + 4);
-          for (const e of [-1, 1]) quad(x, xb, ROAD_Z + e * 4.05 - 0.07, ROAD_Z + e * 4.05 + 0.07);
-        }
-        const lg = new THREE.BufferGeometry();
-        lg.setAttribute("position", new THREE.Float32BufferAttribute(mp, 3));
-        // Wound to face up whatever the order above: draw both sides.
-        const marks = new THREE.Mesh(lg, mat(0xe8e4d8, { roughness: 0.7, side: THREE.DoubleSide }));
-        lg.computeVertexNormals();
-        marks.receiveShadow = true;
-        this.base.add(marks);
+      // Lane markings over the hills: a dashed centre line, solid edge lines.
+      const mp: number[] = [];
+      const quad = (xa: number, xb: number, z0: number, z1: number) => {
+        const ya = ground.height(xa, ROAD_Z) + 0.07;
+        const yb = ground.height(xb, ROAD_Z) + 0.07;
+        mp.push(xa, ya, z0, xb, yb, z0, xb, yb, z1, xa, ya, z0, xb, yb, z1, xa, ya, z1);
+      };
+      for (let x = x0; x + 3 < x1; x += 9) quad(x, x + 3, ROAD_Z - 0.07, ROAD_Z + 0.07);
+      for (let x = x0; x < x1; x += 4) {
+        const xb = Math.min(x1, x + 4);
+        for (const e of [-1, 1]) quad(x, xb, ROAD_Z + e * 4.05 - 0.07, ROAD_Z + e * 4.05 + 0.07);
       }
+      const lg = new THREE.BufferGeometry();
+      lg.setAttribute("position", new THREE.Float32BufferAttribute(mp, 3));
+      // Wound to face up whatever the order above: draw both sides.
+      const marks = new THREE.Mesh(lg, mat(0xe8e4d8, { roughness: 0.7, side: THREE.DoubleSide }));
+      lg.computeVertexNormals();
+      marks.receiveShadow = true;
+      this.base.add(marks);
     };
     ribbon(bx + 15, RADIUS - 1);
     ribbon(-RADIUS + 1, bx - 15);
-    if (hasReal("bridge")) {
-      for (const { role, geo } of realPiece("bridge", "bridge")) parts.add(realMat("bridge", role, { wall: 0, accent: 0, roof: 0, signs: 0 }, 0), geo, bx, 0, bz);
-    } else {
-      for (const { role, geo } of piece("bridge").parts) {
-        const m = kitLook(role);
-        if (m.userData.night && !this.lampMats.includes(m)) this.lampMats.push(m);
-        parts.add(m, geo, bx, 0, bz);
-      }
-    }
+    for (const { role, geo } of realPiece("bridge", "bridge")) parts.add(realMat("bridge", role, { wall: 0, accent: 0, roof: 0, signs: 0 }, 0), geo, bx, 0, bz);
     this.chunks = [];
     for (const c of chunks.values()) {
       const g = new THREE.Group();

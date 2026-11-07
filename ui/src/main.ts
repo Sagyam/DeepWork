@@ -66,18 +66,18 @@ function banner(text: string | null) {
   el.textContent = text ?? "";
 }
 
-/** The realistic city's download, while there is one to report (models.ts). */
+/** The city's models (models.ts) until they are all there and the city is drawn. */
 let models: ModelsStatus | null = null;
 
 function modelsLine(): string {
   const mb = (n: number) => (n / 1e6).toFixed(0);
   switch (models?.state) {
     case "downloading":
-      return `<div class="small muted">Realistic city: ${mb(models.done)} of ${mb(models.total)} MB downloaded</div>`;
+      return `<div class="small muted">Downloading the city: ${mb(models.done)} of ${mb(models.total)} MB</div>`;
     case "retrying":
-      return `<div class="small muted" title="${escapeHtml(models.error)}">Realistic city: download stalled, retrying in ${models.retry_secs < 60 ? `${models.retry_secs} s` : hm(models.retry_secs)}</div>`;
-    case "ready":
-      return `<div class="small muted models-ready">Realistic city downloaded. <button class="link" data-action="show-models">Show it</button></div>`;
+      return `<div class="small muted" title="${escapeHtml(models.error)}">City download stalled, retrying in ${models.retry_secs < 60 ? `${models.retry_secs} s` : hm(models.retry_secs)}</div>`;
+    case "none":
+      return `<div class="small muted">This build has no city models.</div>`;
     default:
       return "";
   }
@@ -566,7 +566,10 @@ async function poll() {
   if (busy) return;
   busy = true;
   try {
-    if (models && models.state !== "ready") models = await modelsStatus();
+    if (!skyline && models && models.state !== "ready") {
+      models = await modelsStatus();
+      if (models.state === "ready") void startCity();
+    }
     status = await getStatus();
     const s = status.session;
     const key = s ? `${s.id}:${s.state}` : "none";
@@ -600,25 +603,37 @@ async function poll() {
 
 window.addEventListener("error", (e) => banner(`UI error: ${e.message}`));
 window.addEventListener("unhandledrejection", (e) => banner(`UI error: ${e.reason}`));
-// The HUD works without the skyline, so a renderer failure only costs the picture.
-try {
-  skyline = await City.create($("#stage"), story);
-  skyline.onHover = hover;
-  if (skyline.models.state === "downloading" || skyline.models.state === "retrying") models = skyline.models;
-  skyline.onGraduate = levelUp;
-  skyline.onPick = (i) => {
-    skyline?.look(i);
-    openDeed(i);
-  };
-  if (!("__TAURI_INTERNALS__" in window)) Object.assign(window, { city: skyline });
-} catch (e) {
-  console.error(e);
-  rendererError = `Skyline unavailable: ${e}`;
+// The HUD works without the skyline: until the models are downloaded there is
+// none, and a renderer failure only costs the picture.
+let starting = false;
+async function startCity() {
+  if (skyline || starting) return;
+  starting = true;
+  try {
+    const city = await City.create($("#stage"), story);
+    city.onHover = hover;
+    city.onGraduate = levelUp;
+    city.onPick = (i) => {
+      skyline?.look(i);
+      openDeed(i);
+    };
+    skyline = city;
+    models = null;
+    rendererError = null;
+    if (!("__TAURI_INTERNALS__" in window)) Object.assign(window, { city: skyline });
+    if (world) {
+      renderCity(world);
+      skyline.update(world, localHour(), status?.session?.elapsed_secs ?? 0);
+    }
+  } catch (e) {
+    console.error(e);
+    rendererError = `Skyline unavailable: ${e}`;
+  } finally {
+    starting = false;
+  }
 }
-// The city was drawn with the kit while the models downloaded; a reload draws it again with them.
-$("#city").addEventListener("click", (e) => {
-  if ((e.target as Element).closest('[data-action="show-models"]')) location.reload();
-});
+models = await modelsStatus();
+if (models.state === "ready") await startCity();
 await poll();
 setInterval(poll, 1000);
 // `VITE_FPS=1` (dev server or build) adds a frame-rate readout with the 1% low, for tuning.

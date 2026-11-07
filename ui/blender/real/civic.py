@@ -1,5 +1,4 @@
-# Civic props for the realistic city: what the kit still drew in low poly
-# round the buildings. The water tower (the Hamlet's water need), the tower
+# Civic props for the realistic city, round the buildings. The water tower (the Hamlet's water need), the tower
 # crane and scaffolding of construction sites, the rubble of a destroyed
 # lot, the parks' fountain, bandstand, goals and stand, and the people.
 #
@@ -7,9 +6,8 @@
 #   water_tower    an elevated steel tank on four battered legs, 20.6 m
 #   crane_base, crane_mast, crane_slew, crane_jib, crane_jib_tip,
 #   crane_counter, crane_trolley, crane_hook, crane_load
-#                  the kit's tower crane at the kit's sizes, so its anchors
-#                  (apex, beacon, end) still hold: the app takes them from
-#                  the kit and the geometry from here
+#                  a tower crane; its anchors (apex, beacon, end) are
+#                  CRANE in models.ts: move them with the geometry
 #   scaffold       one bay of tube-and-fitting scaffold, 2.4 m along x, one
 #                  2 m lift tall (the app stretches it to a storey), deck at
 #                  its foot; inner standards at y = 0.65, outer at y = -0.15
@@ -17,7 +15,7 @@
 #   rubble_wall    a broken brick wall, 3.2 m long, standing on its foot
 #   rubble_slab    a broken floor slab with its rebar out, 2.6 x 1.8 m
 #   rubble_beam    a steel I-beam bent in the fire, 4.6 m
-#   fountain, bandstand, goal, bleachers   the parks' pieces, kit sizes
+#   fountain, bandstand, goal, bleachers   the parks' pieces
 #   person         a pedestrian, 1.75 m (roles skin, hair, shirt, pants:
 #                  the app colours each one)
 # Roles: tankpaint, tankband, crane, scaffboard, char, galv, dark, grate, concrete, trim, carglass,

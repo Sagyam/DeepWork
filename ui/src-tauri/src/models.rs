@@ -5,7 +5,7 @@
 //! are fetched as the user (never by the daemon), checked against the
 //! manifest, and kept in `~/.local/share/deepwork/assets/<id>/`; the page
 //! reads them through the `models://` scheme. Until they are all there the
-//! city is drawn with the embedded low-poly kit.
+//! app shows the HUD and the download, without the city.
 //!
 //! `DEEPWORK_MODELS=<dir>` serves a local directory instead (unchecked), for
 //! trying a pack before it is published: `DEEPWORK_MODELS=ui/public/models`.
@@ -48,7 +48,7 @@ struct Entry {
 #[derive(Serialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "snake_case", tag = "state")]
 pub enum Status {
-    /// No pack in this build: the kit only.
+    /// No pack in this build: no city.
     None,
     Downloading {
         done: u64,

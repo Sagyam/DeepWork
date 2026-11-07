@@ -180,7 +180,6 @@ button.link:hover:not(:disabled) { background: none; text-decoration: underline;
 .list .num { font-variant-numeric: tabular-nums; color: var(--muted-foreground); white-space: nowrap; }
 .list time { flex: none; width: 104px; color: var(--muted-foreground); font-variant-numeric: tabular-nums; }
 .list button.link { padding: 0; }
-.models-ready button.link { padding: 0; margin-left: 4px; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--muted); color: var(--muted-foreground); }
 .tag.loss { background: var(--loss-soft); color: var(--loss); }
 .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }

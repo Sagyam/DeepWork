@@ -6,8 +6,7 @@
 # Writes tex/*.png (the shared texture library; --no-tex skips it, but a
 # model's own textures are always made with it), and per model <id>.glb
 # (pieces as nodes, materials named by role) and <id>_ao.png (AO baked on
-# its lightmap UVs). The output is git-ignored; the app falls back to the
-# low-poly kit for any model that is missing.
+# its lightmap UVs). The output is git-ignored; the city needs every model.
 import importlib
 import os
 import sys

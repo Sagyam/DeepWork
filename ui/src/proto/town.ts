@@ -28,7 +28,6 @@ import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { SMAAPass } from "three/examples/jsm/postprocessing/SMAAPass.js";
 import { FXAAPass } from "three/examples/jsm/postprocessing/FXAAPass.js";
 import { mergeGeometries } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { loadKit } from "../city/kit";
 import { building, furniture, KERB, mat, park, parked, Parts, SPECIES, tree } from "../city/models";
 import { BLOCK_X, BLOCK_Z, LOT, PAVEMENT, PITCH_X, PITCH_Z, rng, type Spec } from "../city/plan";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "../city/impostor";
@@ -561,7 +560,7 @@ function traffic() {
 
 // ---- go ----
 
-Promise.all([loadKit(), loadReal([...Object.keys(DEFS), ...PROPS], renderer)]).then(async () => {
+loadReal([...Object.keys(DEFS), ...PROPS], renderer, true).then(async () => {
   const missing = [...Object.keys(DEFS), ...PROPS].filter((id) => !hasReal(id));
   if (missing.length) console.warn("not built:", missing);
   const ground = new Parts();
