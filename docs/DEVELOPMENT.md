@@ -63,6 +63,11 @@ release builds leave it out. To run a release build on local models:
 All pages take `cam=x,y,z&at=x,y,z&fov=`. A new model appears in the town
 once added to `BLOCKS` in `ui/src/proto/town.ts`.
 
+### App icon
+
+`sh ui/scripts/icon.sh` renders the window, tray and notification icons
+from `assets/logo.svg` (needs `rsvg-convert`).
+
 ### Benchmarks
 
 Headless system Chromium on this machine's GPU, with `bun run dev` running:

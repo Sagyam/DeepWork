@@ -1,5 +1,5 @@
 import { describe as group, expect, test } from "bun:test";
-import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, PUBLIC, ROAD, STYLES, blockLoop, cells, districtCell, isPark, lookOf, lot, plan, rng, shape, spiral } from "./plan";
+import { BLOCK_X, BLOCK_Z, KINDS, LOT, PAVEMENT, PITCH_X, PITCH_Z, PUBLIC, ROAD, STYLES, blockLoop, cells, onStreets, districtCell, isPark, lookOf, lot, plan, rng, shape, spiral } from "./plan";
 import { clock, describe, hm } from "../format";
 import type { Plot, World } from "../proto";
 
@@ -232,4 +232,20 @@ test("every look the plan can give a building has a model", async () => {
     if (built.has(look.style)) continue;
     expect(look.model && DEFS[look.model]?.style, look.style).toBe(look.style);
   }
+});
+
+test("every road strip counts as street, and the grass past it does not", () => {
+  const p = plan(world(Array.from({ length: 40 }, (_, i) => plot(i))));
+  const strips: [number, number][] = [];
+  for (const b of p.blocks) {
+    // From the block's edge to the pitch's: pavement, lanes and the centre line.
+    for (let t = 0; t <= 1; t += 0.05) {
+      for (let d = BLOCK_X / 2; d <= PITCH_X / 2; d += 0.5) strips.push([b.x + d, b.z + (t - 0.5) * PITCH_Z], [b.x - d, b.z + (t - 0.5) * PITCH_Z]);
+      for (let d = BLOCK_Z / 2; d <= PITCH_Z / 2; d += 0.5) strips.push([b.x + (t - 0.5) * PITCH_X, b.z + d], [b.x + (t - 0.5) * PITCH_X, b.z - d]);
+    }
+  }
+  for (const [x, z] of strips) expect(onStreets(p.blocks, x, z), `${x},${z}`).toBe(true);
+  const { maxX, minZ } = p.bounds;
+  expect(onStreets(p.blocks, maxX + 3, (minZ + p.bounds.maxZ) / 2, 1.5)).toBe(false);
+  expect(onStreets(p.blocks, (p.bounds.minX + maxX) / 2, minZ - 3, 1.5)).toBe(false);
 });

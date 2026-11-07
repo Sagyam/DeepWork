@@ -1,10 +1,12 @@
-// City theme: street life. Cars, taxis, vans and buses loop around each
-// block in the right-hand lane; pedestrians walk the pavements. Both grow
+// City theme: street life. Cars, taxis, vans and buses drive the lane graph
+// (roads.ts): straight on or round corners, stopping at red; pedestrians
+// walk the pavements. Both grow
 // with the tier, so a metropolis is busy and a hamlet sleepy. Every part of
 // a model is one InstancedMesh, moved every frame; headlights, tail
 // lights and signs follow the night.
 import * as THREE from "three";
-import { BLOCK_X, BLOCK_Z, PAVEMENT, ROAD, blockLoop, rng, type CityPlan, type Loop } from "./plan";
+import { BLOCK_X, BLOCK_Z, blockLoop, rng, type CityPlan, type Loop } from "./plan";
+import { Flow, lanes, type Car } from "./roads";
 import { CAR_PAINTS, realMat, realPiece } from "./real";
 
 const BUS_PAINT = [0xc0392b, 0x2e6fb5, 0x2a9a5a];
@@ -82,6 +84,12 @@ interface Mover {
 /** The vehicles in traffic (pieces of cars.glb). */
 const VEHICLES = ["hatch", "sedan", "estate", "suv", "coupe", "taxi", "pickup", "van", "truck", "bus"];
 
+interface Driver {
+  fleet: Fleet;
+  slot: number;
+  car: Car;
+}
+
 /** Vehicles per block and people per block, by tier. */
 const CARS = [1, 2, 3, 4];
 const PEOPLE = [2, 4, 7, 11];
@@ -89,6 +97,9 @@ const PEOPLE = [2, 4, 7, 11];
 export class Traffic {
   group = new THREE.Group();
   private movers: Mover[] = [];
+  private drivers: Driver[] = [];
+  private flow: Flow | null = null;
+  private t = 0;
   private fleets: Fleet[] = [];
   private mats = new Map<string, THREE.MeshStandardMaterial>();
   /** Realistic vehicles' lamps, which follow the night too. */
@@ -109,6 +120,7 @@ export class Traffic {
     for (const f of this.fleets) for (const m of f.meshes) this.group.remove(m);
     this.fleets = [];
     this.movers = [];
+    this.drivers = [];
     const r = rng(0xca75 + p.blocks.length * 7 + p.tier);
     const tier = Math.min(3, Math.max(0, p.tier));
 
@@ -134,6 +146,7 @@ export class Traffic {
     });
     const count = (m: string) => plans.filter((v) => v.model === m).length;
     const fleets = new Map<string, Fleet>();
+    const lengths = new Map<string, number>();
     this.lamps.clear();
     const realMats = (role: string) => {
       const m = realMat("cars", role, { wall: -1, accent: 0, roof: 0, signs: 0 }, 0, "traffic") as THREE.MeshStandardMaterial;
@@ -145,21 +158,24 @@ export class Traffic {
       if (!n) continue;
       const colours = model === "taxi" ? [0xf2c12e] : model === "bus" ? BUS_PAINT : CAR_PAINTS;
       const parts = realPiece("cars", model);
-      const withBlob = [...parts, { role: "blob", geo: blobGeo(parts) }];
+      const blob = blobGeo(parts);
+      blob.computeBoundingBox();
+      lengths.set(model, blob.boundingBox!.getSize(new THREE.Vector3()).z / 1.1);
+      const withBlob = [...parts, { role: "blob", geo: blob }];
       fleets.set(model, new Fleet(withBlob, n, { carpaint: colours }, (role) => (role === "blob" ? this.blob : realMats(role)), r));
     }
     const slots = new Map<string, number>();
-    // The lane next to the block: a quarter of the way across the carriageway.
-    const lane = PAVEMENT + (ROAD - 2 * PAVEMENT) / 4;
-    const loops = p.blocks.map((b) => blockLoop(b.x, b.z, BLOCK_X / 2 + lane, BLOCK_Z / 2 + lane, 3.5));
-    const speeds = p.blocks.map(() => 6 + r() * 4);
-    const phase = p.blocks.map(() => r());
+    // Signals stand from a town on (scene.ts); a hamlet's crossings are first come, first through.
+    const flow = (this.flow = new Flow(lanes(p.blocks), tier >= 1, rng(0x7a1c + p.blocks.length)));
+    const turn = p.blocks.map(() => Math.floor(r() * 4));
     for (const v of plans) {
       const slot = slots.get(v.model) ?? 0;
       slots.set(v.model, slot + 1);
-      const loop = loops[v.block];
-      // Evenly spaced on their loop, all at the loop's speed, so none collide.
-      this.movers.push({ fleet: fleets.get(v.model)!, slot, loop, d: ((v.i + phase[v.block]) / v.n) * loop.length, speed: speeds[v.block], dir: 1, y: 0.05, bob: 0 });
+      // Each starts on one of its block's four lanes (lanes() keeps them in
+      // block order), at most two to a lane and well apart.
+      const lane = flow.lanes[v.block * 4 + ((v.i + turn[v.block]) % 4)];
+      const car = flow.add(lane, lane.path.length * (0.2 + 0.45 * Math.floor(v.i / 4)), lengths.get(v.model)!, 6 + r() * 4);
+      this.drivers.push({ fleet: fleets.get(v.model)!, slot, car });
     }
 
     const walkers = p.blocks.length * PEOPLE[tier];
@@ -185,7 +201,20 @@ export class Traffic {
     this.update(0);
   }
 
-  update(dt: number) {
+  /** `t`: the scene clock, which runs the signals. */
+  update(dt: number, t = this.t) {
+    this.t = t;
+    if (this.flow) {
+      // Small steps, so a long frame cannot carry a car through the one ahead.
+      // A stalled frame (a hidden window) skips ahead rather than catching up.
+      const step = Math.min(dt, 0.5);
+      const n = Math.ceil(step / 0.05);
+      for (let i = 0; i < n; i++) this.flow.step(step / n, t - step + ((i + 1) * step) / n);
+    }
+    for (const d of this.drivers) {
+      const at = this.flow!.where(d.car);
+      d.fleet.set(d.slot, at.x, 0.05, at.z, at.heading);
+    }
     for (const m of this.movers) {
       m.d += m.speed * dt * m.dir;
       const at = m.loop.at(m.d);
@@ -204,7 +233,7 @@ export class Traffic {
 
   /** Anything moving (the scene keeps drawing frames while there is). */
   get active() {
-    return this.movers.length > 0;
+    return this.movers.length > 0 || this.drivers.length > 0;
   }
 
   /** 0 by day, 1 at night. */

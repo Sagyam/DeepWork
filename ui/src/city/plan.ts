@@ -385,6 +385,15 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
   return { blocks, parks, buildings, site, paused, emptyLots, trees, bounds, tier: w.tier };
 }
 
+/**
+ * True on the town's streets: each block's asphalt slab (scene.ts) is its
+ * whole pitch, so the roads ringing it, centre line and outer streets
+ * included. `margin` widens it, for props whose crowns spread.
+ */
+export function onStreets(blocks: { x: number; z: number }[], x: number, z: number, margin = 0): boolean {
+  return blocks.some((b) => Math.abs(x - b.x) <= PITCH_X / 2 + margin && Math.abs(z - b.z) <= PITCH_Z / 2 + margin);
+}
+
 /** A closed path that can be sampled by distance travelled. */
 export interface Loop {
   length: number;

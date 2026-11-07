@@ -73,18 +73,6 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
       user is creating the accounts.
 
-## Fixes
-
-- [ ] **Old icon** in notifications and the window/tray: `ui/scripts/icon.mjs`
-      still draws the first night skyline. Render the PNGs from
-      `assets/logo.svg` instead, and pass `--icon=deepwork` in the agent's
-      `notify-send`.
-- [ ] **Stones and bushes on the road**: the town-grass scatter in
-      `land.ts` skips only a block's pitch less 1 m, so road edges and the
-      outer streets get tufts and rocks. Test against the real road strips.
-- [ ] **Traffic loops forever**: every car circles one block. See
-      [Streets](#streets) for trips and traffic rules.
-
 ## Ideas, not designed
 
 Check each against the rule in [GAME.md](GAME.md#the-one-rule).
@@ -107,11 +95,11 @@ street, and the street each lot fronts.
 - **Junctions and structures**: signals and crossings, stop signs, a
   roundabout at district centres, a flyover where the highway meets
   downtown, an underpass under the river road or the rail line.
-- **Traffic with trips**: cars leave a lot, route over the street graph to
-  another (homes to offices in the morning, shops at midday, home at
-  dusk, by local time like the sun), park and vanish. Buses on fixed lines
-  with stops. Stop at red, yield at roundabouts, keep a gap. Volume
-  follows what is built. Routes precomputed; budget the CPU on the iGPU.
+- **Traffic with trips**: cars now roam the lane graph (`roads.ts`) at
+  random. Next they leave a lot, route to another (homes to offices in the
+  morning, shops at midday, home at dusk, by local time like the sun),
+  park and vanish. Buses on fixed lines with stops; yield at roundabouts.
+  Volume follows what is built. Budget the CPU on the iGPU.
 
 ### Names
 

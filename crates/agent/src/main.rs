@@ -538,7 +538,7 @@ impl Notifier {
             return;
         }
         let mut cmd = Command::new("notify-send");
-        cmd.args(["--app-name=DeepWork", "--print-id"])
+        cmd.args(["--app-name=DeepWork", "--icon=deepwork", "--print-id"])
             .arg(format!("--urgency={}", note.urgency.as_str()));
         let slot = match note.slot {
             Some(Slot::Nudge) => Some(&mut self.nudge_id),

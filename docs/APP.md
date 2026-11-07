@@ -39,7 +39,8 @@ A renderer failure only loses the picture: the HUD keeps working.
 | `real.ts` | Loads the models, all or none; `DEFS` (size, set-back, the plan style drawn), `PROPS`, materials and shaders |
 | `scene.ts` | Sky, sun by local time, shadows, bloom, camera; carries the performance work below |
 | `terrain.ts`, `land.ts` | Hills, river, woods (instanced, with impostors from `impostor.ts`) |
-| `traffic.ts` | Cars and pedestrians |
+| `roads.ts` | The lane graph and the cars on it: turns, signals, gaps. Pure, tested |
+| `traffic.ts` | Draws the cars, and pedestrians on the pavements |
 | `fx.ts` | Dust, sparks, fireworks |
 
 ## Realistic models
