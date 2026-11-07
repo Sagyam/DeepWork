@@ -2355,7 +2355,10 @@ mod tests {
             std::fs::write(path, &json).unwrap();
         }
         let file = std::fs::read_to_string(path).unwrap_or_default();
-        assert!(file == json, "ui/src/layout.json is stale: run UPDATE_FIXTURES=1 cargo test");
+        assert!(
+            file == json,
+            "ui/src/layout.json is stale: run UPDATE_FIXTURES=1 cargo test"
+        );
     }
 
     #[test]
