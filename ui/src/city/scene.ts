@@ -21,7 +21,7 @@ import { Fx } from "./fx";
 import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { loadKit } from "./kit";
 import { thumbnail } from "./thumbs";
-import { groundMat, hasReal, interiorUniforms, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
+import { groundMat, hasReal, interiorUniforms, LEAF_OPT, leafDepth, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
@@ -112,6 +112,8 @@ export class City {
   /** Materials that took the environment light in prepare(); their intensity follows the day. */
   private glossy = new Set<THREE.MeshStandardMaterial>();
   private prepared = new WeakSet<THREE.Material>();
+  /** Leaf materials with a depth pre-pass (leafPass()): they write no depth in the main pass. */
+  private leafMats = new Set<THREE.Material>();
   /** Cut-out textures the shadow map waits for. */
   private shadowWait = new Set<THREE.Texture>();
   private shadowDir: THREE.Vector3 | null = null;
@@ -1174,9 +1176,11 @@ export class City {
    * and trees would cast the shadows of bare branches).
    */
   private prepare(root: THREE.Object3D) {
+    const leafy: THREE.Mesh[] = [];
     root.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
+      if (LEAF_OPT && !mesh.userData.leafPass && (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).some((m) => m.userData.foliage)) leafy.push(mesh);
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         const s = m as THREE.MeshStandardMaterial;
         if (mesh.castShadow && m.alphaTest > 0 && s.map && !loaded(s.map)) this.shadowWait.add(s.map);
@@ -1194,7 +1198,40 @@ export class City {
         }
       }
     });
+    for (const mesh of leafy) this.leafPass(mesh);
     this.shadowsDirty();
+  }
+
+  /**
+   * leaves: a crown is many layers of alpha-tested cards, and with a cut-out
+   * the GPU shades every layer before the depth test throws the hidden ones
+   * away. So the leaves draw twice: a child that writes only their depth,
+   * first (renderOrder), then the lit leaves, which write no depth in the
+   * main pass (frame()) and so are tested before shading: each pixel is lit
+   * once. The child shares the geometry and instances, and hides with them.
+   */
+  private leafPass(mesh: THREE.Mesh) {
+    mesh.userData.leafPass = true;
+    const hide = new THREE.MeshBasicMaterial({ visible: false });
+    const depth = (m: THREE.Material) => {
+      if (!m.userData.foliage) return hide;
+      this.leafMats.add(m);
+      return leafDepth(m as THREE.MeshStandardMaterial);
+    };
+    const mats = Array.isArray(mesh.material) ? mesh.material.map(depth) : depth(mesh.material);
+    const src = mesh as THREE.InstancedMesh;
+    let pre: THREE.Mesh;
+    if (src.isInstancedMesh) {
+      const inst = new THREE.InstancedMesh(src.geometry, mats, src.count);
+      inst.instanceMatrix = src.instanceMatrix;
+      pre = inst;
+    } else pre = new THREE.Mesh(mesh.geometry, mats);
+    pre.renderOrder = mesh.renderOrder - 1;
+    pre.frustumCulled = mesh.frustumCulled;
+    pre.castShadow = pre.receiveShadow = false;
+    pre.userData.leafPass = true;
+    pre.raycast = () => {};
+    mesh.add(pre);
   }
 
   /**
@@ -1446,7 +1483,11 @@ export class City {
     }
     this.drawnAt = now;
     this.bench?.begin();
+    // leaves: their depth is already drawn (leafPass()); only for this scene's
+    // pass, as thumbnails and impostors draw the same materials without one.
+    for (const m of this.leafMats) m.depthWrite = false;
     this.composer.render(dt);
+    for (const m of this.leafMats) m.depthWrite = true;
     this.bench?.end();
   }
 }

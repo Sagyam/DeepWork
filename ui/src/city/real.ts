@@ -1503,25 +1503,68 @@ export function setSignals(t: number, night = 0) {
   }
 }
 
+/** leaves: false with `&leaves=0`, for comparing the leaf shading and depth pre-pass with what came before. */
+export const LEAF_OPT = new URLSearchParams(location.search).get("leaves") !== "0";
+
+/**
+ * A card seen edge-on smears its leaves into streaks and gives the crown away
+ * as flat sheets: thin it out as it turns edge-on (its true face, from the
+ * screen-space derivatives; the normals are bent). Shared by the leaves and
+ * their depth pre-pass, which must cut out exactly the same pixels.
+ */
+const THIN = "vec3 cardN = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));\ndiffuseColor.a *= smoothstep(0.05, 0.25, abs(dot(cardN, normalize(vViewPosition))));\n#include <alphatest_fragment>";
+
+/**
+ * backlight: a leaf lets light through. Each light's (shadowed) light adds
+ * some of the leaf's colour on the side away from it, most when the eye
+ * looks towards the light through the crown, so trees glow against a low sun.
+ */
+const BACKLIGHT = `RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );
+		reflectedLight.directDiffuse += directLight.color * diffuseColor.rgb * vec3( 1.0, 1.05, 0.7 ) * ( 0.18 * max( 0.0, - dot( geometryNormal, directLight.direction ) ) + 0.55 * pow( max( 0.0, dot( - geometryViewDir, directLight.direction ) ), 5.0 ) );`;
+
 /**
  * Leaf cards: the cluster texture alpha-tested, both sides lit as the front
- * (the normals are bent out from the crown, see bendLeaves), baked AO.
+ * (the normals are bent out from the crown, see bendLeaves), baked AO,
+ * backlit. `userData.foliage` marks them for the depth pre-pass (leafDepth()).
  */
 function foliage(name: string, color: number, ao: THREE.Texture): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map: tex(`${name}_col`), color, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.78, aoMap: ao, aoMapIntensity: 0.55 });
+  m.userData.foliage = true;
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <normal_fragment_begin>", THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", ""))
-      // A card seen edge-on smears its leaves into streaks and gives the
-      // crown away as flat sheets: thin it out as it turns edge-on (its true
-      // face, from the screen-space derivatives; the normals are bent).
-      .replace(
-        "#include <alphatest_fragment>",
-        "vec3 cardN = normalize(cross(dFdx(vViewPosition), dFdy(vViewPosition)));\ndiffuseColor.a *= smoothstep(0.05, 0.25, abs(dot(cardN, normalize(vViewPosition))));\n#include <alphatest_fragment>",
-      );
+      .replace("#include <alphatest_fragment>", THIN);
+    if (LEAF_OPT) sh.fragmentShader = sh.fragmentShader.replace("#include <lights_fragment_begin>", THREE.ShaderChunk.lights_fragment_begin.replaceAll("RE_Direct( directLight, geometryPosition, geometryNormal, geometryViewDir, geometryClearcoatNormal, material, reflectedLight );", BACKLIGHT));
   };
-  m.customProgramCacheKey = () => "foliage";
+  m.customProgramCacheKey = () => (LEAF_OPT ? "foliage+" : "foliage");
   return m;
+}
+
+const leafDepths = new WeakMap<THREE.Material, THREE.MeshBasicMaterial>();
+
+/**
+ * leaves: the depth pre-pass for a leaf material (scene.ts, leafPass()):
+ * no colour, no light, only its cut-out (and any vertex step it carries in
+ * `userData.vertex`, see nearOnly()), so the lit pass after it shades
+ * each pixel once instead of once for every leaf layer behind it.
+ */
+export function leafDepth(m: THREE.MeshStandardMaterial): THREE.MeshBasicMaterial {
+  let d = leafDepths.get(m);
+  if (!d) {
+    d = new THREE.MeshBasicMaterial({ map: m.map, alphaTest: m.alphaTest, side: m.side, colorWrite: false, alphaToCoverage: true, fog: false });
+    // The two shaders round a vertex's depth a hair apart, so far crowns
+    // failed the lit pass and showed the sky through: push the pre-pass back.
+    d.polygonOffset = true;
+    d.polygonOffsetFactor = 1;
+    d.polygonOffsetUnits = 2;
+    d.onBeforeCompile = (sh) => {
+      sh.vertexShader = "varying vec3 vViewPosition;\n" + sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\nvViewPosition = - mvPosition.xyz;\n${m.userData.vertex ?? ""}`);
+      sh.fragmentShader = "varying vec3 vViewPosition;\n" + sh.fragmentShader.replace("#include <alphatest_fragment>", THIN);
+    };
+    d.customProgramCacheKey = () => (m.userData.vertex ? "leafdepth:near-only" : "leafdepth");
+    leafDepths.set(m, d);
+  }
+  return d;
 }
 
 /**

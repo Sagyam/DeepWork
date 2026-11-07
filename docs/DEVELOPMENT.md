@@ -39,7 +39,7 @@ bunx tauri build --no-bundle   # binary in target/release/deepwork-ui
 `session`, `stopwatch`, `surrender`, `ruins`, `desk`, `nearmiss`,
 `levelup`, `inverted`. `&hour=16` fixes the time of day;
 `&quality=low|medium|high` and `&taps=1|4|5` override the quality preset and
-shadow filter. In the console,
+shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight. In the console,
 `city.demo("collapse" | "build" | "damage" | "graduate")` plays a transition.
 
 ### Models

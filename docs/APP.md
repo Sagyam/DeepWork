@@ -139,6 +139,11 @@ behind `&opt=N` before they move to `scene.ts`. What was learned:
 - **Draw only when something changes.** A still city draws no frames; a
   hidden window none at all; an unfocused one ambient motion at `DIM_FPS`
   with traffic and auto-rotate stopped, moments still at full rate.
+- **Leaves draw their depth first** (`leafPass()` in `scene.ts`): a cheap
+  cut-out-only pass, then the lit leaves without depth writes, so each pixel
+  is lit once, not once per leaf layer. Hamlet ~1.3 ms of ~20; nothing where
+  impostors hold most trees. The pre-pass must repeat any vertex step
+  (`userData.vertex`) or holes show the sky.
 - **Shadow filter**: a fixed 2x2 grid of hardware-PCF taps (`shadow.ts`)
   looks like three's noisy 5-tap disc and saves ~1.5 ms; one tap shows
   jagged leaf shadows.
@@ -166,7 +171,8 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 - American and European styles mixed; real-world sizes per model.
 - **Daylight from a warm sun and a sky hemisphere**, not a flat ambient: an
   ambient lights every face alike and flattened the models (`light()` in
-  `scene.ts`). Late in the day the sun turns orange and the shade lilac.
+  `scene.ts`). Late in the day the sun turns orange and the shade lilac;
+  leaves let light through (`foliage()` in `real.ts`).
 - Landmarks include civic buildings, squares, parks and monuments on half
   or whole blocks; the master plan reserves their ground.
 - 30 fps for an end-game city on a weak iGPU is acceptable.
