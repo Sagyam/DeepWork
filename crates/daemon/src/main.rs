@@ -8,6 +8,7 @@ mod enforcer;
 mod engine;
 mod free;
 mod layout;
+mod letters;
 mod loosen;
 mod names;
 mod nfqueue;

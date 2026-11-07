@@ -23,6 +23,7 @@ this are in [DEVELOPMENT.md](DEVELOPMENT.md).
 | HUD | City card (level, progress, condition), the start card (timer / stopwatch, ring dial, profile, stake, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
 | Mayor's desk (`desk.ts`) | Needs, buy plot, design pick, coins, paused sites, "What next?", today's goals, the two sets nearest done, items |
 | Town hall | Street upgrades and renames, park decorations, every set begun |
+| Letters (envelope) | The residents' letters, newest first, with a link to the building. An unread dot; what was read is kept in localStorage, and a first run starts with nothing unread |
 | Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels as silhouettes |
 | Deed card | A building's memory, rename, paid repair or a repair kit; hover shows a tag. Picking tests lot rectangles, not meshes |
 | Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice |
