@@ -1,3 +1,4 @@
+import { play, setSound, soundOn, unlockSound } from "./sound";
 import { DaemonRefusal, Unreachable, call, status as getStatus, pendingConfig, world as getWorld } from "./daemon";
 import { TIERS, clock, escapeHtml, hm } from "./format";
 import { deedHtml, deskHtml, levelUpHtml, nearMiss, shopHtml, tagHtml, townHtml } from "./desk";
@@ -415,6 +416,7 @@ async function decide(req: Parameters<typeof call>[0], errorEl: string, after?: 
   $(errorEl).textContent = "";
   try {
     const r = await call(req);
+    if (["buy", "buy_land", "repair", "upgrade_street", "decorate"].includes(req.type)) play("coins");
     if (r.type === "world") {
       world = r;
       renderCity(world);
@@ -598,6 +600,11 @@ $("#menu").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (btn?.dataset.open === "progress") openProgress();
   else if (btn?.dataset.open === "settings") void openSettings("session");
+  else if (btn?.dataset.open === "sound") {
+    setSound(!soundOn());
+    showSound();
+    play("coins");
+  }
 });
 
 // Settings and imports can change the world or the pending config.
@@ -697,3 +704,13 @@ if (import.meta.env.VITE_FPS && skyline) {
   document.body.append(el);
   setInterval(() => (el.textContent = `${skyline!.fps.toFixed(0)} fps · 1% low ${skyline!.low.toFixed(0)}`), 500);
 }
+
+/** The sound button shows whether sound is on. */
+function showSound() {
+  const b = document.getElementById("sound-toggle");
+  b?.setAttribute("aria-pressed", String(soundOn()));
+  b?.classList.toggle("muted", !soundOn());
+}
+showSound();
+// Browsers open audio only after a gesture: the first click or key does it.
+for (const ev of ["pointerdown", "keydown"]) addEventListener(ev, unlockSound, { once: true });

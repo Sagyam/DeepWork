@@ -3,6 +3,8 @@
 // building rises with sparks, a lost one collapses into dust and rubble,
 // damage hits with a jolt. Changes since the window was last open are
 // replayed one by one, so a loss is seen, not just counted.
+import { weatherNow, type Weather } from "./weather";
+import { play } from "../sound";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
@@ -136,6 +138,9 @@ export class City {
   private world: World | null = null;
   private plan: CityPlan | null = null;
   private hour = 12;
+  private weather: Weather = weatherNow();
+  private rain: THREE.LineSegments | null = null;
+  private rainTime = { value: 0 };
   private night = 0;
   private entries = new Map<number, Entry>();
   private base = new THREE.Group();
@@ -688,6 +693,7 @@ export class City {
     const target = spec(ev.plots[0]);
     if (target) this.focus = { to: this.worldPos(target, target.height * 0.3), t: 0 };
     this.story(describeLive(ev, w));
+    play(ev.kind);
     switch (ev.kind) {
       case "quake":
         this.quake(1.4);
@@ -1067,9 +1073,12 @@ export class City {
     }
     // Warm sun against cool sky light; late in the day the sun turns orange
     // and the shade lilac, so the hour reads at a glance.
-    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day);
+    // Weather: clouds take the sun's direct light and give some back as sky.
+    this.weather = weatherNow();
+    const cloud = this.weather.cloud;
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day) * (1 - 0.75 * cloud);
     this.sunLight.color.setHex(d.day > 0.02 ? 0xfff2e0 : 0x9fb4ff).lerp(new THREE.Color(0xff8a3a), d.golden);
-    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day);
+    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day) * (1 + 0.35 * cloud);
     this.hemi.color.setHex(0xb0c8ff).lerp(new THREE.Color(0x2a3560), d.night).lerp(new THREE.Color(0x9088c0), d.golden * 0.5);
     this.hemi.groundColor.setHex(0x8a7a60).lerp(new THREE.Color(0x101418), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
@@ -1077,8 +1086,12 @@ export class City {
     for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
     this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15;
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
-    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
+    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6 * (1 - cloud)).lerp(new THREE.Color(0xa8acb0), cloud * 0.7 * d.day).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
+    u.turbidity.value = 6 + 14 * cloud;
+    u.rayleigh.value = 1.6 * (1 - 0.6 * cloud);
+    u.mieCoefficient.value = 0.004 + 0.02 * cloud;
+    this.setRain(this.weather.rain);
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.clamp.enabled = d.night > 0.05;
@@ -1095,6 +1108,45 @@ export class City {
     this.skyEnv(d.sun, d.night);
     this.cubeCam.update(this.renderer, this.skyScene);
     this.dirty = true;
+  }
+
+  /**
+   * Rain: streaks in a box round what the camera looks at, falling in the
+   * vertex shader, so it costs one draw and no CPU work per drop.
+   */
+  private setRain(amount: number) {
+    if (amount <= 0) {
+      if (this.rain) this.scene.remove(this.rain);
+      this.rain = null;
+      return;
+    }
+    if (this.rain) return;
+    const n = 6000;
+    const r = rng(17);
+    // Both ends of a streak share its height, so they wrap together; aLen
+    // drops the lower end.
+    const pos = new Float32Array(n * 6);
+    const len = new Float32Array(n * 2);
+    for (let i = 0; i < n; i++) {
+      const x = (r() - 0.5) * 360;
+      const y = r() * 120;
+      const z = (r() - 0.5) * 360;
+      pos.set([x, y, z, x + 0.15, y, z + 0.1], i * 6);
+      len.set([0, 1.6], i * 2);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+    g.setAttribute("aLen", new THREE.BufferAttribute(len, 1));
+    const m = new THREE.LineBasicMaterial({ color: 0xc8d4dc, transparent: true, opacity: 0.35, depthWrite: false, fog: true });
+    m.onBeforeCompile = (sh) => {
+      sh.uniforms.uTime = this.rainTime;
+      sh.vertexShader = sh.vertexShader
+        .replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float aLen;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed.y = mod(transformed.y - uTime * 24.0, 120.0) - aLen;");
+    };
+    this.rain = new THREE.LineSegments(g, m);
+    this.rain.frustumCulled = false;
+    this.scene.add(this.rain);
   }
 
   // ---- rendering optimisations ------------------------------------------------
@@ -1452,6 +1504,10 @@ export class City {
     if (!this.dim) this.traffic.update(dt, this.t);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
+    if (this.rain) {
+      this.rainTime.value = this.t;
+      this.rain.position.set(this.controls.target.x, 0, this.controls.target.z);
+    }
 
     let animating = this.dying.length > 0 || this.fx.falling;
     let busy = false;
@@ -1475,7 +1531,7 @@ export class City {
     // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
     // traffic, effects or transitions): a focus timer's city can sit on screen
     // for hours, and a still frame costs as much as a busy one.
-    const moving = this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
+    const moving = !!this.rain || this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
     if (!moving && !this.dirty && !this.bench) return;
     this.dirty = false;
     if (this.warm) {
@@ -1518,7 +1574,7 @@ function describeLive(ev: WorldEvent, w: World): string {
     case "built":
       return `${names(ev.plots)} was finished.`;
     case "repaired":
-      return `Focus repaired ${names(ev.plots)}.`;
+      return ev.cause === "mayor" ? `The mayor had ${names(ev.plots)} repaired.` : `Focus repaired ${names(ev.plots)}.`;
     case "graduated":
       return "Every need was met. The settlement grew.";
     case "collapsed":
