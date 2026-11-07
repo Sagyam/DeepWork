@@ -121,6 +121,7 @@ export class City {
   /** Street props that drop out with distance (cull). */
   private chunks: { group: THREE.Group; centre: THREE.Vector3; far: number }[] = [];
   /** Trees round town, real near the camera and impostors further out. */
+  private hoodLabels: THREE.Sprite[] = [];
   private treeTiles: { real: THREE.Group; imp: THREE.Group | null; centre: THREE.Vector3 }[] = [];
   /** Something changed that a frame should show (idle). */
   private dirty = true;
@@ -734,7 +735,7 @@ export class City {
   // ---- static ground ------------------------------------------------------
 
   private buildBase(p: CityPlan) {
-    const key = `${p.blocks.map((b) => `${b.x},${b.z},${b.roads.join("")}`).join(";")}:${p.tier}:${p.emptyLots.map((l) => `${l.seed}${l.forSale ? "s" : ""}`).join(",")}:${p.parks.map((k) => (k.decorations ?? []).join("+")).join(";")}:${p.labels.map((l) => l.name).join(";")}`;
+    const key = `${p.blocks.map((b) => `${b.x},${b.z},${b.roads.join("")}`).join(";")}:${p.tier}:${p.emptyLots.map((l) => `${l.seed}${l.forSale ? "s" : ""}`).join(",")}:${p.parks.map((k) => (k.decorations ?? []).join("+")).join(";")}:${p.labels.map((l) => l.name).join(";")}:${p.hoods.map((h) => h.name).join(";")}`;
     if (key === this.baseKey) return;
     this.baseKey = key;
     this.scene.remove(this.base);
@@ -785,6 +786,7 @@ export class City {
     const bulb = mat(0xfff0d0, { emissive: 0xffd9a0, emissiveIntensity: 0, night: 2.2 });
     this.lampMats.push(bulb);
     const pw = PAVEMENT;
+    const signs = new Map(p.signs.map((s) => [`${s.x},${s.z}`, s]));
     for (const b of p.blocks) {
       const key = `${b.x},${b.z}`;
       const surf = chunk(key, b.x, b.z);
@@ -862,6 +864,8 @@ export class City {
       }
       for (const sx of [-1, 1]) if ((sx < 0 ? rw : re) > 1) treeAt(trees, b.x + sx * ex, b.z, 0.5, Math.floor(b.x * 13 + b.z * 7 + sx), KERB);
       this.streetFurniture(tiny, b, p.tier);
+      const sign = signs.get(key);
+      if (sign) streetSign(tiny, pole, b.x + BLOCK_X / 2 + pw - 0.5, b.z - BLOCK_Z / 2 + 1.5, sign.ew, sign.ns);
     }
     for (const k of p.parks) park(parts, k, pole, bulb);
     // Street names in the lane, read from the south and the east.
@@ -870,6 +874,14 @@ export class City {
       if (!l.alongX) g.rotateY(Math.PI / 2);
       parts.add(streetName(l.name), g, l.x, 0.075, l.z);
     }
+    // Neighbourhood names, high over their blocks; frame() fades them in
+    // as the camera pulls back.
+    this.hoodLabels = p.hoods.map((h) => {
+      const sp = hoodLabel(h.name);
+      sp.position.set(h.x, 45, h.z);
+      this.base.add(sp);
+      return sp;
+    });
     // Empty lots: rough grass with survey stakes, waiting to be built on.
     const stake = mat(0xc9a36a);
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
@@ -1551,6 +1563,13 @@ export class City {
       t.imp.visible = !near;
     }
     this.land.cull(eye);
+    // Neighbourhood names show when zoomed out far enough to see several.
+    const zoom = eye.distanceTo(this.controls.target);
+    const show = THREE.MathUtils.smoothstep(zoom, HOOD_NEAR, HOOD_FAR);
+    for (const l of this.hoodLabels) {
+      (l.material as THREE.SpriteMaterial).opacity = show;
+      l.visible = show > 0.01;
+    }
     this.fpsCount++;
     const now = performance.now();
     if (now - this.drawnAt < 1000) {
@@ -1610,6 +1629,86 @@ function streetName(name: string): THREE.MeshStandardMaterial {
   t.anisotropy = 8;
   m = new THREE.MeshStandardMaterial({ map: t, transparent: true, roughness: 0.7, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
   nameMats.set(name, m);
+  return m;
+}
+
+/** Camera distances over which neighbourhood names fade in. */
+const HOOD_NEAR = 200;
+const HOOD_FAR = 300;
+
+const hoodMats = new Map<string, THREE.SpriteMaterial>();
+
+/** A neighbourhood's name, as a map label: spaced capitals with a dark halo, the same size on screen at any distance. */
+function hoodLabel(name: string): THREE.Sprite {
+  const sp = new THREE.Sprite(hoodMat(name));
+  // Without size attenuation, scale is the size at one unit from the camera.
+  sp.scale.set(0.24, 0.03, 1);
+  sp.renderOrder = 10;
+  sp.visible = false;
+  return sp;
+}
+
+function hoodMat(name: string): THREE.SpriteMaterial {
+  let m = hoodMats.get(name);
+  if (m) return m;
+  const c = document.createElement("canvas");
+  c.width = 1024;
+  c.height = 128;
+  const g = c.getContext("2d")!;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "600 64px 'Space Grotesk Variable', 'Helvetica Neue', Arial, sans-serif";
+  const text = name.toUpperCase().split("").join(String.fromCharCode(8202));
+  g.lineJoin = "round";
+  g.lineWidth = 10;
+  g.strokeStyle = "rgba(15,23,41,0.75)";
+  g.strokeText(text, 512, 66, 1000);
+  g.fillStyle = "#fdf3e2";
+  g.fillText(text, 512, 66, 1000);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  m = new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false, depthWrite: false, sizeAttenuation: false, toneMapped: false, fog: false, opacity: 0 });
+  hoodMats.set(name, m);
+  return m;
+}
+
+/** A street-name sign: a post with two blades, the east-west street's along x above the north-south one's. */
+function streetSign(parts: Parts, pole: THREE.Material, x: number, z: number, ew: string, ns: string) {
+  parts.cyl(pole, 0.05, 0.05, 3.1, x, KERB, z);
+  const blade = new THREE.PlaneGeometry(1.7, 0.3);
+  for (const [name, y, ry] of [[ew, 2.95, 0], [ns, 2.6, Math.PI / 2]] as const) {
+    const m = signMat(name);
+    // Back to back, so each side reads the right way round.
+    parts.add(m, blade, x + Math.sin(ry) * 0.012, KERB + y, z + Math.cos(ry) * 0.012, 0, ry, 0);
+    parts.add(m, blade, x - Math.sin(ry) * 0.012, KERB + y, z - Math.cos(ry) * 0.012, 0, ry + Math.PI, 0);
+  }
+}
+
+const signMats = new Map<string, THREE.MeshStandardMaterial>();
+
+/** A street sign's face: white capitals on green, a white rule round the edge. */
+function signMat(name: string): THREE.MeshStandardMaterial {
+  let m = signMats.get(name);
+  if (m) return m;
+  const c = document.createElement("canvas");
+  c.width = 512;
+  c.height = 90;
+  const g = c.getContext("2d")!;
+  g.fillStyle = "#1f5a3d";
+  g.fillRect(0, 0, 512, 90);
+  g.strokeStyle = "#f4efe6";
+  g.lineWidth = 5;
+  g.strokeRect(7, 7, 498, 76);
+  g.fillStyle = "#f4efe6";
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 48px 'Helvetica Neue', Arial, sans-serif";
+  g.fillText(name.toUpperCase(), 256, 48, 470);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = 8;
+  m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.5 });
+  signMats.set(name, m);
   return m;
 }
 

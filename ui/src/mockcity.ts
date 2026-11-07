@@ -5,7 +5,7 @@
 // scenarios get their land free); the daemon is the truth. The layout is
 // the daemon's own (`layout.json`, kept current by a Rust test).
 import FIXTURE from "./layout.json";
-import type { Award, BlueprintInfo, Construction, GoalInfo, Layout, NeedInfo, Plot, SiteInfo, World, WorldEvent } from "./proto";
+import type { Award, BlueprintInfo, Construction, GoalInfo, Layout, NeedInfo, Plot, SetInfo, SiteInfo, World, WorldEvent } from "./proto";
 
 const LAYOUT = FIXTURE as Layout;
 const LAND: Record<string, number> = { village: 60, works: 80, civic: 100, main_street: 120, downtown: 250 };
@@ -144,6 +144,7 @@ export class MockCity {
   streetNames = new Map<number, string>();
   spots = new Map<string, string>();
   inventory = new Map<string, number>();
+  setsWon = new Set<string>();
   today = { day: -1, focus: 0, sessions: 0, longest: 0, paid: new Set<string>() };
   stakes = new Map<number, number>();
   recent: number[] = [];
@@ -228,6 +229,14 @@ export class MockCity {
     this.active = null;
     this.history.push({ ts, kind: "built", cause: "completed", session_id: sessionId, plots: [i], ruined: [] });
     this.award?.finished.push(i);
+    // A set its last lot finishes pays a box (the mock's roll is plain).
+    for (const set of this.sets()) {
+      if (!set.done || this.setsWon.has(set.id)) continue;
+      this.setsWon.add(set.id);
+      const item = ["repair_kit", "hired_help", "master_crew"][(sessionId + set.id.length) % 3];
+      this.inventory.set(item, (this.inventory.get(item) ?? 0) + 1);
+      this.award?.boxes?.push({ goal: "set", item, set: set.name });
+    }
     while (this.level < 4 && NEEDS.every((n, ni) => n.level !== this.level || this.nextLot(ni) === null)) {
       this.level++;
       this.history.push({ ts, kind: "graduated", cause: "completed", session_id: sessionId, plots: [], ruined: [] });
@@ -348,6 +357,21 @@ export class MockCity {
   private streetComplete(si: number): boolean {
     const on = LAYOUT.lots.flatMap((l, i) => (l.street === si ? [i] : []));
     return on.length > 0 && on.every((i) => this.built.has(i));
+  }
+
+  /** Collection sets, as the daemon's `Set`: streets, then neighbourhoods, with lots. */
+  private sets(): SetInfo[] {
+    const of = (test: (l: Layout["lots"][number]) => boolean) => LAYOUT.lots.flatMap((l, i) => (test(l) ? [i] : []));
+    const all = [
+      ...LAYOUT.streets.map((s, si) => ({ id: `street:${s.id}`, kind: "street" as const, name: this.streetNames.get(si) ?? s.name, lots: of((l) => l.street === si) })),
+      ...(LAYOUT.neighbourhoods ?? []).map((h) => ({ id: `hood:${h.id}`, kind: "neighbourhood" as const, name: h.name, lots: of((l) => h.blocks.includes(l.block)) })),
+    ];
+    return all
+      .filter((s) => s.lots.length > 0)
+      .map(({ lots, ...s }) => {
+        const built = lots.filter((i) => this.built.has(i)).length;
+        return { ...s, built, total: lots.length, done: built === lots.length };
+      });
   }
 
   renameStreet(street: string, name: string): string | null {
@@ -539,6 +563,7 @@ export class MockCity {
       inventory: [...this.inventory.entries()].filter(([, n]) => n > 0).map(([id, count]) => ({ id, name: ITEMS[id] ?? id, count, rare: id === "master_crew" })),
       goals: this.goals(now),
       boxes_to_rare: 5,
+      sets: this.sets(),
     };
   }
 
@@ -559,6 +584,6 @@ export class MockCity {
       const next = ROADS[this.roads[si] + 1];
       return { ...s, name: this.streetNames.get(si) ?? s.name, class: this.roads[si], upgrade_price: next && next[1] <= level ? next[0] : null, complete: this.streetComplete(si) };
     });
-    return { blocks, streets, lots };
+    return { blocks, streets, lots, neighbourhoods: LAYOUT.neighbourhoods };
   }
 }

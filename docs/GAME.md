@@ -66,7 +66,8 @@ appended, never reordered (`lot_ids_are_pinned`).
 `layout.rs` lays the plan out: blocks on a grid by district, named streets
 between them, and for each lot its slot, the street it fronts and its
 number (odd north, even south). The Hamlet strings along Main Street, the
-Town fills the far side, downtown grows south. Parks open by level.
+Town fills the far side, downtown grows south. Parks open by level. Lot
+blocks group into named neighbourhoods (`NEIGHBOURHOODS`).
 
 - **Land**: the first plot is free; every other one is bought, by hand
   (`BuyLand`). A site only starts on bought land; until then focus waits
@@ -98,6 +99,10 @@ holds a repair kit, hired help or, rarely, a master crew; the roll comes
 from the session id, so it can't be rerolled, and every `PITY`-th box
 without a rare one is rare. Help adds a share of a building's build time
 to the active site; the deed shows it apart from focus.
+
+**Sets**: every street with lots, and every neighbourhood, is a set.
+Building its last lot pays one box, once (`STREET_RARE_PCT`,
+`NEIGHBOURHOOD_RARE_PCT`); ruins and renames don't take it back.
 
 ## Penalties and repairs
 

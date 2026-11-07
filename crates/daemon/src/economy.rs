@@ -135,13 +135,18 @@ impl Goal {
     }
 
     /// Chance in a hundred that its box is rare (before the pity counter).
-    fn rare_pct(self) -> u64 {
+    pub fn rare_pct(self) -> u64 {
         match self {
             Goal::LongStretch => 15,
             _ => 8,
         }
     }
 }
+
+/// Chance in a hundred that the box for a finished set is rare: a street,
+/// or a whole neighbourhood (days of focus, so the better odds).
+pub const STREET_RARE_PCT: u64 = 15;
+pub const NEIGHBOURHOOD_RARE_PCT: u64 = 40;
 
 /// Sessions shorter than this don't count toward [`Goal::Sessions`].
 pub const GOAL_SESSION_SECS: u64 = 25 * 60;
@@ -190,10 +195,10 @@ impl Item {
     }
 }
 
-/// What a box holds, from a roll the ledger fixes (so no reroll) and the
-/// boxes since the last rare one.
-pub fn open_box(goal: Goal, roll: u64, since_rare: u32) -> Item {
-    if since_rare + 1 >= PITY || roll % 100 < goal.rare_pct() {
+/// What a box holds, from its odds of a rare item, a roll the ledger fixes
+/// (so no reroll) and the boxes since the last rare one.
+pub fn open_box(rare_pct: u64, roll: u64, since_rare: u32) -> Item {
+    if since_rare + 1 >= PITY || roll % 100 < rare_pct {
         return Item::MasterCrew;
     }
     // Repair kits and hired help, even.
@@ -228,10 +233,14 @@ mod tests {
 
     #[test]
     fn boxes_have_a_pity_counter() {
-        assert_eq!(open_box(Goal::DailyFocus, 50, PITY - 1), Item::MasterCrew);
-        assert_eq!(open_box(Goal::DailyFocus, 50, 0), Item::RepairKit);
-        assert_eq!(open_box(Goal::DailyFocus, 150, 0), Item::HiredHelp);
-        assert_eq!(open_box(Goal::LongStretch, 10, 0), Item::MasterCrew);
-        assert_eq!(open_box(Goal::DailyFocus, 10, 0), Item::RepairKit);
+        let daily = Goal::DailyFocus.rare_pct();
+        assert_eq!(open_box(daily, 50, PITY - 1), Item::MasterCrew);
+        assert_eq!(open_box(daily, 50, 0), Item::RepairKit);
+        assert_eq!(open_box(daily, 150, 0), Item::HiredHelp);
+        assert_eq!(
+            open_box(Goal::LongStretch.rare_pct(), 10, 0),
+            Item::MasterCrew
+        );
+        assert_eq!(open_box(daily, 10, 0), Item::RepairKit);
     }
 }

@@ -360,6 +360,9 @@ pub struct World {
     /// Boxes until one is sure to hold a rare item.
     #[serde(default)]
     pub boxes_to_rare: u32,
+    /// Streets and neighbourhoods with lots, as collection sets.
+    #[serde(default)]
+    pub sets: Vec<SetInfo>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -368,6 +371,8 @@ pub struct Layout {
     pub streets: Vec<StreetInfo>,
     /// Every lot of the plan, by index.
     pub lots: Vec<LotInfo>,
+    #[serde(default)]
+    pub neighbourhoods: Vec<NeighbourhoodInfo>,
 }
 
 /// A block of the plan's grid. Block (x, y) holds 4 x 2 lots; its front row
@@ -462,8 +467,36 @@ pub struct GoalInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BoxInfo {
+    /// The goal that won it, or `set` for a finished set.
     pub goal: String,
     pub item: String,
+    /// The finished set's name.
+    #[serde(default)]
+    pub set: Option<String>,
+}
+
+/// A collection set: every lot on a street, or in a neighbourhood. Building
+/// the last one wins a box, once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SetInfo {
+    /// `street:<id>` or `hood:<id>`.
+    pub id: String,
+    /// `street` or `neighbourhood`.
+    pub kind: String,
+    pub name: String,
+    pub built: u32,
+    pub total: u32,
+    /// Finished, and its box won.
+    pub done: bool,
+}
+
+/// A named group of lot blocks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NeighbourhoodInfo {
+    pub id: String,
+    pub name: String,
+    /// Indices into [`Layout::blocks`].
+    pub blocks: Vec<u32>,
 }
 
 impl World {

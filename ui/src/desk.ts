@@ -2,7 +2,7 @@
 // the blueprint shop, a building's deed and its hover tag. Text only; main.ts
 // wires the clicks to the daemon, which decides everything.
 import { TIERS, ago, escapeHtml, hm } from "./format";
-import { ROAD_CLASSES, type BlueprintInfo, type NeedInfo, type Plot, type SessionInfo, type SiteInfo, type World } from "./proto";
+import { ROAD_CLASSES, type BlueprintInfo, type NeedInfo, type Plot, type SessionInfo, type SetInfo, type SiteInfo, type World } from "./proto";
 
 const KIND_NAMES: Record<string, string> = {
   cottage: "Cottage", shop: "Shop", workshop: "Workshop", apartment: "Apartments", office: "Office", tower: "Tower",
@@ -124,11 +124,26 @@ function goalsHtml(w: World, active: SiteInfo | undefined): string {
       return `<li class="item${i.rare ? " rare" : ""}"><span>${escapeHtml(i.name)}${i.count > 1 ? ` ×${i.count}` : ""}</span>${use}</li>`;
     })
     .join("");
+  // The sets nearest to done: the last lot of one wins a box.
+  const near = (w.sets ?? [])
+    .filter((s) => !s.done && s.built > 0)
+    .sort((a, b) => a.total - a.built - (b.total - b.built))
+    .slice(0, 2);
   return `<div class="goals">
       <div class="desk-head"><p class="eyebrow">Today's goals</p>${rare}</div>
-      <ul class="goal-list">${goals}</ul>
+      <ul class="goal-list">${goals}${near.map(setRow).join("")}</ul>
       ${items ? `<ul class="items">${items}</ul>` : ""}
     </div>`;
+}
+
+/** A collection set as a goal row: built of total, a box at the end. */
+function setRow(s: SetInfo): string {
+  const pct = (s.built / Math.max(1, s.total)) * 100;
+  const tail = s.done ? "a box won" : `${s.built} / ${s.total} built`;
+  return `<li class="goal set${s.done ? " done" : ""}">
+      <div class="goal-head"><span>${s.done ? "✓ " : ""}Finish ${escapeHtml(s.name)}</span><span class="small muted num">${tail}</span></div>
+      <div class="bar thin"><div style="width:${pct.toFixed(1)}%"></div></div>
+    </li>`;
 }
 
 const DECO_NAMES: Record<string, string> = { trees: "Trees", benches: "Benches", fountain: "Fountain", statue: "Statue", bandstand: "Bandstand" };
@@ -177,11 +192,14 @@ export function townHtml(w: World, inSession: boolean): string {
       return `<h3>${escapeHtml(b.name ?? "Park")}</h3><ul class="town-list">${spots}</ul>`;
     })
     .join("");
+  // Every set begun: streets first, then neighbourhoods.
+  const sets = (w.sets ?? []).filter((s) => s.built > 0);
   const wealth = w.wealth ? `<p class="small muted">Prices are list price plus a tenth of the ${w.wealth} coins you held this morning.</p>` : "";
   return `${inSession ? `<p class="small muted">The town hall opens when the session ends.</p>` : ""}${wealth}
     <h3>Streets</h3><p class="small muted">Lanes are gravel. A street gets tarmac and lamps, a boulevard trees, an avenue edge lines.</p>
     <ul class="town-list">${streets || `<li class="small muted">No streets yet.</li>`}</ul>
-    ${parks ? `<h3 class="sep">Parks</h3>${parks}` : ""}`;
+    ${parks ? `<h3 class="sep">Parks</h3>${parks}` : ""}
+    ${sets.length ? `<h3 class="sep">Sets</h3><p class="small muted">Build every lot on a street, or in a neighbourhood, for a box.</p><ul class="goal-list">${sets.map(setRow).join("")}</ul>` : ""}`;
 }
 
 /** A blueprint's picture (its realistic model, drawn by the city), or null to use the outline. */

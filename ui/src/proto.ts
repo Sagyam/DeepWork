@@ -342,8 +342,30 @@ export interface Award {
 }
 
 export interface BoxInfo {
+  /** The goal that won it, or `set` for a finished set. */
   goal: string;
   item: string;
+  /** The finished set's name. */
+  set?: string | null;
+}
+
+/** A collection set: every lot on a street, or in a neighbourhood. The last one built wins a box, once. */
+export interface SetInfo {
+  /** `street:<id>` or `hood:<id>`. */
+  id: string;
+  kind: "street" | "neighbourhood";
+  name: string;
+  built: number;
+  total: number;
+  done: boolean;
+}
+
+/** A named group of lot blocks. */
+export interface NeighbourhoodInfo {
+  id: string;
+  name: string;
+  /** Indices into `Layout.blocks`. */
+  blocks: number[];
 }
 
 /** The master plan's ground. Block (x, y) holds 4 x 2 lots: slots 0-3 face north, 4-7 south. */
@@ -352,6 +374,7 @@ export interface Layout {
   streets: StreetInfo[];
   /** Every lot of the plan, by index. */
   lots: LotInfo[];
+  neighbourhoods?: NeighbourhoodInfo[];
 }
 
 export interface BlockInfo {
@@ -458,6 +481,8 @@ export interface World {
   inventory?: ItemInfo[];
   goals?: GoalInfo[];
   boxes_to_rare?: number;
+  /** Streets and neighbourhoods with lots, as collection sets. */
+  sets?: SetInfo[];
 }
 
 export const MAX_PAUSED = 3;
