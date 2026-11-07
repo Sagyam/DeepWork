@@ -1110,5 +1110,56 @@
       "price": 500,
       "for_sale": false
     }
+  ],
+  "neighbourhoods": [
+    {
+      "id": "millbrook",
+      "name": "Millbrook",
+      "blocks": [
+        0,
+        1
+      ]
+    },
+    {
+      "id": "old_town",
+      "name": "Old Town",
+      "blocks": [
+        2,
+        3
+      ]
+    },
+    {
+      "id": "church_hill",
+      "name": "Church Hill",
+      "blocks": [
+        6,
+        7
+      ]
+    },
+    {
+      "id": "canal",
+      "name": "The Canal Quarter",
+      "blocks": [
+        4,
+        5
+      ]
+    },
+    {
+      "id": "exchange",
+      "name": "The Exchange",
+      "blocks": [
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "id": "highgate",
+      "name": "Highgate",
+      "blocks": [
+        11,
+        12
+      ]
+    }
   ]
 }

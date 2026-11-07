@@ -130,6 +130,41 @@ pub const STREETS: &[Street] = &[
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Neighbourhood {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// Its lot blocks, `(x, y)`.
+    pub blocks: &'static [(i32, i32)],
+}
+
+/// Named groups of lot blocks. Each lot block is in exactly one; parks in
+/// none (they carry their own names). Finishing every lot in one is a set.
+pub const NEIGHBOURHOODS: &[Neighbourhood] = &[
+    hood("millbrook", "Millbrook", &[(-1, -1), (-1, 0)]),
+    hood("old_town", "Old Town", &[(0, -1), (0, 0)]),
+    hood("church_hill", "Church Hill", &[(1, -1), (1, 0)]),
+    hood("canal", "The Canal Quarter", &[(2, -1), (2, 0)]),
+    hood("exchange", "The Exchange", &[(-1, 1), (0, 1), (1, 1)]),
+    hood("highgate", "Highgate", &[(0, 2), (1, 2)]),
+];
+
+const fn hood(
+    id: &'static str,
+    name: &'static str,
+    blocks: &'static [(i32, i32)],
+) -> Neighbourhood {
+    Neighbourhood { id, name, blocks }
+}
+
+/// The neighbourhood a block is in, by index into [`NEIGHBOURHOODS`].
+pub fn neighbourhood_of(block: usize) -> Option<usize> {
+    let b = blocks()[block];
+    NEIGHBOURHOODS
+        .iter()
+        .position(|n| n.blocks.contains(&(b.x, b.y)))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ground {
     Lots(District),
     Park(ParkKind, &'static str),
@@ -255,6 +290,24 @@ mod tests {
                     a.x,
                     a.y
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn every_lot_block_is_in_one_neighbourhood() {
+        for (i, b) in blocks().iter().enumerate() {
+            let n = NEIGHBOURHOODS
+                .iter()
+                .filter(|n| n.blocks.contains(&(b.x, b.y)))
+                .count();
+            let lots = matches!(b.ground, Ground::Lots(_));
+            assert_eq!(n, usize::from(lots), "block {},{}", b.x, b.y);
+            assert_eq!(neighbourhood_of(i).is_some(), lots);
+        }
+        for n in NEIGHBOURHOODS {
+            for &(x, y) in n.blocks {
+                assert!(blocks().iter().any(|b| (b.x, b.y) == (x, y)), "{}", n.id);
             }
         }
     }

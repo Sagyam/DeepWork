@@ -21,8 +21,8 @@ this are in [DEVELOPMENT.md](DEVELOPMENT.md).
 | Where | What |
 |---|---|
 | HUD | City card (level, progress, condition), the start card (timer / stopwatch, ring dial, profile, stake, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
-| Mayor's desk (`desk.ts`) | Needs, buy plot, design pick, coins, paused sites, "What next?", today's goals and items |
-| Town hall | Street upgrades and renames, park decorations |
+| Mayor's desk (`desk.ts`) | Needs, buy plot, design pick, coins, paused sites, "What next?", today's goals, the two sets nearest done, items |
+| Town hall | Street upgrades and renames, park decorations, every set begun |
 | Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels as silhouettes |
 | Deed card | A building's memory, rename, paid repair or a repair kit; hover shows a tag. Picking tests lot rectangles, not meshes |
 | Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice |
@@ -107,7 +107,10 @@ Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 pieces, people). Water in the Hamlet and Town is the civic water tower.
 Streets draw by class per block side: gravel lanes; tarmac, centre lines,
 crossings and lamps from a street; trees from a boulevard; edge lines on
-an avenue. Unbought plots carry a FOR SALE board. Park spots draw the
+an avenue. Each block's north-east corner has a green sign naming its two
+streets. Neighbourhood names float over their blocks, fading in as the
+camera pulls back (`HOOD_NEAR`, `HOOD_FAR` in `scene.ts`). Unbought plots
+carry a FOR SALE board. Park spots draw the
 decorations bought for them (`SPOTS` in `models.ts`).
 
 Signs that carry a name (S1's fascia; the café, diner and works friezes;

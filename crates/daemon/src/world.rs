@@ -26,15 +26,15 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use deepwork_proto::{
     Award, BlockInfo, BlueprintInfo, BoxInfo, BuildPart, Construction, DecorationInfo, GoalInfo,
-    ItemInfo, Layout, LotInfo, Memory, NeedInfo, Plot, Scar, SiteInfo, SpotInfo, StreetInfo, World,
-    WorldCause, WorldEvent, WorldEventKind,
+    ItemInfo, Layout, LotInfo, Memory, NeedInfo, NeighbourhoodInfo, Plot, Scar, SetInfo, SiteInfo,
+    SpotInfo, StreetInfo, World, WorldCause, WorldEvent, WorldEventKind,
 };
 use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
 use crate::economy::{self, Goal, Item};
-use crate::layout::{self, Axis, Ground, STREETS};
+use crate::layout::{self, Axis, Ground, NEIGHBOURHOODS, STREETS};
 use crate::plan::{self, BLUEPRINTS, Blueprint, NEEDS, Need};
 const COINS_PER_HOUR: u64 = 100;
 /// Coin rate per minute of a session, in tenths, by how far into the session
@@ -245,6 +245,60 @@ pub struct City {
     inventory: BTreeMap<Item, u32>,
     /// Boxes opened since the last rare item.
     since_rare: u32,
+    /// Sets whose box is won.
+    sets_won: BTreeSet<Set>,
+}
+
+/// A collection set: the plan's lots on one street, or in one neighbourhood.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Set {
+    Street(usize),
+    Hood(usize),
+}
+
+impl Set {
+    /// Every set with lots: streets, then neighbourhoods.
+    fn all() -> impl Iterator<Item = Set> {
+        (0..STREETS.len())
+            .map(Set::Street)
+            .chain((0..NEIGHBOURHOODS.len()).map(Set::Hood))
+            .filter(|s| s.lots().next().is_some())
+    }
+
+    fn lots(self) -> impl Iterator<Item = usize> {
+        plan::lots()
+            .iter()
+            .map(|l| l.index as usize)
+            .filter(move |&i| {
+                let p = plan::lots()[i].place;
+                match self {
+                    Set::Street(si) => p.street == si,
+                    Set::Hood(h) => layout::neighbourhood_of(p.block) == Some(h),
+                }
+            })
+    }
+
+    fn id(self) -> String {
+        match self {
+            Set::Street(si) => format!("street:{}", STREETS[si].id),
+            Set::Hood(h) => format!("hood:{}", NEIGHBOURHOODS[h].id),
+        }
+    }
+
+    fn rare_pct(self) -> u64 {
+        match self {
+            Set::Street(_) => economy::STREET_RARE_PCT,
+            Set::Hood(_) => economy::NEIGHBOURHOOD_RARE_PCT,
+        }
+    }
+
+    /// Mixed into its box's roll, so two sets finished together differ.
+    fn salt(self) -> u64 {
+        match self {
+            Set::Street(si) => si as u64 + 1,
+            Set::Hood(h) => h as u64 + 1001,
+        }
+    }
 }
 
 /// Progress on the day's goals.
@@ -303,6 +357,7 @@ impl Default for City {
             today: Today::default(),
             inventory: BTreeMap::new(),
             since_rare: 0,
+            sets_won: BTreeSet::new(),
         }
     }
 }
@@ -590,11 +645,54 @@ impl City {
 
     /// Every planned lot on the street is built.
     fn street_complete(&self, si: usize) -> bool {
-        let mut on = plan::lots()
-            .iter()
-            .filter(|l| l.place.street == si)
-            .peekable();
-        on.peek().is_some() && on.all(|l| self.finished(l.index as usize))
+        self.set_complete(Set::Street(si))
+    }
+
+    /// The set has lots, and every one is built.
+    fn set_complete(&self, set: Set) -> bool {
+        let mut lots = set.lots().peekable();
+        lots.peek().is_some() && lots.all(|i| self.finished(i))
+    }
+
+    fn set_name(&self, set: Set) -> String {
+        match set {
+            Set::Street(si) => self.street_name(si).to_string(),
+            Set::Hood(h) => NEIGHBOURHOODS[h].name.to_string(),
+        }
+    }
+
+    /// Opens the box of every set lot `i` just finished. Damage later
+    /// doesn't take a set back: it is won once.
+    fn sets_finished(&mut self, i: usize, ts: i64) {
+        let p = plan::lots()[i].place;
+        let mine = [
+            Some(Set::Street(p.street)),
+            layout::neighbourhood_of(p.block).map(Set::Hood),
+        ];
+        for set in mine.into_iter().flatten() {
+            if self.sets_won.contains(&set) || !self.set_complete(set) {
+                continue;
+            }
+            self.sets_won.insert(set);
+            let roll = mix((ts as u64).rotate_left(29) ^ set.salt().wrapping_mul(0x9e37_79b9));
+            let item = self.open_box(set.rare_pct(), roll);
+            let won = BoxInfo {
+                goal: "set".into(),
+                item: item.id().into(),
+                set: Some(self.set_name(set)),
+            };
+            if let Some(a) = self.award.as_mut() {
+                a.boxes.push(won);
+            }
+        }
+    }
+
+    /// Opens a box into the inventory.
+    fn open_box(&mut self, rare_pct: u64, roll: u64) -> Item {
+        let item = economy::open_box(rare_pct, roll, self.since_rare);
+        self.since_rare = if item.rare() { 0 } else { self.since_rare + 1 };
+        *self.inventory.entry(item).or_default() += 1;
+        item
     }
 
     pub fn street_name(&self, si: usize) -> &str {
@@ -996,6 +1094,7 @@ impl City {
         if let Some(a) = self.award.as_mut() {
             a.finished.push(i as u32);
         }
+        self.sets_finished(i, ts);
         while (self.level as usize) < plan::LEVELS.len()
             && NEEDS
                 .iter()
@@ -1201,12 +1300,11 @@ impl City {
             }
             self.today.paid.insert(goal);
             let roll = mix((session_id as u64).rotate_left(23) ^ ((goal as u64 + 1) * 0x9e37_79b9));
-            let item = economy::open_box(goal, roll, self.since_rare);
-            self.since_rare = if item.rare() { 0 } else { self.since_rare + 1 };
-            *self.inventory.entry(item).or_default() += 1;
+            let item = self.open_box(goal.rare_pct(), roll);
             award.boxes.push(BoxInfo {
                 goal: goal.id().into(),
                 item: item.id().into(),
+                set: None,
             });
         }
     }
@@ -1549,6 +1647,20 @@ impl City {
                 })
                 .collect(),
             boxes_to_rare: economy::PITY.saturating_sub(self.since_rare),
+            sets: Set::all()
+                .map(|set| SetInfo {
+                    id: set.id(),
+                    kind: match set {
+                        Set::Street(_) => "street",
+                        Set::Hood(_) => "neighbourhood",
+                    }
+                    .into(),
+                    name: self.set_name(set),
+                    built: set.lots().filter(|&i| self.finished(i)).count() as u32,
+                    total: set.lots().count() as u32,
+                    done: self.sets_won.contains(&set),
+                })
+                .collect(),
         }
     }
 
@@ -1628,10 +1740,23 @@ impl City {
                 }
             })
             .collect();
+        let neighbourhoods = NEIGHBOURHOODS
+            .iter()
+            .enumerate()
+            .map(|(h, n)| NeighbourhoodInfo {
+                id: n.id.into(),
+                name: n.name.into(),
+                blocks: (0..layout::blocks().len())
+                    .filter(|&b| layout::neighbourhood_of(b) == Some(h))
+                    .map(|b| b as u32)
+                    .collect(),
+            })
+            .collect();
         Layout {
             blocks,
             streets,
             lots,
+            neighbourhoods,
         }
     }
 }
@@ -2449,6 +2574,50 @@ mod tests {
         assert_eq!(w.plots[0].address, "9 High Street");
         let main = w.layout.streets.iter().find(|s| s.id == "main").unwrap();
         assert!(main.complete && main.name == "High Street");
+    }
+
+    #[test]
+    fn a_finished_set_pays_one_box() {
+        // Each day's award: the set boxes it won.
+        let mut won = Vec::new();
+        for d in 1..=20 {
+            let w = world(&daily(d, 180), d * DAY + 10);
+            let award = w.last_award.unwrap();
+            won.extend(award.boxes.into_iter().filter(|b| b.goal == "set"));
+        }
+        let w = world(&daily(20, 180), 21 * DAY);
+        let finished: Vec<&SetInfo> = w.sets.iter().filter(|s| s.done).collect();
+        assert!(finished.iter().any(|s| s.id == "street:main"));
+        assert!(finished.iter().any(|s| s.id == "hood:millbrook"));
+        assert_eq!(won.len(), finished.len(), "one box per finished set");
+        for s in &w.sets {
+            assert_eq!(s.done, s.built == s.total, "{}", s.id);
+            assert!(s.total > 0);
+        }
+        let mut names: Vec<_> = won.iter().map(|b| b.set.clone().unwrap()).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), won.len(), "no set pays twice");
+        // Renaming a finished street doesn't pay it again.
+        let mut facts = daily(20, 180);
+        facts.push(mayor(
+            21 * DAY,
+            FactKind::StreetRenamed {
+                street: "main".into(),
+                name: "High Street".into(),
+            },
+        ));
+        facts.push(done(22 * DAY, 22, 180));
+        let w = world(&facts, 22 * DAY + 10);
+        let main = w.sets.iter().find(|s| s.id == "street:main").unwrap();
+        assert!(main.done && main.name == "High Street");
+        assert!(
+            !w.last_award
+                .unwrap()
+                .boxes
+                .iter()
+                .any(|b| b.set.as_deref() == Some("High Street"))
+        );
     }
 
     #[test]

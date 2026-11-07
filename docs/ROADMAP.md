@@ -49,6 +49,8 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Progression: `deepwork world` shows the existing city rebuilt on the
       plan; `deepwork build <need>` takes over.
 - [ ] Names: a new building gets a name from its pile, and its sign shows it.
+- [ ] Sets: finishing a street's last lot shows its box in the award and
+      the item in the desk.
 - [ ] Model pack: `deepwork-ui` from the next release shows the download
       line, then the realistic city.
 - [ ] Install on a real Debian / Ubuntu and Fedora machine and repeat.
@@ -78,8 +80,6 @@ Check each against the rule in [GAME.md](GAME.md#the-one-rule).
 
 ### Streets
 
-- **Neighbourhood names** ("Millbrook", "the Canal Quarter") per block
-  group, as labels when zoomed out; street signs at corners.
 - **Junctions and structures**: signals only where busy streets meet,
   stop signs on lanes, a roundabout at district centres, a flyover where
   the highway meets downtown, an underpass under the river road.
@@ -98,8 +98,6 @@ Check each against the rule in [GAME.md](GAME.md#the-one-rule).
   and box odds are first guesses.
 - **Seasons and quests**: a monthly track advanced by focused hours;
   quests that train deep work. Seasonal items return in later years.
-- **Collection sets**: "Main Street: 4 of 5 shops" unlocks a plaza or
-  lights. A finished street is a natural set.
 - **Residents**: named families in the houses; thank-you letters naming
   their street; families leave long-unrepaired homes and come back.
 - **On hold**: endowed progress (sites starting part built); it breaks

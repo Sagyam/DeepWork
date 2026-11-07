@@ -283,4 +283,16 @@ group("the master plan's layout", () => {
     const bought = plan(world([plot(0, 0)], { layout: laid([0, 1]) }));
     expect(bought.emptyLots.filter((l) => l.forSale)).toHaveLength(2);
   });
+
+  test("signs name the streets at each block's corner; neighbourhoods label their blocks shown", () => {
+    const L = laid([0]);
+    const p = plan(world([plot(0, 0)], { layout: L }));
+    const b = L.blocks[L.lots[0].block];
+    const sign = p.signs.find((s) => s.x === b.x * PITCH_X && s.z === b.y * PITCH_Z)!;
+    expect(sign.ew).toBe(L.streets.find((s) => s.axis === "ew" && s.line === b.y)!.name);
+    expect(sign.ns).toBe(L.streets.find((s) => s.axis === "ns" && s.line === b.x + 1)!.name);
+    expect(p.signs).toHaveLength(p.blocks.length);
+    // Only the first block's neighbourhood is shown, centred on it.
+    expect(p.hoods).toEqual([{ name: "Millbrook", x: b.x * PITCH_X, z: b.y * PITCH_Z }]);
+  });
 });
