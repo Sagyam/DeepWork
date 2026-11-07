@@ -63,7 +63,6 @@ with a root shell open in another terminal for the PAM checks.
       merged `Parts`.
 - [ ] Shrink the pack further: the AO bakes are ~90 MB of it, one channel
       stored as BC7; BC4 (RGTC) would halve them.
-- [ ] Retune lighting: it is still tuned for the flat kit.
 
 ## Packaging
 

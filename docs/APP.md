@@ -164,6 +164,9 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
   "nothing to be proud of, nothing to lose". Visuals must make loss hurt.
 - **Realistic over low-poly**; the kit stays only as a fallback.
 - American and European styles mixed; real-world sizes per model.
+- **Daylight from a warm sun and a sky hemisphere**, not a flat ambient: an
+  ambient lights every face alike and flattened the models (`light()` in
+  `scene.ts`). Late in the day the sun turns orange and the shade lilac.
 - Landmarks include civic buildings, squares, parks and monuments on half
   or whole blocks; the master plan reserves their ground.
 - 30 fps for an end-game city on a weak iGPU is acceptable.

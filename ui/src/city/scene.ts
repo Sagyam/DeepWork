@@ -49,11 +49,18 @@ const SUN_STEP = 0.0125;
 /**
  * ibl: the neutral ambient light that stands in for the environment light
  * rough materials lost, per unit of environment intensity. Unlike the town's
- * faint sky, the room environment is most of the city's fill light (night
- * included); 6.5 matched the old frames' mean brightness by day and by night
- * (scripts/bench-app.ts with LUMA=1).
+ * faint sky, the room environment is most of the city's fill light by night;
+ * 6.5 matched the old frames' mean brightness (scripts/bench-app.ts with
+ * LUMA=1). By day most of it moves to the hemisphere light (DAY_FILL).
  */
 const FILL = 6.5;
+/**
+ * light: share of FILL kept in full day. A flat ambient lights every face
+ * alike, so it flattened the realistic models and their shadows; the
+ * hemisphere light (sky above, warm ground bounce below) gives roofs, sunny
+ * walls and shade their own values for the same cost.
+ */
+const DAY_FILL = 0.45;
 
 /** clamp: caps brightness before the bloom (see the constructor). */
 const CLAMP = {
@@ -120,7 +127,7 @@ export class City {
   private bench: Bench | null = null;
   private stars: THREE.Points;
   private sunLight = new THREE.DirectionalLight(0xffffff, 3);
-  private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x4a5a3a, 1);
+  private hemi = new THREE.HemisphereLight(0xbcd4ff, 0x8a7a60, 1);
   private fill = new THREE.AmbientLight(0xffffff, 0);
   private land = new Land();
   private fx = new Fx();
@@ -1012,10 +1019,11 @@ export class City {
         cam.y += 4;
       }
     }
-    // Haze that softens the hills and fades the mountains, without hiding them.
+    // Haze that sets the city off from the woods behind it and fades the
+    // mountains, without hiding them.
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = Math.max(650, dist * 3.2);
-    fog.far = Math.max(5200, dist * 14);
+    fog.near = Math.max(300, dist * 1.5);
+    fog.far = Math.max(3000, dist * 11);
   }
 
   // ---- light ----------------------------------------------------------------
@@ -1035,14 +1043,17 @@ export class City {
       this.shadowDir = dir.clone();
       this.shadowsDirty();
     }
-    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 3.2, d.day);
-    this.sunLight.color.setHex(d.day > 0.02 ? 0xffffff : 0x9fb4ff).lerp(new THREE.Color(0xffa860), d.golden * 0.7);
-    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 1.1, d.day);
-    this.hemi.color.setHex(0xbcd4ff).lerp(new THREE.Color(0x2a3560), d.night);
+    // Warm sun against cool sky light; late in the day the sun turns orange
+    // and the shade lilac, so the hour reads at a glance.
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day);
+    this.sunLight.color.setHex(d.day > 0.02 ? 0xfff2e0 : 0x9fb4ff).lerp(new THREE.Color(0xff8a3a), d.golden);
+    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day);
+    this.hemi.color.setHex(0xb0c8ff).lerp(new THREE.Color(0x2a3560), d.night).lerp(new THREE.Color(0x9088c0), d.golden * 0.5);
+    this.hemi.groundColor.setHex(0x8a7a60).lerp(new THREE.Color(0x101418), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
-    this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity;
+    this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity * THREE.MathUtils.lerp(1, DAY_FILL, d.day);
     for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
-    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.6, d.day);
+    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15;
     (this.stars.material as THREE.PointsMaterial).opacity = d.night;
     const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
