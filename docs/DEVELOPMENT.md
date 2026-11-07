@@ -37,10 +37,13 @@ bunx tauri build --no-bundle   # binary in target/release/deepwork-ui
 
 **Mock scenarios** (`?mock=`): `empty`, `hamlet`, `city`, `metropolis`,
 `session`, `stopwatch`, `surrender`, `ruins`, `desk`, `nearmiss`,
-`levelup`, `inverted`. `&hour=16` fixes the time of day;
+`levelup`, `inverted`. `&hour=16` fixes the time of day, `&weather=rain`
+(or `clear`, `haze`, `overcast`) the weather;
 `&quality=low|medium|high` and `&taps=1|4|5` override the quality preset and
 shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight. In the console,
 `city.demo("collapse" | "build" | "damage" | "graduate")` plays a transition.
+The mock lays the city out from `ui/src/layout.json`, the daemon's layout;
+`UPDATE_FIXTURES=1 cargo test` rewrites it when `layout.rs` changes.
 
 ### Models
 
