@@ -22,19 +22,20 @@
 //! until repairs bring it back. Every completed session repairs damage, most
 //! damaged first; streaks double the repairs.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use deepwork_proto::{
-    Award, BlueprintInfo, BuildPart, Construction, Memory, NeedInfo, Plot, Scar, SiteInfo, World,
+    Award, BlockInfo, BlueprintInfo, BoxInfo, BuildPart, Construction, DecorationInfo, GoalInfo,
+    ItemInfo, Layout, LotInfo, Memory, NeedInfo, Plot, Scar, SiteInfo, SpotInfo, StreetInfo, World,
     WorldCause, WorldEvent, WorldEventKind,
 };
 use jiff::Timestamp;
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 
+use crate::economy::{self, Goal, Item};
+use crate::layout::{self, Axis, Ground, STREETS};
 use crate::plan::{self, BLUEPRINTS, Blueprint, NEEDS, Need};
-
-pub const DISTRICT_SIZE: u32 = 8;
 const COINS_PER_HOUR: u64 = 100;
 /// Coin rate per minute of a session, in tenths, by how far into the session
 /// the minute is: depth pays, but a stopwatch left running does not.
@@ -93,6 +94,27 @@ pub enum FactKind {
     Renamed {
         lot: String,
         name: String,
+    },
+    LandBought {
+        lot: String,
+    },
+    RepairBought {
+        lot: String,
+    },
+    StreetUpgraded {
+        street: String,
+    },
+    Decorated {
+        spot: String,
+        decoration: String,
+    },
+    /// Coins bet on the fact's session finishing.
+    Staked {
+        coins: u64,
+    },
+    ItemUsed {
+        item: String,
+        lot: Option<String>,
     },
 }
 
@@ -200,6 +222,43 @@ pub struct City {
     finished_count: u32,
     history: Vec<WorldEvent>,
     award: Option<Award>,
+    /// Land bought, by lot. The first plot comes free.
+    land: Vec<bool>,
+    /// Road class by street (`STREETS`).
+    roads: Vec<u32>,
+    /// Decorations by park spot.
+    spots: BTreeMap<String, &'static str>,
+    /// The balance at the start of `wealth_day`, which prices rise with.
+    wealth: u64,
+    wealth_day: Option<Date>,
+    /// Lengths of the last completed sessions, oldest first.
+    recent: VecDeque<u64>,
+    /// Coins at stake, by session.
+    stakes: BTreeMap<i64, u64>,
+    today: Today,
+    inventory: BTreeMap<Item, u32>,
+    /// Boxes opened since the last rare item.
+    since_rare: u32,
+}
+
+/// Progress on the day's goals.
+#[derive(Debug, Clone, Default)]
+struct Today {
+    day: Option<Date>,
+    focus: u64,
+    sessions: u64,
+    longest: u64,
+    paid: BTreeSet<Goal>,
+}
+
+impl Today {
+    fn progress(&self, goal: Goal) -> u64 {
+        match goal {
+            Goal::DailyFocus => self.focus,
+            Goal::LongStretch => self.longest,
+            Goal::Sessions => self.sessions,
+        }
+    }
 }
 
 impl Default for City {
@@ -223,6 +282,20 @@ impl Default for City {
             finished_count: 0,
             history: Vec::new(),
             award: None,
+            land: {
+                let mut land = vec![false; plan::lots().len()];
+                land[0] = true;
+                land
+            },
+            roads: vec![0; STREETS.len()],
+            spots: BTreeMap::new(),
+            wealth: 0,
+            wealth_day: None,
+            recent: VecDeque::new(),
+            stakes: BTreeMap::new(),
+            today: Today::default(),
+            inventory: BTreeMap::new(),
+            since_rare: 0,
         }
     }
 }
@@ -242,19 +315,59 @@ fn need_of(lot: usize) -> &'static Need {
     &NEEDS[plan::lots()[lot].need]
 }
 
+/// Where a lot stands on the ground, in lot widths, roads included.
+fn ground_pos(lot: usize) -> (i32, i32) {
+    let p = plan::lots()[lot].place;
+    let b = layout::blocks()[p.block];
+    (b.x * 5 + (p.slot % 4) as i32, b.y * 3 + (p.slot / 4) as i32)
+}
+
 impl City {
     /// Folds `facts` (in any order).
     pub fn fold(facts: &[Fact], tz: &TimeZone) -> Self {
+        Self::fold_from(City::default(), facts, tz)
+    }
+
+    fn fold_from(mut c: City, facts: &[Fact], tz: &TimeZone) -> Self {
         let mut facts = facts.to_vec();
         facts.sort_unstable();
-        let mut c = City::default();
         for f in &facts {
             c.apply(f, tz);
         }
         c
     }
 
+    /// A city whose land is all bought, for tests of everything else.
+    #[cfg(test)]
+    fn fold_landed(facts: &[Fact], tz: &TimeZone) -> Self {
+        let mut c = City::default();
+        c.land.fill(true);
+        Self::fold_from(c, facts, tz)
+    }
+
+    /// Folds `facts`, with prices as of `now`.
+    pub fn fold_at(facts: &[Fact], now: i64, tz: &TimeZone) -> Self {
+        let mut c = Self::fold(facts, tz);
+        c.roll_day(now, tz);
+        c
+    }
+
+    /// On a new local day, prices start from the balance as it stands.
+    fn roll_day(&mut self, ts: i64, tz: &TimeZone) {
+        let day = day_of(ts, tz);
+        if self.wealth_day != Some(day) {
+            self.wealth = self.balance();
+            self.wealth_day = Some(day);
+        }
+    }
+
+    /// A list price as it stands today.
+    fn cost(&self, list: u64) -> u64 {
+        economy::price(list, self.wealth)
+    }
+
     fn apply(&mut self, f: &Fact, tz: &TimeZone) {
+        self.roll_day(f.ts, tz);
         match (&f.kind, f.session_id) {
             (FactKind::Completed { secs }, Some(id)) => self.completed(f.ts, id, *secs, tz),
             (FactKind::Surrendered { .. }, Some(id)) => self.surrendered(f.ts, id),
@@ -267,7 +380,7 @@ impl City {
                 if let Ok(b) = self.check_buy(blueprint) {
                     self.manual = true;
                     self.owned.insert(b.id);
-                    self.coins_spent += b.price;
+                    self.coins_spent += self.cost(b.price);
                 }
             }
             (FactKind::Chose { need, blueprint }, _) => {
@@ -287,6 +400,284 @@ impl City {
                     self.lots[i].name = name;
                 }
             }
+            (FactKind::LandBought { lot }, _) => {
+                if let Ok((i, price)) = self.check_land(lot) {
+                    self.land[i] = true;
+                    self.coins_spent += price;
+                    // While the plan builds itself, waiting focus goes in now.
+                    if !self.manual && self.active.is_none() {
+                        for part in std::mem::take(&mut self.idle) {
+                            self.pour(part, f.ts);
+                        }
+                    }
+                }
+            }
+            (FactKind::RepairBought { lot }, _) => {
+                if let Ok((i, price)) = self.check_repair(lot) {
+                    self.coins_spent += price;
+                    self.fix(i, f.ts);
+                }
+            }
+            (FactKind::StreetUpgraded { street }, _) => {
+                if let Ok((si, price)) = self.check_upgrade(street) {
+                    self.coins_spent += price;
+                    self.roads[si] += 1;
+                }
+            }
+            (FactKind::Decorated { spot, decoration }, _) => {
+                if let Ok((d, price)) = self.check_decorate(spot, decoration) {
+                    self.coins_spent += price;
+                    self.spots.insert(spot.clone(), d.id);
+                }
+            }
+            (FactKind::Staked { coins }, Some(id)) => {
+                if *coins > 0 && *coins <= self.stake_max() {
+                    self.coins_spent += coins;
+                    self.stakes.insert(id, *coins);
+                }
+            }
+            (FactKind::Staked { .. }, None) => {}
+            (FactKind::ItemUsed { item, lot }, _) => {
+                if let Ok((item, i)) = self.check_use(item, lot.as_deref()) {
+                    self.use_item(item, i, f.ts);
+                }
+            }
+        }
+    }
+
+    pub fn check_land(&self, id: &str) -> Result<(usize, u64), String> {
+        let lot = plan::lot_by_id(id).ok_or_else(|| format!("no lot {id:?}"))?;
+        let i = lot.index as usize;
+        if self.land[i] {
+            return Err(format!("the plot at {} is already yours", lot.address));
+        }
+        let need = need_of(i);
+        if need.level > self.level {
+            return Err(format!(
+                "the plot at {} is for sale from the {}",
+                lot.address,
+                plan::LEVELS[need.level as usize].to_lowercase()
+            ));
+        }
+        let price = self.land_cost(i);
+        self.afford(&format!("the plot at {}", lot.address), price)?;
+        Ok((i, price))
+    }
+
+    fn land_cost(&self, i: usize) -> u64 {
+        let need = need_of(i);
+        self.cost(economy::land_price(need.district, need.level))
+    }
+
+    fn afford(&self, what: &str, price: u64) -> Result<(), String> {
+        if self.balance() < price {
+            return Err(format!(
+                "{what} costs {price} coins; you have {}",
+                self.balance()
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn check_repair(&self, id: &str) -> Result<(usize, u64), String> {
+        let i = self.damaged(id)?;
+        let price = self.repair_cost(i);
+        self.afford(&format!("repairing {}", self.name(i)), price)?;
+        Ok((i, price))
+    }
+
+    fn damaged(&self, id: &str) -> Result<usize, String> {
+        let lot = plan::lot_by_id(id).ok_or_else(|| format!("no lot {id:?}"))?;
+        let i = lot.index as usize;
+        if !self.finished(i) {
+            return Err(format!("{} is not built yet", self.name(i)));
+        }
+        if self.lots[i].damage == 0 {
+            return Err(format!("{} needs no repair", self.name(i)));
+        }
+        Ok(i)
+    }
+
+    fn repair_cost(&self, i: usize) -> u64 {
+        self.cost(economy::REPAIR_PER_DAMAGE * u64::from(self.lots[i].damage))
+    }
+
+    /// Repairs a building fully, by the mayor's hand.
+    fn fix(&mut self, i: usize, ts: i64) {
+        let lot = &mut self.lots[i];
+        lot.damage = 0;
+        lot.memory.scars.push(Scar {
+            ts,
+            cause: WorldCause::Mayor,
+            damage: 0,
+            repaired: true,
+        });
+        self.record(
+            ts,
+            (WorldEventKind::Repaired, WorldCause::Mayor),
+            None,
+            vec![i as u32],
+            vec![],
+        );
+    }
+
+    /// Whether a block is part of the town: land in it bought, or an open park.
+    fn block_open(&self, b: usize) -> bool {
+        match layout::blocks()[b].ground {
+            Ground::Lots(_) => plan::lots()
+                .iter()
+                .any(|l| l.place.block == b && self.land[l.index as usize]),
+            Ground::Park(..) => layout::blocks()[b].level <= self.level,
+        }
+    }
+
+    /// The street's next class: its list price and the level it needs.
+    pub fn check_upgrade(&self, id: &str) -> Result<(usize, u64), String> {
+        let si = STREETS
+            .iter()
+            .position(|s| s.id == id)
+            .ok_or_else(|| format!("no street {id:?}"))?;
+        let street = &STREETS[si];
+        let next = self.roads[si] + 1;
+        let (list, level) = economy::road_upgrade(next)
+            .ok_or_else(|| format!("{} is already an avenue", street.name))?;
+        if level > self.level {
+            return Err(format!(
+                "{} can become a {} from the {}",
+                street.name,
+                economy::ROAD_CLASSES[next as usize],
+                plan::LEVELS[level as usize].to_lowercase()
+            ));
+        }
+        let borders = layout::blocks().iter().enumerate().any(|(b, block)| {
+            let (line, along) = match street.axis {
+                Axis::EastWest => ([block.y, block.y + 1], block.x),
+                Axis::NorthSouth => ([block.x, block.x + 1], block.y),
+            };
+            line.contains(&street.line)
+                && (street.from..=street.to).contains(&along)
+                && self.block_open(b)
+        });
+        if !borders {
+            return Err(format!("nobody lives on {} yet", street.name));
+        }
+        let price = self.cost(list);
+        self.afford(
+            &format!(
+                "making {} a {}",
+                street.name,
+                economy::ROAD_CLASSES[next as usize]
+            ),
+            price,
+        )?;
+        Ok((si, price))
+    }
+
+    /// A spot is `<block>:<n>`: the park block's index and the spot on it.
+    pub fn check_decorate(
+        &self,
+        spot: &str,
+        id: &str,
+    ) -> Result<(&'static economy::Decoration, u64), String> {
+        let (b, _) = spot
+            .split_once(':')
+            .and_then(|(b, n)| Some((b.parse::<usize>().ok()?, n.parse::<u32>().ok()?)))
+            .filter(|&(b, n)| b < layout::blocks().len() && n < economy::PARK_SPOTS)
+            .ok_or_else(|| format!("no spot {spot:?}"))?;
+        let Ground::Park(_, name) = layout::blocks()[b].ground else {
+            return Err(format!("no spot {spot:?}"));
+        };
+        if !self.block_open(b) {
+            return Err(format!("{name} is not laid out yet"));
+        }
+        let d = economy::decoration(id).ok_or_else(|| format!("no decoration {id:?}"))?;
+        if d.level > self.level {
+            return Err(format!(
+                "a {} is for sale from the {}",
+                d.name.to_lowercase(),
+                plan::LEVELS[d.level as usize].to_lowercase()
+            ));
+        }
+        if self.spots.get(spot) == Some(&d.id) {
+            return Err(format!("that spot already has a {}", d.name.to_lowercase()));
+        }
+        let price = self.cost(d.price);
+        self.afford(&format!("a {}", d.name.to_lowercase()), price)?;
+        Ok((d, price))
+    }
+
+    /// The most a session can have at stake now.
+    fn stake_max(&self) -> u64 {
+        economy::STAKE_MAX.min(self.balance())
+    }
+
+    /// The length a staked countdown must reach.
+    pub fn stake_target(&self) -> u64 {
+        let recent: Vec<u64> = self.recent.iter().copied().collect();
+        economy::stake_target(&recent)
+    }
+
+    /// Whether a session of `countdown_secs` (`None`: a stopwatch) may take
+    /// a stake of `coins`.
+    pub fn check_stake(&self, coins: u64, countdown_secs: Option<u64>) -> Result<(), String> {
+        let target = self.stake_target();
+        match countdown_secs {
+            Some(secs) if secs >= target => {}
+            _ => {
+                return Err(format!(
+                    "a stake needs a countdown of at least {} minutes, your usual length",
+                    target.div_ceil(60)
+                ));
+            }
+        }
+        if coins == 0 {
+            return Err("stake at least one coin".into());
+        }
+        if coins > self.stake_max() {
+            return Err(format!(
+                "the most you can stake now is {} coins",
+                self.stake_max()
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn check_use(&self, id: &str, lot: Option<&str>) -> Result<(Item, usize), String> {
+        let item = Item::parse(id).ok_or_else(|| format!("no item {id:?}"))?;
+        if self.inventory.get(&item).copied().unwrap_or(0) == 0 {
+            return Err(format!("you have no {}", item.name().to_lowercase()));
+        }
+        let i = match item {
+            Item::RepairKit => self.damaged(lot.ok_or("say which building to repair")?)?,
+            Item::HiredHelp | Item::MasterCrew => self
+                .active
+                .ok_or("there is no construction site to help on")?,
+        };
+        Ok((item, i))
+    }
+
+    fn use_item(&mut self, item: Item, i: usize, ts: i64) {
+        if let Some(n) = self.inventory.get_mut(&item) {
+            *n -= 1;
+        }
+        let pct = match item {
+            Item::RepairKit => return self.fix(i, ts),
+            Item::HiredHelp => economy::HELP_PCT,
+            Item::MasterCrew => economy::CREW_PCT,
+        };
+        let total = need_of(i).kind.build_secs();
+        let lot = &mut self.lots[i];
+        let take = (total * pct / 100).min(total.saturating_sub(lot.done_secs));
+        lot.done_secs += take;
+        lot.memory.helped_secs += take;
+        if lot.memory.started_at == 0 {
+            lot.memory.started_at = ts;
+        }
+        if lot.done_secs >= total {
+            // Finished by help, not by a session: no award to add it to.
+            let award = self.award.take();
+            self.finish(i, ts, 0, 0);
+            self.award = award;
         }
     }
 
@@ -336,11 +727,11 @@ impl City {
                 plan::LEVELS[b.level as usize].to_lowercase()
             ));
         }
-        if self.balance() < b.price {
+        let price = self.cost(b.price);
+        if self.balance() < price {
             return Err(format!(
-                "the {} blueprint costs {} coins; you have {}",
+                "the {} blueprint costs {price} coins; you have {}",
                 b.name,
-                b.price,
                 self.balance()
             ));
         }
@@ -360,6 +751,12 @@ impl City {
         let Some(lot) = self.next_lot(ni).filter(|_| self.open(ni)) else {
             return Err(format!("{:?} is already met", need.title));
         };
+        if !self.land[lot] {
+            return Err(format!(
+                "buy the plot at {} first",
+                plan::lots()[lot].address
+            ));
+        }
         let site = &self.lots[lot];
         let design = if !need.kind.designed() {
             if blueprint.is_some() {
@@ -446,7 +843,7 @@ impl City {
     /// when none is owned and the coins are there.
     fn auto_pick(&mut self) -> Option<usize> {
         for (ni, need) in NEEDS.iter().enumerate() {
-            if !self.open(ni) {
+            if !self.open(ni) || !self.next_lot(ni).is_some_and(|l| self.land[l]) {
                 continue;
             }
             let design = if need.kind.designed() {
@@ -458,11 +855,12 @@ impl City {
                         .iter()
                         .filter(|b| b.fits(need) && b.level <= level)
                         .min_by_key(|b| b.price)?;
-                    if self.balance() < cheapest.price {
+                    let price = self.cost(cheapest.price);
+                    if self.balance() < price {
                         continue;
                     }
                     self.owned.insert(cheapest.id);
-                    self.coins_spent += cheapest.price;
+                    self.coins_spent += price;
                     Some(cheapest.id)
                 }
             } else {
@@ -553,6 +951,7 @@ impl City {
         if self.manual
             && self.open(ni)
             && let Some(next) = self.next_lot(ni)
+            && self.land[next]
         {
             if !self.lots[next].site {
                 self.set_design(next, design);
@@ -646,6 +1045,8 @@ impl City {
             finished: vec![],
             freeze_earned: false,
             freezes_used: 0,
+            stake_won: 0,
+            boxes: Vec::new(),
         };
         if secs >= STREAK_MIN_SECS {
             let gap = self.last_day.map(|d| days_between(d, day));
@@ -689,6 +1090,18 @@ impl City {
         award.rested_bonus = award.coins - coins;
         self.coins_earned += award.coins;
 
+        if let Some(stake) = self.stakes.remove(&session_id) {
+            // The stake comes back, and as much again.
+            self.coins_spent -= stake;
+            self.coins_earned += stake;
+            award.stake_won = stake;
+        }
+        self.recent.push_back(secs);
+        if self.recent.len() > economy::STAKE_HISTORY {
+            self.recent.pop_front();
+        }
+        self.goals(day, session_id, secs, &mut award);
+
         self.award = Some(award);
         self.pour(
             BuildPart {
@@ -700,6 +1113,37 @@ impl City {
             ts,
         );
         self.repair(ts, session_id, secs);
+    }
+
+    /// Counts a completed session toward the day's goals, and opens a box
+    /// for each goal it meets.
+    fn goals(&mut self, day: Date, session_id: i64, secs: u64, award: &mut Award) {
+        if self.today.day != Some(day) {
+            self.today = Today {
+                day: Some(day),
+                ..Today::default()
+            };
+        }
+        let t = &mut self.today;
+        t.focus += secs;
+        t.longest = t.longest.max(secs);
+        if secs >= economy::GOAL_SESSION_SECS {
+            t.sessions += 1;
+        }
+        for goal in Goal::ALL {
+            if self.today.paid.contains(&goal) || self.today.progress(goal) < goal.target() {
+                continue;
+            }
+            self.today.paid.insert(goal);
+            let roll = mix((session_id as u64).rotate_left(23) ^ ((goal as u64 + 1) * 0x9e37_79b9));
+            let item = economy::open_box(goal, roll, self.since_rare);
+            self.since_rare = if item.rare() { 0 } else { self.since_rare + 1 };
+            *self.inventory.entry(item).or_default() += 1;
+            award.boxes.push(BoxInfo {
+                goal: goal.id().into(),
+                item: item.id().into(),
+            });
+        }
     }
 
     /// The streak that counts on `day`: kept until the end of the next day.
@@ -750,6 +1194,8 @@ impl City {
     }
 
     fn surrendered(&mut self, ts: i64, session_id: i64) {
+        // A stake on it is lost.
+        self.stakes.remove(&session_id);
         self.streak = 0;
         self.last_day = None;
         let Some(origin) = self.active.or_else(|| self.newest()) else {
@@ -763,7 +1209,11 @@ impl City {
             return;
         };
         let mut near: Vec<usize> = self.standing().collect();
-        near.sort_by_key(|&i| (i.abs_diff(origin), i));
+        let (ox, oy) = ground_pos(origin);
+        near.sort_by_key(|&i| {
+            let (x, y) = ground_pos(i);
+            ((x - ox).pow(2) + (y - oy).pow(2), i)
+        });
         let mut hit: Vec<u32> = near.iter().take(FIRE_SPREAD).map(|&i| i as u32).collect();
         hit.sort_unstable();
         let ruined = self.damage(&hit, FIRE_DAMAGE, ts, WorldCause::Surrendered);
@@ -783,11 +1233,12 @@ impl City {
             return;
         }
         self.last_quake = Some(ts);
-        let mut counts = std::collections::BTreeMap::<u32, usize>::new();
+        let block = |i: usize| plan::lots()[i].place.block;
+        let mut counts = BTreeMap::<usize, usize>::new();
         for i in self.standing() {
-            *counts.entry(i as u32 / DISTRICT_SIZE).or_default() += 1;
+            *counts.entry(block(i)).or_default() += 1;
         }
-        // The biggest district; the newest one on a tie.
+        // The biggest block; the latest planned on a tie.
         let district = counts
             .iter()
             .max_by_key(|&(d, n)| (*n, *d))
@@ -795,7 +1246,7 @@ impl City {
         let hit: Vec<u32> = self
             .standing()
             .map(|i| i as u32)
-            .filter(|&i| Some(i / DISTRICT_SIZE) == district)
+            .filter(|&i| Some(block(i as usize)) == district)
             .collect();
         let ruined = self.damage(&hit, 1, ts, WorldCause::Tamper);
         self.record(
@@ -838,7 +1289,7 @@ impl City {
         let (built_at, session_id) = lot.finished.unwrap_or_default();
         Plot {
             index: i as u32,
-            district: i as u32 / DISTRICT_SIZE,
+            district: plan_lot.place.block as u32,
             grade: need.kind.grade(),
             damage: lot.damage,
             rubble: lot.damage >= World::MAX_DAMAGE,
@@ -853,6 +1304,7 @@ impl City {
             need: need.id.into(),
             shiny: lot.shiny,
             memory: lot.memory.clone(),
+            repair_price: (lot.damage > 0).then(|| self.repair_cost(i)),
         }
     }
 
@@ -880,6 +1332,7 @@ impl City {
             designed: need.kind.designed(),
             fits: self.owned_fitting(need).map(|b| b.id.to_string()).collect(),
             fits_locked,
+            land_price: next.filter(|&i| !self.land[i]).map(|i| self.land_cost(i)),
         }
     }
 
@@ -951,7 +1404,7 @@ impl City {
                 kind: b.kind.name().into(),
                 districts: b.districts.iter().map(|d| d.name().into()).collect(),
                 level: b.level,
-                price: b.price,
+                price: self.cost(b.price),
                 owned: self.owned.contains(b.id),
                 unlocked: b.level <= self.level,
                 built: (0..self.lots.len())
@@ -990,14 +1443,140 @@ impl City {
             freezes: self.freezes,
             auto: !self.manual,
             last_award: self.award.clone(),
+            layout: self.layout_info(),
+            wealth: self.wealth,
+            decorations: economy::DECORATIONS
+                .iter()
+                .map(|d| DecorationInfo {
+                    id: d.id.into(),
+                    name: d.name.into(),
+                    price: self.cost(d.price),
+                    level: d.level,
+                    unlocked: d.level <= self.level,
+                })
+                .collect(),
+            stake: running.and_then(|r| self.stakes.get(&r.session_id).copied()),
+            stake_target_secs: self.stake_target(),
+            stake_max: self.stake_max(),
+            inventory: Item::ALL
+                .iter()
+                .filter_map(|&item| {
+                    let count = self.inventory.get(&item).copied().unwrap_or(0);
+                    (count > 0).then(|| ItemInfo {
+                        id: item.id().into(),
+                        name: item.name().into(),
+                        count,
+                        rare: item.rare(),
+                    })
+                })
+                .collect(),
+            goals: Goal::ALL
+                .iter()
+                .map(|&g| {
+                    let on = self.today.day == Some(today);
+                    GoalInfo {
+                        id: g.id().into(),
+                        title: g.title().into(),
+                        progress: if on { self.today.progress(g) } else { 0 },
+                        target: g.target(),
+                        done: on && self.today.paid.contains(&g),
+                    }
+                })
+                .collect(),
+            boxes_to_rare: economy::PITY.saturating_sub(self.since_rare),
+        }
+    }
+
+    fn layout_info(&self) -> Layout {
+        let blocks = layout::blocks()
+            .iter()
+            .enumerate()
+            .map(|(b, block)| {
+                let (district, park, name) = match block.ground {
+                    Ground::Lots(d) => (Some(d.name().to_string()), None, None),
+                    Ground::Park(kind, name) => {
+                        (None, Some(kind.name().to_string()), Some(name.to_string()))
+                    }
+                };
+                let spots = if park.is_some() {
+                    (0..economy::PARK_SPOTS)
+                        .map(|n| {
+                            let id = format!("{b}:{n}");
+                            SpotInfo {
+                                decoration: self.spots.get(&id).map(|d| d.to_string()),
+                                id,
+                            }
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                BlockInfo {
+                    x: block.x,
+                    y: block.y,
+                    district,
+                    park,
+                    name,
+                    level: block.level,
+                    open: self.block_open(b),
+                    spots,
+                }
+            })
+            .collect();
+        let streets = STREETS
+            .iter()
+            .enumerate()
+            .map(|(si, s)| StreetInfo {
+                id: s.id.into(),
+                name: s.name.into(),
+                axis: match s.axis {
+                    Axis::EastWest => "ew".into(),
+                    Axis::NorthSouth => "ns".into(),
+                },
+                line: s.line,
+                from: s.from,
+                to: s.to,
+                class: self.roads[si],
+                upgrade_price: self.check_upgrade(s.id).ok().map(|(_, p)| p).or_else(|| {
+                    // Unaffordable still shows its price; not yet allowed does not.
+                    let next = self.roads[si] + 1;
+                    economy::road_upgrade(next)
+                        .filter(|&(_, level)| level <= self.level)
+                        .map(|(list, _)| self.cost(list))
+                }),
+            })
+            .collect();
+        let lots = plan::lots()
+            .iter()
+            .map(|l| {
+                let i = l.index as usize;
+                LotInfo {
+                    id: l.id.clone(),
+                    block: l.place.block as u32,
+                    slot: l.place.slot,
+                    street: l.place.street as u32,
+                    address: l.address.clone(),
+                    owned: self.land[i],
+                    price: self.land_cost(i),
+                    for_sale: need_of(i).level <= self.level,
+                }
+            })
+            .collect();
+        Layout {
+            blocks,
+            streets,
+            lots,
         }
     }
 }
 
-/// Folds `facts` (in any order) into the world as of `now`.
+/// Folds `facts` (in any order) into the world as of `now`, with all land
+/// bought (`bare` tests buy their own).
 #[cfg(test)]
 pub fn build(facts: &[Fact], running: Option<&Running>, now: Timestamp, tz: &TimeZone) -> World {
-    City::fold(facts, tz).world(running, now, tz)
+    let mut c = City::fold_landed(facts, tz);
+    c.roll_day(now.as_second(), tz);
+    c.world(running, now, tz)
 }
 
 #[cfg(test)]
@@ -1249,7 +1828,7 @@ mod tests {
             bought(30, "s1"),
             chose(40, "hamlet-homes", Some("c2")),
         ];
-        let c = City::fold(&facts, &TimeZone::UTC);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
         assert!(!c.manual);
         let w = c.world(None, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
         assert!(w.auto && w.sites.is_empty() && w.coins == 0);
@@ -1275,7 +1854,7 @@ mod tests {
         let mut facts: Vec<Fact> = (0..4).map(|i| done(i * 10, i + 1, 60)).collect();
         facts.push(bought(100, "c2"));
         facts.push(chose(110, "hamlet-shops", None));
-        let c = City::fold(&facts, &TimeZone::UTC);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
         assert_eq!(c.balance(), 4 * 108 - 250);
         // c2 is a cottage: still no shop blueprint, so no site.
         assert!(c.sites().next().is_none());
@@ -1293,6 +1872,7 @@ mod tests {
             coins_earned: 10_000,
             ..City::default()
         };
+        c.land.fill(true);
         c.apply(&bought(1, "s1"), &tz);
         c.apply(&bought(2, "s4"), &tz);
         let mut ts = 10;
@@ -1415,7 +1995,7 @@ mod tests {
     }
 
     #[test]
-    fn quake_hits_the_biggest_district_once_per_burst() {
+    fn quake_hits_the_biggest_block_once_per_burst() {
         let facts: Vec<Fact> = daily(12, 60);
         let mut facts = facts;
         facts.extend([
@@ -1424,7 +2004,8 @@ mod tests {
         ]);
         let w = world(&facts, 21 * DAY);
         let hit: Vec<u32> = damage(&w);
-        assert_eq!(hit, [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0]);
+        // The Hamlet's four homes share a block; no other block has as many.
+        assert_eq!(hit, [1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0]);
         assert_eq!(w.history.last().unwrap().kind, WorldEventKind::Quake);
         facts.push(event(20 * DAY + PENALTY_COOLDOWN, FactKind::Tamper));
         assert_eq!(world(&facts, 21 * DAY).plots[0].damage, 2);
@@ -1495,10 +2076,275 @@ mod tests {
         assert_eq!(w.plots[1].name, homes[0]);
     }
 
+    /// A city that buys its own land.
+    fn bare(facts: &[Fact], now: i64) -> (City, World) {
+        let c = City::fold_at(facts, now, &TimeZone::UTC);
+        let w = c.world(None, Timestamp::from_second(now).unwrap(), &TimeZone::UTC);
+        (c, w)
+    }
+
+    fn land(ts: i64, lot: &str) -> Fact {
+        mayor(ts, FactKind::LandBought { lot: lot.into() })
+    }
+
+    #[test]
+    fn the_first_plot_is_free_and_the_rest_are_bought() {
+        let mut facts = daily(2, 60);
+        let (c, w) = bare(&facts, 2 * DAY + 10);
+        assert_eq!(w.plots.len(), 1, "the second home waits for its land");
+        assert_eq!(w.idle_secs, 3600);
+        let price = w.needs[0].land_price.unwrap();
+        assert!(price > 0);
+        assert!(
+            c.check_choose("hamlet-homes", None)
+                .unwrap_err()
+                .contains("buy the plot")
+        );
+        assert!(
+            c.check_land("town-homes-1")
+                .unwrap_err()
+                .contains("from the town")
+        );
+        // Buying it puts the waiting hour in at once.
+        facts.push(land(2 * DAY + 20, "hamlet-homes-2"));
+        let (c, w) = bare(&facts, 2 * DAY + 30);
+        assert_eq!(w.plots.len(), 2);
+        assert_eq!(w.coins, c.coins_earned - price);
+        assert!(w.layout.lots[1].owned && !w.layout.lots[2].owned);
+        assert!(
+            c.check_land("hamlet-homes-2")
+                .unwrap_err()
+                .contains("already yours")
+        );
+    }
+
+    #[test]
+    fn prices_rise_with_the_mornings_balance() {
+        let facts = daily(3, 180);
+        let (c, w) = bare(&facts, 3 * DAY + 10);
+        // Day 3 opened with days 1 and 2 earned.
+        let opening = c.coins_earned - coins(180 * MIN, 3).0;
+        assert_eq!(w.wealth, opening);
+        let s1 = w.blueprints.iter().find(|b| b.id == "s1").unwrap();
+        assert_eq!(s1.price, economy::price(300, opening));
+        // The next morning it is today's balance.
+        let (_, w) = bare(&facts, 4 * DAY + 10);
+        assert_eq!(w.wealth, w.coins);
+    }
+
+    #[test]
+    fn repairs_can_be_bought_or_done_with_a_kit() {
+        let mut facts = daily(1, 60);
+        facts.push(event(DAY + 10, FactKind::Denied));
+        let (c, w) = bare(&facts, DAY + 20);
+        assert_eq!(w.plots[0].damage, 1);
+        let price = w.plots[0].repair_price.unwrap();
+        assert_eq!(c.check_repair("hamlet-homes-1").unwrap().1, price);
+        facts.push(mayor(
+            DAY + 30,
+            FactKind::RepairBought {
+                lot: "hamlet-homes-1".into(),
+            },
+        ));
+        let (c, w) = bare(&facts, DAY + 40);
+        assert_eq!(w.plots[0].damage, 0);
+        assert_eq!(
+            w.plots[0].memory.scars.last().unwrap().cause,
+            WorldCause::Mayor
+        );
+        assert!(
+            c.check_repair("hamlet-homes-1")
+                .unwrap_err()
+                .contains("no repair")
+        );
+        assert!(c.check_use("repair_kit", Some("hamlet-homes-1")).is_err());
+    }
+
+    #[test]
+    fn streets_upgrade_where_people_live() {
+        let mut facts = daily(3, 180);
+        let (c, w) = bare(&facts, 3 * DAY + 10);
+        let main = w.layout.streets.iter().find(|s| s.id == "main").unwrap();
+        assert_eq!(main.class, 0);
+        assert!(main.upgrade_price.is_some());
+        assert!(
+            c.check_upgrade("skyline")
+                .unwrap_err()
+                .contains("nobody lives")
+        );
+        facts.push(mayor(
+            3 * DAY + 20,
+            FactKind::StreetUpgraded {
+                street: "main".into(),
+            },
+        ));
+        let (c, w) = bare(&facts, 3 * DAY + 30);
+        assert_eq!(
+            w.layout
+                .streets
+                .iter()
+                .find(|s| s.id == "main")
+                .unwrap()
+                .class,
+            1
+        );
+        // A boulevard waits for the town.
+        assert!(
+            c.check_upgrade("main")
+                .unwrap_err()
+                .contains("from the town")
+        );
+    }
+
+    #[test]
+    fn decorations_go_on_open_parks() {
+        let facts = daily(3, 180);
+        let (c, w) = bare(&facts, 3 * DAY + 10);
+        let green = w
+            .layout
+            .blocks
+            .iter()
+            .position(|b| b.name.as_deref() == Some("The Green"))
+            .unwrap();
+        let square = w
+            .layout
+            .blocks
+            .iter()
+            .position(|b| b.name.as_deref() == Some("Market Square"))
+            .unwrap();
+        assert!(w.layout.blocks[green].open && !w.layout.blocks[square].open);
+        c.check_decorate(&format!("{green}:0"), "trees").unwrap();
+        assert!(
+            c.check_decorate(&format!("{green}:0"), "fountain")
+                .unwrap_err()
+                .contains("from the town")
+        );
+        assert!(
+            c.check_decorate(&format!("{square}:0"), "trees")
+                .unwrap_err()
+                .contains("not laid out")
+        );
+        assert!(c.check_decorate(&format!("{green}:9"), "trees").is_err());
+        let mut facts = facts;
+        facts.push(mayor(
+            3 * DAY + 20,
+            FactKind::Decorated {
+                spot: format!("{green}:0"),
+                decoration: "trees".into(),
+            },
+        ));
+        let (c, w) = bare(&facts, 3 * DAY + 30);
+        assert_eq!(
+            w.layout.blocks[green].spots[0].decoration.as_deref(),
+            Some("trees")
+        );
+        assert!(
+            c.check_decorate(&format!("{green}:0"), "trees")
+                .unwrap_err()
+                .contains("already")
+        );
+    }
+
+    fn staked(ts: i64, id: i64, coins: u64) -> Fact {
+        Fact {
+            ts,
+            seq: 0,
+            session_id: Some(id),
+            kind: FactKind::Staked { coins },
+        }
+    }
+
+    #[test]
+    fn a_stake_comes_back_double_or_burns() {
+        let mut facts = daily(3, 60);
+        let (c, w) = bare(&facts, 3 * DAY + 10);
+        assert_eq!(w.stake_target_secs, 3600, "the median of recent sessions");
+        assert!(
+            c.check_stake(50, Some(1800))
+                .unwrap_err()
+                .contains("60 minutes")
+        );
+        assert!(c.check_stake(50, None).is_err());
+        assert!(c.check_stake(w.coins + 1, Some(3600)).is_err());
+        c.check_stake(50, Some(3600)).unwrap();
+        let before = w.coins;
+        facts.push(staked(4 * DAY - 3600, 4, 50));
+        facts.push(done(4 * DAY, 4, 60));
+        let (_, w) = bare(&facts, 4 * DAY + 10);
+        let award = w.last_award.unwrap();
+        assert_eq!(award.stake_won, 50);
+        assert_eq!(w.coins, before + award.coins + 50);
+        let before = w.coins;
+        facts.push(staked(5 * DAY - 600, 5, 50));
+        facts.push(gave_up(5 * DAY, 5, 10));
+        let (_, w) = bare(&facts, 5 * DAY + 10);
+        assert_eq!(w.coins, before - 50);
+    }
+
+    #[test]
+    fn goals_pay_one_box_each_a_day() {
+        let mut facts = vec![done(DAY, 1, 30), done(DAY + 3600, 2, 30)];
+        let (_, w) = bare(&facts, DAY + 3700);
+        assert!(w.goals.iter().all(|g| !g.done));
+        assert!(w.inventory.is_empty());
+        // The third 30-minute session: three sessions, not yet two hours.
+        facts.push(done(DAY + 7200, 3, 30));
+        let (_, w) = bare(&facts, DAY + 7300);
+        let goal = |w: &World, id: &str| w.goals.iter().find(|g| g.id == id).unwrap().clone();
+        assert!(goal(&w, "sessions").done && !goal(&w, "daily_focus").done);
+        assert_eq!(w.last_award.as_ref().unwrap().boxes.len(), 1);
+        // A 90-minute session meets the other two, once.
+        facts.push(done(DAY + 20_000, 4, 90));
+        facts.push(done(DAY + 30_000, 5, 90));
+        let (_, w) = bare(&facts, DAY + 30_100);
+        assert!(w.goals.iter().all(|g| g.done));
+        assert_eq!(w.inventory.iter().map(|i| i.count).sum::<u32>(), 3);
+        assert_eq!(w.boxes_to_rare, economy::PITY - 3);
+        // A new day starts the goals over.
+        let (_, w) = bare(&facts, 2 * DAY + 10);
+        assert!(w.goals.iter().all(|g| !g.done && g.progress == 0));
+    }
+
+    #[test]
+    fn hired_help_builds_but_is_not_focus() {
+        let mut c = City {
+            coins_earned: 10_000,
+            ..City::default()
+        };
+        c.land.fill(true);
+        c.inventory.insert(Item::HiredHelp, 1);
+        let tz = TimeZone::UTC;
+        assert!(
+            c.check_use("hired_help", None)
+                .unwrap_err()
+                .contains("no construction")
+        );
+        c.apply(&done(DAY, 1, 30), &tz);
+        assert_eq!(c.active, Some(0));
+        c.apply(
+            &mayor(
+                DAY + 10,
+                FactKind::ItemUsed {
+                    item: "hired_help".into(),
+                    lot: None,
+                },
+            ),
+            &tz,
+        );
+        assert_eq!(c.lots[0].done_secs, 30 * 60 + 15 * 60);
+        assert_eq!(c.lots[0].memory.helped_secs, 15 * 60);
+        assert_eq!(c.lots[0].memory.focused_secs, 30 * 60);
+        assert!(
+            c.check_use("hired_help", None)
+                .unwrap_err()
+                .contains("no hired help")
+        );
+    }
+
     #[test]
     fn renames() {
         let mut facts = vec![done(10, 1, 60)];
-        let c = City::fold(&facts, &TimeZone::UTC);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
         assert!(c.check_rename("hamlet-homes-2", "x").is_err());
         assert!(c.check_rename("hamlet-homes-1", &"x".repeat(41)).is_err());
         assert!(c.check_rename("hamlet-homes-1", "a\nb").is_err());

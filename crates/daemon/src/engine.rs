@@ -217,9 +217,32 @@ impl Core {
     async fn try_handle(&mut self, req: Request, uid: u32) -> Result<Response, String> {
         match req {
             Request::Status => Ok(Response::Status(Box::new(self.status()))),
-            Request::Start { kind, profile } => {
+            Request::Start {
+                kind,
+                profile,
+                stake,
+            } => {
+                if let Some(coins) = stake {
+                    let secs = match kind {
+                        SessionKind::Countdown { secs } => Some(secs),
+                        SessionKind::Stopwatch => None,
+                    };
+                    self.city()?.check_stake(coins, secs)?;
+                }
                 let name = profile.unwrap_or_else(|| self.cfg.session.default_profile.clone());
                 let info = self.begin(kind, name, None, &format!("uid {uid}")).await?;
+                if let Some(coins) = stake {
+                    let detail = serde_json::to_string(&Decision {
+                        coins: Some(coins),
+                        ..Decision::default()
+                    })
+                    .map_err(|e| e.to_string())?;
+                    self.store
+                        .log_event(unix_now(), Some(info.id), EventKind::StakePlaced, &detail)
+                        .map_err(|e| {
+                            format!("the session started, but the stake was not recorded: {e:#}")
+                        })?;
+                }
                 Ok(Response::Session(info))
             }
             Request::Skip { routine } => self.skip(routine.as_deref(), uid),
@@ -328,6 +351,63 @@ impl Core {
                     Decision {
                         lot: Some(lot),
                         name: Some(name.unwrap_or_default()),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::BuyLand { lot } => {
+                self.mayor_closed()?;
+                self.city()?.check_land(&lot)?;
+                self.decide(
+                    EventKind::LandBought,
+                    Decision {
+                        lot: Some(lot),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::Repair { lot } => {
+                self.mayor_closed()?;
+                self.city()?.check_repair(&lot)?;
+                self.decide(
+                    EventKind::RepairBought,
+                    Decision {
+                        lot: Some(lot),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::UpgradeStreet { street } => {
+                self.mayor_closed()?;
+                self.city()?.check_upgrade(&street)?;
+                self.decide(
+                    EventKind::StreetUpgraded,
+                    Decision {
+                        street: Some(street),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::Decorate { spot, decoration } => {
+                self.mayor_closed()?;
+                self.city()?.check_decorate(&spot, &decoration)?;
+                self.decide(
+                    EventKind::Decorated,
+                    Decision {
+                        spot: Some(spot),
+                        decoration: Some(decoration),
+                        ..Decision::default()
+                    },
+                )
+            }
+            Request::UseItem { item, lot } => {
+                self.mayor_closed()?;
+                self.city()?.check_use(&item, lot.as_deref())?;
+                self.decide(
+                    EventKind::ItemUsed,
+                    Decision {
+                        item: Some(item),
+                        lot,
                         ..Decision::default()
                     },
                 )
@@ -549,7 +629,7 @@ impl Core {
             .store
             .world_facts()
             .map_err(|e| format!("could not read the ledger: {e:#}"))?;
-        Ok(world::City::fold(&facts, &self.tz))
+        Ok(world::City::fold_at(&facts, unix_now(), &self.tz))
     }
 
     fn world(&self) -> Result<deepwork_proto::World, String> {

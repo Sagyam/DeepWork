@@ -344,6 +344,7 @@ mod tests {
                 designed: true,
                 fits: vec![],
                 fits_locked: vec!["s1".into()],
+                land_price: None,
             }],
             history: vec![WorldEvent {
                 ts: 0,

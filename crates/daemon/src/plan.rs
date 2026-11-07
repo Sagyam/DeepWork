@@ -543,6 +543,7 @@ pub struct Lot {
     pub need: usize,
     pub name: String,
     pub address: String,
+    pub place: crate::layout::Place,
 }
 
 const SURNAMES: &[&str] = &[
@@ -594,22 +595,6 @@ const TRADES: &[&str] = &[
     "Stationers",
 ];
 
-fn street(level: u32, district: District) -> &'static str {
-    match (level, district) {
-        (0, Village) => "Mill Lane",
-        (0, MainStreet) => "Market Street",
-        (0, Works) => "Forge Road",
-        (0, _) => "Well Row",
-        (1, Village) => "Orchard Way",
-        (1, MainStreet) => "High Street",
-        (1, Works) => "Canal Side",
-        (1, _) => "Town Square",
-        (_, Downtown) => "Commerce Avenue",
-        (2, _) => "Civic Plaza",
-        _ => "Skyline Boulevard",
-    }
-}
-
 fn default_name(need: &Need, n: u32, ordinal: usize) -> String {
     let surname = SURNAMES[(ordinal * 7 + 3) % SURNAMES.len()];
     let count = |s: &str| {
@@ -649,19 +634,22 @@ pub fn lots() -> &'static [Lot] {
     static LOTS: std::sync::OnceLock<Vec<Lot>> = std::sync::OnceLock::new();
     LOTS.get_or_init(|| {
         let mut out = Vec::new();
-        let mut numbers = std::collections::HashMap::<&str, u32>::new();
+        let mut taken = std::collections::HashMap::<District, usize>::new();
         for (ni, need) in NEEDS.iter().enumerate() {
             for n in 1..=need.lots {
                 let ordinal = out.len();
-                let street = street(need.level, need.district);
-                let number = numbers.entry(street).or_insert(0);
-                *number += 1;
+                let k = taken.entry(need.district).or_insert(0);
+                let place = crate::layout::place(need.district, *k)
+                    .unwrap_or_else(|| panic!("{} has no slot in the layout", need.id));
+                *k += 1;
+                let street = crate::layout::STREETS[place.street].name;
                 out.push(Lot {
                     index: ordinal as u32,
                     id: format!("{}-{n}", need.id),
                     need: ni,
                     name: default_name(need, n, ordinal),
-                    address: format!("{} {street}", *number * 2 - 1),
+                    address: format!("{} {street}", place.number),
+                    place,
                 });
             }
         }
@@ -775,10 +763,10 @@ mod tests {
     #[test]
     fn names_and_addresses() {
         let l = &lots()[0];
-        assert_eq!(l.address, "1 Mill Lane");
-        assert_eq!(lots()[1].address, "3 Mill Lane");
+        assert_eq!(l.address, "9 Main Street");
+        assert_eq!(lots()[1].address, "11 Main Street");
         assert!(l.name.starts_with("The ") && l.name.ends_with(" house"));
         assert_eq!(lot_by_id("hamlet-water-1").unwrap().name, "Water tower");
-        assert_eq!(lot_by_id("town-water-1").unwrap().address, "9 Town Square");
+        assert_eq!(lot_by_id("town-water-1").unwrap().address, "30 Main Street");
     }
 }

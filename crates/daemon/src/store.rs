@@ -58,6 +58,13 @@ pub enum EventKind {
     NeedChosen,
     SitePaused,
     BuildingRenamed,
+    LandBought,
+    RepairBought,
+    StreetUpgraded,
+    Decorated,
+    /// Coins bet on the event's session; `detail` is a decision with `coins`.
+    StakePlaced,
+    ItemUsed,
     /// A running countdown was made longer; `detail` is the added seconds.
     Extend,
 }
@@ -111,6 +118,12 @@ impl EventKind {
             EventKind::NeedChosen => "need_chosen",
             EventKind::SitePaused => "site_paused",
             EventKind::BuildingRenamed => "building_renamed",
+            EventKind::LandBought => "land_bought",
+            EventKind::RepairBought => "repair_bought",
+            EventKind::StreetUpgraded => "street_upgraded",
+            EventKind::Decorated => "decorated",
+            EventKind::StakePlaced => "stake_placed",
+            EventKind::ItemUsed => "item_used",
             EventKind::Extend => "extend",
         }
     }
@@ -343,7 +356,7 @@ impl Store {
     pub fn penalty_events(&self) -> Result<Vec<BackupEvent>> {
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'decorated', 'stake_placed', 'item_used')
              ORDER BY ts, id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -534,7 +547,7 @@ impl Store {
         }
         let mut stmt = self.conn.prepare(
             "SELECT ts, session_id, kind, detail, id FROM events
-             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed')",
+             WHERE kind IN ('tamper', 'escalation_denied', 'clock_jump', 'tunnel', 'blueprint_bought', 'need_chosen', 'site_paused', 'building_renamed', 'land_bought', 'repair_bought', 'street_upgraded', 'decorated', 'stake_placed', 'item_used')",
         )?;
         let rows = stmt.query_map([], |r| {
             Ok((
@@ -579,6 +592,16 @@ pub struct Decision {
     pub lot: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub street: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spot: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decoration: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coins: Option<u64>,
 }
 
 fn world_fact(kind: &str, detail: &str) -> Option<FactKind> {
@@ -606,6 +629,26 @@ fn world_fact(kind: &str, detail: &str) -> Option<FactKind> {
                 name: d.name.unwrap_or_default(),
             }
         }
+        "land_bought" => FactKind::LandBought { lot: d().lot? },
+        "repair_bought" => FactKind::RepairBought { lot: d().lot? },
+        "street_upgraded" => FactKind::StreetUpgraded {
+            street: d().street?,
+        },
+        "decorated" => {
+            let d = d();
+            FactKind::Decorated {
+                spot: d.spot?,
+                decoration: d.decoration?,
+            }
+        }
+        "stake_placed" => FactKind::Staked { coins: d().coins? },
+        "item_used" => {
+            let d = d();
+            FactKind::ItemUsed {
+                item: d.item?,
+                lot: d.lot,
+            }
+        }
         _ => return None,
     })
 }
@@ -620,6 +663,12 @@ fn penalty_kind(kind: &str) -> Option<EventKind> {
         "need_chosen" => Some(EventKind::NeedChosen),
         "site_paused" => Some(EventKind::SitePaused),
         "building_renamed" => Some(EventKind::BuildingRenamed),
+        "land_bought" => Some(EventKind::LandBought),
+        "repair_bought" => Some(EventKind::RepairBought),
+        "street_upgraded" => Some(EventKind::StreetUpgraded),
+        "decorated" => Some(EventKind::Decorated),
+        "stake_placed" => Some(EventKind::StakePlaced),
+        "item_used" => Some(EventKind::ItemUsed),
         _ => None,
     }
 }

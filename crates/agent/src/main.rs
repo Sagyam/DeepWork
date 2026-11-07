@@ -736,6 +736,8 @@ mod tests {
             finished: vec![0],
             freeze_earned: false,
             freezes_used: 0,
+            stake_won: 0,
+            boxes: vec![],
         };
         let mut world = World {
             last_award: Some(award(1)),
