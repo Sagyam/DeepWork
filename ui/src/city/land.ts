@@ -9,7 +9,7 @@ import * as THREE from "three";
 import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
 import { realMat, realPiece, tex } from "./real";
 import { IMPOSTOR_NEAR, Impostors, nearOnly } from "./impostor";
-import { PITCH_X, PITCH_Z, rng, type CityPlan } from "./plan";
+import { onStreets, rng, type CityPlan } from "./plan";
 import { LAKE, RADIUS, ROAD_Z, WATER, fbm, noise, smoothstep, terrain, type Land as Shape } from "./terrain";
 
 const RINGS = 300;
@@ -244,9 +244,8 @@ export class Land {
     }
     // Tufts and flower clumps on the town's own grass, so the ground inside
     // the last streets is not a bare lawn.
-    const paved = (x: number, z: number) =>
-      Math.abs(z - ROAD_Z) < 6 ||
-      p.blocks.some((b) => Math.abs(x - b.x) < PITCH_X / 2 - 1 && Math.abs(z - b.z) < PITCH_Z / 2 - 1);
+    // The margin keeps a tuft's crown off the asphalt edge.
+    const paved = (x: number, z: number) => Math.abs(z - ROAD_Z) < 6 || onStreets(p.blocks, x, z, 1.5);
     for (let i = 0; i < 700; i++) {
       const x = minX + r() * (maxX - minX);
       const z = minZ + r() * (maxZ - minZ);

@@ -12,6 +12,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { KTXLoader } from "three/examples/jsm/loaders/KTXLoader.js";
 import { glass, interiorUniforms, type RoomKind } from "./interior";
 import type { Kind } from "./plan";
+import { signal } from "./roads";
 
 export { interiorUniforms };
 
@@ -1484,21 +1485,14 @@ const signals: { m: THREE.MeshStandardMaterial; role: string; phase: string }[] 
 const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, sig_green: 0x3aff8a, ped_red: 0xff3a1a, ped_white: 0xf4f0e6 };
 
 /**
- * Runs the traffic signals: a 30 s cycle in which road "a" gets green,
- * amber, then red while road "b" waits, and the other way round; the
- * walk signal shows white across the road that has red. `night` (0-1)
- * brightens the lit lenses.
+ * Lights the traffic signals by the cycle the cars obey (signal() in
+ * roads.ts); the walk signal shows white across the road that has red.
+ * `night` (0-1) brightens the lit lenses.
  */
 export function setSignals(t: number, night = 0) {
   sprayBright.value = 1 - 0.78 * night;
-  const T = 30;
-  const c = ((t % T) + T) % T;
-  const lit = (phase: string) => {
-    const k = phase === "a" ? c : (c + T / 2) % T;
-    return k < 12 ? "green" : k < 15 ? "amber" : "red";
-  };
   for (const { m, role, phase } of signals) {
-    const state = lit(phase);
+    const state = signal(t, phase);
     const on = role === "ped_white" ? state === "red" : role === "ped_red" ? state !== "red" : role === `sig_${state}`;
     m.emissiveIntensity = on ? 2.2 + 3 * night : 0;
   }

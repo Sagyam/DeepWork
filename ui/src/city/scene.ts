@@ -1408,7 +1408,7 @@ export class City {
     });
     this.fx.update(dt, wind);
     this.land.update(dt);
-    if (!this.dim) this.traffic.update(dt);
+    if (!this.dim) this.traffic.update(dt, this.t);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
 
