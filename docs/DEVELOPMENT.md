@@ -108,6 +108,14 @@ systemctl --user enable --now deepwork-agent.service
 **Never install or apply nft/tc/resolved changes on the host without the
 user's go-ahead.**
 
+### Speedrun build
+
+To play through the progression fast: `cargo build --release -p deepworkd
+--features speedrun`. The daemon's clock runs `SPEED` (`clock.rs`) times
+faster, so a focused hour passes in seconds and a day in minutes, and it
+keeps its own ledger in `/var/lib/deepwork-speedrun`. Enforcement is real.
+Swap only `/usr/local/bin/deepworkd` and restart the service; never ship it.
+
 ## Releases
 
 - CI (`ci.yml`): fmt, clippy `-D warnings`, `cargo test` on Rust changes;

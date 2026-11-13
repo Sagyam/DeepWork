@@ -1,5 +1,6 @@
 mod backup;
 mod cfgstate;
+mod clock;
 mod config;
 mod dns;
 mod dot;
@@ -99,7 +100,12 @@ fn notify_ready() {
 fn default_paths(dry_run: bool) -> (PathBuf, PathBuf) {
     if !dry_run {
         return (
-            PathBuf::from("/var/lib/deepwork"),
+            // A speedrun's ledger must never mix with the real one.
+            PathBuf::from(if cfg!(feature = "speedrun") {
+                "/var/lib/deepwork-speedrun"
+            } else {
+                "/var/lib/deepwork"
+            }),
             PathBuf::from(deepwork_proto::DEFAULT_SOCKET),
         );
     }
@@ -170,9 +176,8 @@ async fn main() -> Result<()> {
     std::fs::create_dir_all(&state_dir)
         .with_context(|| format!("creating {}", state_dir.display()))?;
     let store = Store::open(&state_dir.join("deepwork.db"))?;
-    let unix_now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64);
+    clock::init(&state_dir);
+    let unix_now = clock::unix_now();
     let (cfg_state, outcome) = cfgstate::sync(&store, &args.config, unix_now)?;
     let cfg = cfg_state.config.clone();
 

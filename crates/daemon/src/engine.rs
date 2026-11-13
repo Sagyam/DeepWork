@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use deepwork_proto::{
@@ -17,6 +17,7 @@ use tracing::{error, info, warn};
 
 use crate::backup::{self, Backup, BackupSession};
 use crate::cfgstate::{self, Outcome, Pending};
+use crate::clock;
 use crate::config::{Config, Profile};
 use crate::dns::Resolver;
 use crate::enforcer::{EnforcerHandle, Mode};
@@ -94,9 +95,7 @@ fn boottime() -> Duration {
 }
 
 fn unix_now() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| d.as_secs() as i64)
+    clock::unix_now()
 }
 
 impl Core {
@@ -113,7 +112,7 @@ impl Core {
             warn!("could not read the local time zone, using UTC for routines: {e}");
             TimeZone::UTC
         });
-        let since = Timestamp::now()
+        let since = clock::timestamp()
             .to_zoned(tz.clone())
             .date()
             .checked_sub(3.days())
@@ -148,7 +147,7 @@ impl Core {
             runs,
             routine_retry_at: None,
             last,
-            last_wall: Timestamp::now(),
+            last_wall: clock::timestamp(),
             last_boot: boottime(),
             tunnels: tunnel::Reporter::default(),
             bank,
@@ -448,7 +447,7 @@ impl Core {
     }
 
     fn now(&self) -> Zoned {
-        Timestamp::now().to_zoned(self.tz.clone())
+        clock::timestamp().to_zoned(self.tz.clone())
     }
 
     fn occurrences(&self, now: &Zoned) -> Vec<Occurrence> {
@@ -651,7 +650,7 @@ impl Core {
         });
         Ok(self
             .city()?
-            .world(running.as_ref(), Timestamp::now(), &self.tz))
+            .world(running.as_ref(), clock::timestamp(), &self.tz))
     }
 
     /// The shop and the plan stay shut while a session runs: the session is
@@ -906,7 +905,7 @@ impl Core {
             .import_backup(&b)
             .map_err(|e| format!("could not import the progress: {e:#}"))?;
         // Refresh what the daemon mirrors in memory.
-        let since = Timestamp::now()
+        let since = clock::timestamp()
             .to_zoned(self.tz.clone())
             .date()
             .checked_sub(3.days())
@@ -1086,11 +1085,12 @@ impl Core {
 
     /// Logs a wall-clock change, which could move a routine out of the way.
     fn check_clock(&mut self) {
-        let wall = Timestamp::now();
+        let wall = clock::timestamp();
         let boot = boottime();
         let wall_delta = wall.duration_since(self.last_wall);
-        let boot_delta = SignedDuration::try_from(boot.saturating_sub(self.last_boot))
-            .unwrap_or(SignedDuration::ZERO);
+        let boot_delta =
+            SignedDuration::try_from(clock::scale(boot.saturating_sub(self.last_boot)))
+                .unwrap_or(SignedDuration::ZERO);
         self.last_wall = wall;
         self.last_boot = boot;
         let drift = wall_delta - boot_delta;
@@ -1211,7 +1211,7 @@ impl Core {
 
     pub async fn tick(&mut self) {
         let now = Instant::now();
-        let delta = now - self.last_tick;
+        let delta = clock::scale(now - self.last_tick);
         self.last_tick = now;
         self.check_clock();
         self.check_pending_config();
