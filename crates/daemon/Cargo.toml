@@ -23,5 +23,9 @@ libc.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
+[features]
+# Time runs fast and the ledger lives apart; see src/clock.rs. Never ship it.
+speedrun = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
