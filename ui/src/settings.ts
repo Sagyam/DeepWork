@@ -11,7 +11,10 @@ import { setThemePref, themePref, type ThemePref } from "./theme";
 import { QUALITIES, qualityPref, setQualityPref, type Quality } from "./city/quality";
 import type { Config, ListMode, PendingConfig, Profile, RuleAction, Status, Throttle } from "./proto";
 
-export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup" | "appearance";
+export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup" | "appearance" | "about";
+
+/** Sections that live in the app, not in config.toml: they show without the daemon's settings. */
+const LOCAL = new Set<SettingsSection>(["appearance", "about"]);
 
 const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "session", label: "Session", blurb: "Timer defaults and nudges" },
@@ -21,6 +24,7 @@ const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "dns", label: "DNS", blurb: "Resolver and upstreams" },
   { key: "backup", label: "Backup", blurb: "Export and import everything" },
   { key: "appearance", label: "Appearance", blurb: "Theme and city quality" },
+  { key: "about", label: "About", blurb: "Version and build" },
 ];
 
 const DAY_KEYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
@@ -413,10 +417,30 @@ function appearanceSection(): string {
     )}`;
 }
 
+/** A date and time in the viewer's locale, or "unknown". */
+function when(iso: string): string {
+  const d = new Date(iso);
+  return iso && !Number.isNaN(d.getTime()) ? d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "unknown";
+}
+
+/** What this window was built from, to tell an old install from the latest. */
+function aboutSection(): string {
+  const b = __BUILD__;
+  const row = (label: string, value: string) => `<div class="about-row"><span class="field-label">${label}</span><span class="about-value">${value}</span></div>`;
+  return `${sheetTitle("About", `The build of this window. Compare it with the latest release at <code>github.com/Sagyam/DeepWork/releases</code> or the tip of <code>main</code>.`)}
+    <div class="backup-card about">
+      ${row("Version", escapeHtml(b.version))}
+      ${row("Commit", `<code>${escapeHtml(b.commit)}</code>`)}
+      ${row("Committed", escapeHtml(when(b.committed)))}
+      ${row("Built", escapeHtml(when(b.built)))}
+    </div>
+    <p class="hint">The version is the CalVer of the release this build belongs to (year, month, release in the month); the commit says exactly which code.</p>`;
+}
+
 /** Eyebrow, heading and blurb, then the pending banner on config sections. */
 function sheetTitle(title: string, blurb: string): string {
   return `<div class="sheet-title"><p class="eyebrow">Settings</p><h2>${title}</h2>
-      <p class="muted">${blurb}</p></div>${section === "appearance" ? "" : pendingBanner()}`;
+      <p class="muted">${blurb}</p></div>${LOCAL.has(section) ? "" : pendingBanner()}`;
 }
 
 function pendingBanner(): string {
@@ -430,6 +454,7 @@ function pendingBanner(): string {
 
 function body(): string {
   if (section === "appearance") return appearanceSection();
+  if (section === "about") return aboutSection();
   if (!draft) return `<p class="muted">Loading settings…</p>`;
   return sectionBody(draft);
 }
@@ -450,11 +475,13 @@ function sectionBody(c: Config): string {
       return backupSection();
     case "appearance":
       return appearanceSection();
+    case "about":
+      return aboutSection();
   }
 }
 
 function render() {
-  if (!draft && section !== "appearance") return;
+  if (!draft && !LOCAL.has(section)) return;
   nav().innerHTML = SECTIONS.map(
     (s) =>
       `<button class="nav-item${s.key === section ? " on" : ""}" data-action="section" data-section="${s.key}">
@@ -747,7 +774,7 @@ export async function openSettings(at: SettingsSection = "session") {
     }
   }
   render();
-  if (!draft && section !== "appearance") main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
+  if (!draft && !LOCAL.has(section)) main().innerHTML = `<p class="empty">Could not load settings. Close this and try again.</p>`;
   if (!d.open) d.showModal();
 }
 
