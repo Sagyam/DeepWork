@@ -164,12 +164,19 @@ deepwork config reload | export f | import f
 
 ## README media
 
-Screenshots and `assets/demo.webp` come from the mock UI in headless
-Chromium (Playwright, real GPU: `--use-angle=gl --ignore-gpu-blocklist`),
-city views at 1600x1000 scaled to 1280x800, sheets at 1280x800, all with
-`&hour=16&people=0` (pedestrians glide until they get a walk cycle) and a
-fixed camera. Set `localStorage["deepwork.seen"]` high first, or the mock's
-past events replay with captions. The demo is captured frame by frame with
-`page.clock` (10 fps), captioned in the page, and encoded with ffmpeg as
-animated WebP at 720 px. The social preview and the site's
-`og.jpg` come from `og/card.html` in the site repo.
+Screenshots and the demo come from the mock UI in headless Chromium
+(Playwright, real GPU: `--use-angle=gl --ignore-gpu-blocklist`), with
+`&people=0` (pedestrians glide until they get a walk cycle), `&weather=clear`
+and a fixed camera. Set `localStorage["deepwork.seen"]` high first, or the
+mock's past events replay with captions.
+
+- **Screenshots**: city views at 1600x1000 scaled to 1280x800, sheets at
+  1280x800, `&hour=16`.
+- **Demo**: `bun scripts/demo.ts out` records each shot frame by frame
+  (1920x1080, 10 fps, `quality=high`). ffmpeg joins the shots with 0.5 s
+  `xfade` crossfades into a lossless master, then encodes `assets/demo.webp`
+  (720 px, `-q:v 38`, under GitHub's 10 MB) and the site's `demo-av1.mp4`
+  (SVT-AV1, CRF 48, 10-bit) and `demo.mp4` (H.264 720p fallback).
+- **Social card**: `og/card.html` in the site repo renders the site's
+  `og.jpg` and `assets/social-preview.jpg`; GitHub's copy is uploaded by
+  hand in the repo's settings.
