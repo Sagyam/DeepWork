@@ -17,8 +17,8 @@ area, if anything a reader needs changed.
 
 1. **Use it for real** and tune: coin prices, build hours, shiny odds,
    escalation stages, nudges. Add real `[[routines]]`.
-2. **Models**: O3, then L2 (towers are one design, so much of the plan's
-   ~350 h builds L1 over and over), then a second workshop (timber mill or
+2. **Models**: L2 (towers are one design, so much of the plan's ~350 h
+   builds L1 over and over), then a second workshop (timber mill or
    brewery; S4 is the only one, so the mayor never chooses) and a third
    downtown shop (only S1 and S2 fit).
 3. **Landmark ground**: reserve half blocks in `layout.rs` for L5 city

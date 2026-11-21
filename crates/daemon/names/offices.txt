@@ -28,3 +28,11 @@ Orbit House
 The Lantern
 Circle Point
 Halo House
+
+[o3]
+Federation House
+Concord House
+Bastion House
+Keystone House
+Monolith House
+Unity House

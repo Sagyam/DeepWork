@@ -88,7 +88,7 @@ are blueprints and their prices.
 | A4-A6 | Art deco, Parisian, modern apartments | apartment | | |
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
 | O2 | Round glass tower | office | `o2_round.py` | in |
-| O3 | Brutalist office | office | | next |
+| O3 | Brutalist office | office | `o3_brutalist.py` | in |
 | O4, O5 | Stone office, modernist slab | office | | |
 | L1 | Art deco skyscraper | tower | `l1_deco.py` | in |
 | L2-L4 | Glass supertall, twisting tower, TV tower | tower | | |
@@ -116,7 +116,7 @@ carry a FOR SALE board. Park spots draw the
 decorations bought for them (`SPOTS` in `models.ts`).
 
 Signs that carry a name (S1's fascia; the café, diner and works friezes;
-O1 and L1's name panels) show the building's own name: `NameSheet` in
+O1, O2 and O3's name panels) show the building's own name: `NameSheet` in
 `real.ts` paints each name into a shared sheet the first time a building
 asks for it. A1's two shop signs are stock, by seed.
 

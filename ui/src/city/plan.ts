@@ -53,6 +53,7 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
   a3: { kind: "apartment", style: "classic" },
   o1: { kind: "office", style: "classic" },
   o2: { kind: "office", style: "classic" },
+  o3: { kind: "office", style: "classic" },
   l1: { kind: "landmark", style: "deco" },
 };
 
