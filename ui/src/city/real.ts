@@ -114,6 +114,10 @@ const O1_G = 5.4;
 const O1_FL = 3.6;
 /** Where O1 steps back: after about two thirds of its storeys, never at the top. */
 const o1Lower = (total: number) => Math.min(total - 1, Math.max(2, Math.round(total * 0.68)));
+const O2_G = 6.0;
+const O2_FL = 3.7;
+/** O2's crown ring above its roof slab; the mast reaches 11.6 m. */
+const O2_CROWN = 5.0;
 const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
@@ -549,6 +553,31 @@ export const DEFS: Record<string, RealDef> = {
     // The parapet, the lift overrun and plant; the mast goes 8 m higher.
     height: (floors) => O1_G + (floors - 1) * O1_FL + 4.4,
     debris: 0x5a6a70,
+  },
+  o2: {
+    id: "o2",
+    kind: "office",
+    style: "classic",
+    // The podium's 12.8 m drum; the canopy in front is inside the footprint
+    // (o2_round.py sets the tower 0.4 m back to centre it).
+    w: 12.8,
+    d: 12.8,
+    front: 2.0,
+    floors: (plan) => Math.max(8, plan),
+    stack(floors, roof, _r, total) {
+      // The lobby, the storeys with a plant storey a little over halfway up
+      // a tall tower, the crown.
+      const n = Math.max(total, floors);
+      const plant = n >= 12 ? Math.round(n * 0.55) : -1;
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: f === plant ? "plant" : "floor", y: O2_G + (f - 1) * O2_FL });
+      if (roof) out.push({ piece: "crown", y: O2_G + (floors - 1) * O2_FL });
+      return out;
+    },
+    top: (floors) => O2_G + (floors - 1) * O2_FL,
+    height: (floors) => O2_G + (floors - 1) * O2_FL + O2_CROWN,
+    debris: 0x5a6a70,
+    walls: [12, 12, 0, -0.4],
   },
   l1: {
     id: "l1",
@@ -1279,9 +1308,9 @@ const STEELS = [0x1e2022, 0x2c4436, 0x5a5e62, 0x6a2a20, 0xd8d2c0, 0x34465a];
 const WORKS_DOORS = [0x3a5a40, 0x6a2620, 0x5a3e2a, 0x2e4a66, 0x7a7c78];
 /** Corrugated sheet: weathered galvanising (most), grey paint, oxide red, green, dark grey. */
 const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
-/** O1's glass: blue-green, blue, bronze, neutral grey, green, silver-blue. */
+/** O1 and O2's glass: blue-green, blue, bronze, neutral grey, green, silver-blue. */
 const OFFICE_GLASS = [0x7fb2aa, 0x7f9cc4, 0xb89a74, 0x949aa0, 0x86b48e, 0xb4c4d0];
-/** O1's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
+/** O1 and O2's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
 const MULLIONS = [0xb8bcc0, 0x4a3e34, 0x1e2022, 0xc8b894, 0xe8e8e4, 0x7a8086];
 /** L1's limestone: Indiana buff, pale grey, cream, warm pink, silver-grey, ivory. */
 const LIMESTONES = [0xf4ead8, 0xdcdcd8, 0xfff4dc, 0xf0d4c4, 0xc8ccd0, 0xfffaf0];
@@ -1901,13 +1930,18 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = sheen({ color: 0x1a2026, roughness: 0.1, emissive: 0xffd49a, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 1.6;
       break;
+    // O2's crown ring: pale metal by day, a lit band at night.
+    case "halo":
+      m = plain(0xdfe4e8, 0.35, 0.3, { emissive: 0xd8eaff, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 1.4;
+      break;
     case "beacon":
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
     case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room(id === "o1" ? "atrium" : "lobby"); break;
+    case "doorglass": m = room(id === "o1" || id === "o2" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;

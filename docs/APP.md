@@ -87,7 +87,8 @@ are blueprints and their prices.
 | A3 | Balcony block | apartment classic | `a3_balcony.py` | in |
 | A4-A6 | Art deco, Parisian, modern apartments | apartment | | |
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
-| O2, O3 | Round glass tower, brutalist office | office | | next |
+| O2 | Round glass tower | office | `o2_round.py` | in |
+| O3 | Brutalist office | office | | next |
 | O4, O5 | Stone office, modernist slab | office | | |
 | L1 | Art deco skyscraper | tower | `l1_deco.py` | in |
 | L2-L4 | Glass supertall, twisting tower, TV tower | tower | | |

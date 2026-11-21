@@ -518,6 +518,7 @@ pub const BLUEPRINTS: &[Blueprint] = &[
         2,
         1500,
     ),
+    bp("o2", "Round glass tower", Office, &[Downtown], 2, 1800),
     bp("l1", "Art deco skyscraper", Tower, &[Downtown], 2, 3000),
 ];
 

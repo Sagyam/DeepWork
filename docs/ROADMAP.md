@@ -17,10 +17,10 @@ area, if anything a reader needs changed.
 
 1. **Use it for real** and tune: coin prices, build hours, shiny odds,
    escalation stages, nudges. Add real `[[routines]]`.
-2. **Models**: O2 or O3, then L2 (offices and towers are each one design,
-   so ~200 of the plan's ~350 h build O1 or L1 over and over), then a
-   second workshop (timber mill or brewery; S4 is the only one, so the
-   mayor never chooses) and a third downtown shop (only S1 and S2 fit).
+2. **Models**: O3, then L2 (towers are one design, so much of the plan's
+   ~350 h builds L1 over and over), then a second workshop (timber mill or
+   brewery; S4 is the only one, so the mayor never chooses) and a third
+   downtown shop (only S1 and S2 fit).
 3. **Landmark ground**: reserve half blocks in `layout.rs` for L5 city
    hall and the landmarks; then L6 town square and L12 city park replace
    the parks assembled from props.
