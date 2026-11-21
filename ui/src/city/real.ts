@@ -118,6 +118,10 @@ const O2_G = 6.0;
 const O2_FL = 3.7;
 /** O2's crown ring above its roof slab; the mast reaches 11.6 m. */
 const O2_CROWN = 5.0;
+const O3_G = 5.0;
+const O3_FL = 3.7;
+/** O3's service towers above its roof slab: the lids, then the warning light to 6.0 m. */
+const O3_TOWERS = 4.4;
 const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
@@ -578,6 +582,27 @@ export const DEFS: Record<string, RealDef> = {
     height: (floors) => O2_G + (floors - 1) * O2_FL + O2_CROWN,
     debris: 0x5a6a70,
     walls: [12, 12, 0, -0.4],
+  },
+  o3: {
+    id: "o3",
+    kind: "office",
+    style: "classic",
+    // The body and its fins, the service towers out of the sides; the
+    // undercroft is inside it, the plaza in front.
+    w: 13.8,
+    d: 11.4,
+    front: 2.6,
+    floors: (plan) => Math.max(5, plan),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: "floor", y: O3_G + (f - 1) * O3_FL });
+      if (roof) out.push({ piece: "roof", y: O3_G + (floors - 1) * O3_FL });
+      return out;
+    },
+    top: (floors) => O3_G + (floors - 1) * O3_FL,
+    height: (floors) => O3_G + (floors - 1) * O3_FL + O3_TOWERS,
+    debris: 0x9a968e,
+    walls: [11.4, 11.4, 0, 0],
   },
   l1: {
     id: "l1",
@@ -1308,10 +1333,16 @@ const STEELS = [0x1e2022, 0x2c4436, 0x5a5e62, 0x6a2a20, 0xd8d2c0, 0x34465a];
 const WORKS_DOORS = [0x3a5a40, 0x6a2620, 0x5a3e2a, 0x2e4a66, 0x7a7c78];
 /** Corrugated sheet: weathered galvanising (most), grey paint, oxide red, green, dark grey. */
 const SHEETS = [0xe4e4e0, 0xd4d4d0, 0xc4c6c4, 0xc87860, 0x9ab49a, 0x8a8e92];
-/** O1 and O2's glass: blue-green, blue, bronze, neutral grey, green, silver-blue. */
+/** O1 and O2's glass (O3 has its own): blue-green, blue, bronze, neutral grey, green, silver-blue. */
 const OFFICE_GLASS = [0x7fb2aa, 0x7f9cc4, 0xb89a74, 0x949aa0, 0x86b48e, 0xb4c4d0];
 /** O1 and O2's metalwork: silver, dark bronze, black, champagne, white, mid grey. */
 const MULLIONS = [0xb8bcc0, 0x4a3e34, 0x1e2022, 0xc8b894, 0xe8e8e4, 0x7a8086];
+/** O3's concrete: warm grey, pale, cool grey, buff, dark grey, pinkish aggregate. */
+const CONCRETES = [0xe4e0d8, 0xf4f2ec, 0xd4d8dc, 0xece0c8, 0xb4b2ae, 0xecdcd4];
+/** O3's glass: bronze, grey, dark bronze, green, neutral. */
+const O3_GLASS = [0xb89a74, 0x949aa0, 0x8a7458, 0x86b48e, 0xa8aaa8];
+/** O3's frames: dark bronze, black, anthracite, light bronze, mid grey. */
+const O3_METALS = [0x4a3e34, 0x1e2022, 0x33373b, 0x8a6a48, 0x7a8086];
 /** L1's limestone: Indiana buff, pale grey, cream, warm pink, silver-grey, ivory. */
 const LIMESTONES = [0xf4ead8, 0xdcdcd8, 0xfff4dc, 0xf0d4c4, 0xc8ccd0, 0xfffaf0];
 /** L1's metalwork, frames to spandrels: statuary bronze, aluminium, verdigris, nickel, black, light bronze. */
@@ -1631,7 +1662,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -1873,7 +1904,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     // The office tower: tinted, coated glass with the floor behind it.
     case "officeglass": {
-      const tint = pick(OFFICE_GLASS, paint.wall);
+      const tint = pick(id === "o3" ? O3_GLASS : OFFICE_GLASS, paint.wall);
       // Tinted glass lets through about half the light, in its colour.
       const g = room("office", new THREE.Color(tint).lerp(new THREE.Color(0xffffff), 0.35).getHex());
       // A reflective coating: more of the sky, in the glass's colour.
@@ -1887,7 +1918,9 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = sheen({ color: tint.clone().multiplyScalar(0.07).getHex(), roughness: 0.05, ior: 2.1, specularColor: tint.lerp(new THREE.Color(0xffffff), 0.35) });
       break;
     }
-    case "mullion": m = w(plain(pick(MULLIONS, paint.accent), 0.35, 0.6), 0.3); break;
+    case "mullion": m = w(plain(pick(id === "o3" ? O3_METALS : MULLIONS, paint.accent), 0.35, 0.6), 0.3); break;
+    // O3's board-marked concrete: streaked by the rain, as concrete is.
+    case "boardform": m = w(pbr("boardform", [2.4, 2.4], { roughness: 0.92, normal: 0.9, color: pick(CONCRETES, paint.wall + paint.roof) }), 1.3); break;
     case "blades": m = w(pbr("blades", [1, 1], { roughness: 0.45, metalness: 0.5, color: new THREE.Color(pick(MULLIONS, paint.accent)).lerp(new THREE.Color(0xffffff), 0.3).getHex() }), 0.8); break;
     case "towername": {
       const t = towerNames.texture(cell);
@@ -1941,7 +1974,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room(id === "o1" || id === "o2" ? "atrium" : "lobby"); break;
+    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;

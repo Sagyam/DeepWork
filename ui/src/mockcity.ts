@@ -84,6 +84,7 @@ const BLUEPRINTS: Omit<BlueprintInfo, "owned" | "unlocked" | "built">[] = [
   { id: "a3", name: "Balcony block", kind: "apartment", districts: ["main_street", "downtown"], level: 1, price: 900 },
   { id: "o1", name: "Curtain-wall office tower", kind: "office", districts: ["downtown"], level: 2, price: 1500 },
   { id: "o2", name: "Round glass tower", kind: "office", districts: ["downtown"], level: 2, price: 1800 },
+  { id: "o3", name: "Brutalist office", kind: "office", districts: ["downtown"], level: 2, price: 1600 },
   { id: "l1", name: "Art deco skyscraper", kind: "tower", districts: ["downtown"], level: 2, price: 3000 },
 ];
 
@@ -116,6 +117,7 @@ const PILES: Record<string, string[]> = {
   a3: ["Ardmore Court", "Belgrave Mansions", "Carlisle Court", "Danbury House", "Edgewood Court", "Fairview Mansions"],
   o1: ["Meridian House", "One Harbour Place", "Carlton Tower", "Northbridge Centre", "The Exchange", "Atlas Building", "200 Park Row", "Sovereign House", "Pinnacle House", "Riverside Plaza", "The Foundry Building", "Quayside Centre"],
   o2: ["The Rotunda", "Compass House", "Orbit House", "The Lantern", "Circle Point", "Halo House", "Meridian House", "One Harbour Place"],
+  o3: ["Federation House", "Concord House", "Bastion House", "Keystone House", "Monolith House", "Unity House", "Meridian House", "One Harbour Place"],
   l1: ["The Orion Building", "Halcyon Tower", "Continental Life", "The Zenith Building"],
 };
 
