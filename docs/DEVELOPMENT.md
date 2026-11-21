@@ -40,7 +40,8 @@ bunx tauri build --no-bundle   # binary in target/release/deepwork-ui
 `levelup`, `inverted`. `&hour=16` fixes the time of day, `&weather=rain`
 (or `clear`, `haze`, `overcast`) the weather;
 `&quality=low|medium|high` and `&taps=1|4|5` override the quality preset and
-shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight. In the console,
+shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight;
+`&people=0` leaves out the pedestrians. In the console,
 `city.demo("collapse" | "build" | "damage" | "graduate")` plays a transition.
 The mock lays the city out from `ui/src/layout.json`, the daemon's layout;
 `UPDATE_FIXTURES=1 cargo test` rewrites it when `layout.rs` changes.
@@ -164,8 +165,11 @@ deepwork config reload | export f | import f
 ## README media
 
 Screenshots and `assets/demo.webp` come from the mock UI in headless
-Chromium (Playwright, 1280x800, `&hour=16`, real GPU:
-`--use-angle=gl --ignore-gpu-blocklist`). The demo is captured frame by
-frame with `page.clock` (10 fps), captioned and joined with ffmpeg, and
-encoded as animated WebP at 720 px. The social preview and the site's
+Chromium (Playwright, real GPU: `--use-angle=gl --ignore-gpu-blocklist`),
+city views at 1600x1000 scaled to 1280x800, sheets at 1280x800, all with
+`&hour=16&people=0` (pedestrians glide until they get a walk cycle) and a
+fixed camera. Set `localStorage["deepwork.seen"]` high first, or the mock's
+past events replay with captions. The demo is captured frame by frame with
+`page.clock` (10 fps), captioned in the page, and encoded with ffmpeg as
+animated WebP at 720 px. The social preview and the site's
 `og.jpg` come from `og/card.html` in the site repo.

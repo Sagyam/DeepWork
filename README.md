@@ -24,7 +24,7 @@ Distracting sites slow to a crawl at the network layer, routines start sessions 
 ![enforcement](https://img.shields.io/badge/enforcement-nftables_+_tc-e0a63f)
 ![status](https://img.shields.io/badge/status-phases_1--4_done-e0a63f)
 
-<img src="assets/demo.webp" width="720" alt="Set a timer, watch a hamlet grow into a metropolis, see a tower fall when you quit, then the stats and site lists">
+<img src="assets/demo.webp" width="720" alt="Set a timer, watch a building rise and a hamlet grow into a metropolis, see a tower fall when you quit, then the stats and site lists">
 
 </div>
 
@@ -59,8 +59,8 @@ Full threat model: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#threat-model).
 |:---:|:---:|
 | <img src="assets/session.webp" alt="A focus session in progress"> | <img src="assets/surrender.webp" alt="Surrendering: the building under construction is about to collapse"> |
 | **In session.** Each one raises a building. | **Surrender.** Ten minutes to change your mind. |
-| <img src="assets/metropolis.webp" alt="A metropolis after 260 focused hours"> | <img src="assets/ruins.webp" alt="Close-up of damaged buildings and rubble"> |
-| **260 hours in.** A metropolis. | **What giving in costs.** Cracks and rubble. |
+| <img src="assets/metropolis.webp" alt="A metropolis after 500 focused hours"> | <img src="assets/ruins.webp" alt="Close-up of burned, smoking buildings"> |
+| **500 hours in.** A metropolis. | **What giving in costs.** Fire and ruins. |
 | <img src="assets/sheet-stats.webp" alt="Stats: focused time per day, completed and surrendered sessions"> | <img src="assets/sheet-lists.webp" alt="Site lists, with a loosening change waiting 24 hours"> |
 | **Stats.** Every session, kept or quit. | **Site lists.** Loosening them waits a day. |
 

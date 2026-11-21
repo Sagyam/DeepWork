@@ -93,6 +93,8 @@ interface Driver {
 /** Vehicles per block and people per block, by tier. */
 const CARS = [1, 2, 3, 4];
 const PEOPLE = [2, 4, 7, 11];
+/** `?people=0` leaves the pedestrians out (README media: they glide, no walk cycle yet). */
+const NO_PEOPLE = new URLSearchParams(globalThis.location?.search ?? "").get("people") === "0";
 
 export class Traffic {
   group = new THREE.Group();
@@ -178,7 +180,7 @@ export class Traffic {
       this.drivers.push({ fleet: fleets.get(v.model)!, slot, car });
     }
 
-    const walkers = p.blocks.length * PEOPLE[tier];
+    const walkers = NO_PEOPLE ? 0 : p.blocks.length * PEOPLE[tier];
     // The figure (civic.py), tinted per person by role. Its materials take
     // vertex colours, so the figure gets plain white ones.
     const figure = realPiece("civic", "person").map(({ role, geo }) => {
