@@ -363,6 +363,9 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .backup-card { padding: 12px 14px; margin-bottom: 12px; }
 .backup-card h3 { margin: 0 0 4px; }
 .backup-card p { margin: 0 0 10px; color: var(--muted-foreground); font-size: 12.5px; }
+.about { display: grid; gap: 8px; }
+.about-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
+.about-value { font-variant-numeric: tabular-nums; user-select: text; }
 .note { border-left: 2px solid var(--brand); padding: 8px 12px; background: var(--background); border-radius: 0 8px 8px 0; font-size: 12.5px; color: var(--muted-foreground); }
 .note strong { color: var(--foreground); }
 .note p { margin: 4px 0 0; }

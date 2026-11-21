@@ -20,3 +20,11 @@ Fulcrum Building
 Albion Place
 Cornerstone House
 Greyfriars Centre
+
+[o2]
+The Rotunda
+Compass House
+Orbit House
+The Lantern
+Circle Point
+Halo House

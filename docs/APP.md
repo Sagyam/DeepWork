@@ -26,7 +26,7 @@ this are in [DEVELOPMENT.md](DEVELOPMENT.md).
 | Letters (envelope) | The residents' letters, newest first, with a link to the building. An unread dot; what was read is kept in localStorage, and a first run starts with nothing unread |
 | Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels as silhouettes |
 | Deed card | A building's memory, rename, paid repair or a repair kit; hover shows a tag. Picking tests lot rectangles, not meshes |
-| Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice |
+| Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice. About shows the build: CalVer, commit, commit and build times (`__BUILD__` from the Vite config) |
 | Progress sheet (chart) | Stats (`stats.ts`, pure, tested) and the session log |
 | Moments | Animated collapse, completion, damage, repair; fireworks and a card at level-up; near-miss "extend?" prompt; unseen events replayed on open; each with a sound (`sound.ts`, WebAudio, no files; mute by the menu) |
 
@@ -87,7 +87,8 @@ are blueprints and their prices.
 | A3 | Balcony block | apartment classic | `a3_balcony.py` | in |
 | A4-A6 | Art deco, Parisian, modern apartments | apartment | | |
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
-| O2, O3 | Round glass tower, brutalist office | office | | next |
+| O2 | Round glass tower | office | `o2_round.py` | in |
+| O3 | Brutalist office | office | | next |
 | O4, O5 | Stone office, modernist slab | office | | |
 | L1 | Art deco skyscraper | tower | `l1_deco.py` | in |
 | L2-L4 | Glass supertall, twisting tower, TV tower | tower | | |

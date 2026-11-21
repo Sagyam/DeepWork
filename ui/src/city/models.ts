@@ -456,6 +456,20 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
       break;
     }
+    case "o2": {
+      // A plaza paved to the pavement round the drum: bollards before the
+      // canopy, a tree in a planter and a bench at each front corner where
+      // the round tower leaves room; the bins at a back corner.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      for (const sx of [-1, 1]) {
+        planter(p, sx * 5.9, front - 1.5, s.seed + (sx > 0 ? 1 : 2));
+        furniture(p, "bench", sx * 5.9, KERB, front - 3.2, 0);
+      }
+      for (let i = 0; i < 6; i++) furniture(p, "bollard", -3.0 + i * 1.2, KERB, front - 0.45);
+      const bin = mat(0x2a3a4a, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, half - 0.8 - i * 1.3, KERB, back + 0.7);
+      break;
+    }
     case "l1": {
       // Granite paving to the pavement, heritage lamps either side of the
       // portal; behind, the bins by the service door.
