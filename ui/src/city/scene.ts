@@ -3,7 +3,9 @@
 // building rises with sparks, a lost one collapses into dust and rubble,
 // damage hits with a jolt. Changes since the window was last open are
 // replayed one by one, so a loss is seen, not just counted.
-import { weatherNow, type Weather } from "./weather";
+import type { Weather } from "./weather";
+import { currentWeather, onWeather } from "./live";
+import { cloudDome, cloudUniforms, Lightning, Precip, weatherize, weatherUniforms } from "./weatherfx";
 import { play } from "../sound";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
@@ -140,9 +142,15 @@ export class City {
   private world: World | null = null;
   private plan: CityPlan | null = null;
   private hour = 12;
-  private weather: Weather = weatherNow();
-  private rain: THREE.LineSegments | null = null;
-  private rainTime = { value: 0 };
+  private weather: Weather = currentWeather();
+  private precip = new Precip();
+  private lightning = new Lightning();
+  /** Light levels light() set, before a lightning flash adds to them. */
+  private lit = { hemi: 1, exposure: 0.72 };
+  /** The fog's distances for the camera (frameCamera()), before the weather closes them in. */
+  private fogAt = { near: 300, far: 3000 };
+  /** When the clouds in the sky cube last moved. */
+  private cloudAt = 0;
   private night = 0;
   private entries = new Map<number, Entry>();
   private base = new THREE.Group();
@@ -284,8 +292,9 @@ export class City {
     u.rayleigh.value = 1.6;
     u.mieCoefficient.value = 0.004;
     u.mieDirectionalG.value = 0.85;
-    this.skyScene.add(this.sky);
+    this.skyScene.add(this.sky, cloudDome(2000));
     this.scene.background = this.skyCube.texture;
+    weatherUniforms.uWxSky.value = this.skyCube.texture;
 
     const starGeo = new THREE.BufferGeometry();
     const sr = rng(99);
@@ -306,7 +315,7 @@ export class City {
     this.sunLight.shadow.normalBias = 0.6;
     this.scene.add(this.sunLight, this.sunLight.target, this.hemi, this.fill);
 
-    this.scene.add(this.land.group, this.base, this.fx.group, this.traffic.group);
+    this.scene.add(this.land.group, this.base, this.fx.group, this.traffic.group, this.precip.group, this.lightning.group);
     this.scene.fog = new THREE.Fog(0xb8c8d8, 350, 3600);
 
     this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(1, 1, { samples: 4, type: THREE.HalfFloatType }));
@@ -344,6 +353,10 @@ export class City {
     new ResizeObserver(() => this.resize()).observe(el);
     this.applyQuality(QUALITY[qualityPref()]);
     onQuality((q) => this.applyQuality(QUALITY[q]));
+    onWeather(() => {
+      this.envAt = null;
+      this.light(this.hour);
+    });
     const activity = () => this.activity();
     document.addEventListener("visibilitychange", activity);
     window.addEventListener("focus", activity);
@@ -1044,9 +1057,16 @@ export class City {
     }
     // Haze that sets the city off from the woods behind it and fades the
     // mountains, without hiding them.
+    this.fogAt = { near: Math.max(300, dist * 1.5), far: Math.max(3000, dist * 11) };
+    this.applyFog();
+  }
+
+  /** Fog weather closes the haze in until the far side of town fades. */
+  private applyFog() {
     const fog = this.scene.fog as THREE.Fog;
-    fog.near = Math.max(300, dist * 1.5);
-    fog.far = Math.max(3000, dist * 11);
+    const f = this.weather.fog;
+    fog.near = this.fogAt.near * THREE.MathUtils.lerp(1, 0.08, f);
+    fog.far = this.fogAt.far * THREE.MathUtils.lerp(1, 0.22, f * f);
   }
 
   // ---- light ----------------------------------------------------------------
@@ -1069,24 +1089,47 @@ export class City {
     // Warm sun against cool sky light; late in the day the sun turns orange
     // and the shade lilac, so the hour reads at a glance.
     // Weather: clouds take the sun's direct light and give some back as sky.
-    this.weather = weatherNow();
-    const cloud = this.weather.cloud;
-    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day) * (1 - 0.75 * cloud);
+    const w = (this.weather = currentWeather());
+    const cloud = w.cloud;
+    // Thick cloud lets less through; a storm's slate lets almost nothing.
+    const block = Math.min(0.97, cloud * cloud * (0.75 + 0.3 * w.dark) + 0.25 * Math.max(w.rain, w.snow, w.fog));
+    this.sunLight.intensity = THREE.MathUtils.lerp(0.35, 4.4, d.day) * (1 - block);
     this.sunLight.color.setHex(d.day > 0.02 ? 0xfff2e0 : 0x9fb4ff).lerp(new THREE.Color(0xff8a3a), d.golden);
-    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day) * (1 + 0.35 * cloud);
+    this.hemi.intensity = THREE.MathUtils.lerp(0.25, 2.2, d.day) * (1 + 0.6 * block - 0.45 * w.dark * cloud + 0.25 * w.cover);
+    this.lit.hemi = this.hemi.intensity;
     this.hemi.color.setHex(0xb0c8ff).lerp(new THREE.Color(0x2a3560), d.night).lerp(new THREE.Color(0x9088c0), d.golden * 0.5);
     this.hemi.groundColor.setHex(0x8a7a60).lerp(new THREE.Color(0x101418), d.night);
     this.scene.environmentIntensity = THREE.MathUtils.lerp(0.15, 0.6, d.day);
     this.fill.intensity = this.scene.environment ? 0 : FILL * this.scene.environmentIntensity * THREE.MathUtils.lerp(1, DAY_FILL, d.day);
     for (const m of this.glossy) if (m.envMap === this.roomEnv) m.envMapIntensity = this.scene.environmentIntensity;
-    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15;
-    (this.stars.material as THREE.PointsMaterial).opacity = d.night;
-    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6 * (1 - cloud)).lerp(new THREE.Color(0xa8acb0), cloud * 0.7 * d.day).lerp(new THREE.Color(0x0c1020), d.night);
+    this.renderer.toneMappingExposure = THREE.MathUtils.lerp(0.75, 0.72, d.day) + d.golden * 0.15 * (1 - cloud);
+    this.lit.exposure = this.renderer.toneMappingExposure;
+    (this.stars.material as THREE.PointsMaterial).opacity = d.night * (1 - cloud);
+    const grey = new THREE.Color(0xb4b8bc).lerp(new THREE.Color(0x6a7078), w.dark).lerp(new THREE.Color(0xd8dde2), w.cover * 0.6);
+    const fog = new THREE.Color(0xc4d4e4).lerp(new THREE.Color(0xe0a070), d.golden * 0.6 * (1 - cloud)).lerp(grey, Math.max(cloud * 0.8, w.fog) * d.day).lerp(new THREE.Color(0x0c1020), d.night);
     (this.scene.fog as THREE.Fog).color.copy(fog);
+    this.applyFog();
+    this.impostors.coverage(w.fog < 0.5);
     u.turbidity.value = 6 + 14 * cloud;
     u.rayleigh.value = 1.6 * (1 - 0.6 * cloud);
     u.mieCoefficient.value = 0.004 + 0.02 * cloud;
-    this.setRain(this.weather.rain);
+    // Clouds: lit white by day, orange late, dull blue by the moon; their
+    // undersides take the weather's slate.
+    const sunCol = new THREE.Color(0xfff6ea).lerp(new THREE.Color(0xff9a5a), d.golden * (1 - 0.6 * cloud));
+    const lit = sunCol.multiplyScalar(THREE.MathUtils.lerp(0.035, 1.05, d.day) * (1 - 0.55 * w.dark));
+    cloudUniforms.uLit.value.copy(lit);
+    cloudUniforms.uShade.value.copy(lit).multiply(new THREE.Color(0.55, 0.58, 0.66)).multiplyScalar(1 - 0.5 * w.dark);
+    cloudUniforms.uHaze.value.copy(fog).multiplyScalar(THREE.MathUtils.lerp(0.4, 1, d.day));
+    cloudUniforms.uCover.value = cloud;
+    cloudUniforms.uDark.value = w.dark;
+    cloudUniforms.uFog.value = w.fog;
+    cloudUniforms.uSun.value.copy(d.sun);
+    // On the ground: snow lying, wet streets; the drops take the sky's light.
+    weatherUniforms.uWxSnow.value = w.cover;
+    weatherUniforms.uWxWet.value = w.wet;
+    weatherUniforms.uWxRain.value = w.rain;
+    weatherUniforms.uWxSkyI.value = THREE.MathUtils.lerp(0.15, 0.9, d.day);
+    this.precip.set(w.rain, w.snow, w.wind, new THREE.Color(0xc8d0d8).multiplyScalar(THREE.MathUtils.lerp(0.12, 0.85, d.day) * (1 - 0.4 * w.dark)));
     this.land.setNight(d.night);
     this.bloom.strength = 0.15 + d.night * 0.4;
     this.clamp.enabled = d.night > 0.05;
@@ -1103,45 +1146,6 @@ export class City {
     this.skyEnv(d.sun, d.night);
     this.cubeCam.update(this.renderer, this.skyScene);
     this.dirty = true;
-  }
-
-  /**
-   * Rain: streaks in a box round what the camera looks at, falling in the
-   * vertex shader, so it costs one draw and no CPU work per drop.
-   */
-  private setRain(amount: number) {
-    if (amount <= 0) {
-      if (this.rain) this.scene.remove(this.rain);
-      this.rain = null;
-      return;
-    }
-    if (this.rain) return;
-    const n = 6000;
-    const r = rng(17);
-    // Both ends of a streak share its height, so they wrap together; aLen
-    // drops the lower end.
-    const pos = new Float32Array(n * 6);
-    const len = new Float32Array(n * 2);
-    for (let i = 0; i < n; i++) {
-      const x = (r() - 0.5) * 360;
-      const y = r() * 120;
-      const z = (r() - 0.5) * 360;
-      pos.set([x, y, z, x + 0.15, y, z + 0.1], i * 6);
-      len.set([0, 1.6], i * 2);
-    }
-    const g = new THREE.BufferGeometry();
-    g.setAttribute("position", new THREE.BufferAttribute(pos, 3));
-    g.setAttribute("aLen", new THREE.BufferAttribute(len, 1));
-    const m = new THREE.LineBasicMaterial({ color: 0xc8d4dc, transparent: true, opacity: 0.35, depthWrite: false, fog: true });
-    m.onBeforeCompile = (sh) => {
-      sh.uniforms.uTime = this.rainTime;
-      sh.vertexShader = sh.vertexShader
-        .replace("#include <common>", "#include <common>\nuniform float uTime;\nattribute float aLen;")
-        .replace("#include <begin_vertex>", "#include <begin_vertex>\ntransformed.y = mod(transformed.y - uTime * 24.0, 120.0) - aLen;");
-    };
-    this.rain = new THREE.LineSegments(g, m);
-    this.rain.frustumCulled = false;
-    this.scene.add(this.rain);
   }
 
   // ---- rendering optimisations ------------------------------------------------
@@ -1253,7 +1257,8 @@ export class City {
         if (mesh.castShadow && m.alphaTest > 0 && s.map && !loaded(s.map)) this.shadowWait.add(s.map);
         if (this.prepared.has(m)) continue;
         this.prepared.add(m);
-        if (m.alphaTest > 0 && !m.alphaToCoverage) {
+        weatherize(m);
+        if (m.alphaTest > 0 && !m.alphaToCoverage && !m.userData.noCoverage) {
           m.alphaToCoverage = true;
           m.needsUpdate = true;
         }
@@ -1361,6 +1366,35 @@ export class City {
   private envAt: THREE.Vector3 | null = null;
   private envTarget: THREE.WebGLRenderTarget | null = null;
 
+  /**
+   * The weather's motion: drops follow the camera, puddles ring, lightning
+   * flashes. Drifting clouds are driftClouds(), on frames that draw anyway.
+   */
+  private weatherFrame(dt: number) {
+    const w = this.weather;
+    weatherUniforms.uWxTime.value = this.t;
+    const size = this.renderer.getDrawingBufferSize(new THREE.Vector2());
+    this.precip.update(this.t, this.camera, this.controls.target, size);
+    const was = this.lightning.flash;
+    const flashing = this.lightning.update(dt, w.lightning && !this.dim, this.camera, this.controls.target);
+    const f = this.lightning.flash;
+    if (flashing || was > 0) {
+      this.hemi.intensity = this.lit.hemi * (1 + 4 * f);
+      this.renderer.toneMappingExposure = this.lit.exposure * (1 + 0.5 * f);
+      cloudUniforms.uFlash.value = f * (0.6 + 0.4 * this.night);
+      this.cubeCam.update(this.renderer, this.skyScene);
+    }
+  }
+
+  /** Called only on frames that draw. */
+  private driftClouds() {
+    const w = this.weather;
+    if (w.cloud <= 0 || this.t - this.cloudAt < 2) return;
+    this.cloudAt = this.t;
+    cloudUniforms.uDrift.value.set(0.9, 0.45).multiplyScalar(this.t * 0.004 * (0.3 + w.wind));
+    this.cubeCam.update(this.renderer, this.skyScene);
+  }
+
   /** What the realistic glass reflects: this sky without its sun disc, redrawn when the sun has moved. */
   private skyEnv(sun: THREE.Vector3, night: number) {
     if (this.envAt && this.envAt.angleTo(sun) < 0.05) return;
@@ -1373,7 +1407,8 @@ export class City {
     u.mieDirectionalG.value = 0.6;
     u.sunPosition.value.copy(sun);
     u.showSunDisc.value = 0;
-    scene.add(sky);
+    const dome = cloudDome(800);
+    scene.add(sky, dome);
     // A dull ground below the horizon, so glass does not show the sky's underside.
     const ground = new THREE.Mesh(new THREE.CircleGeometry(900, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: new THREE.Color(0x3a3c3e).lerp(new THREE.Color(0x050608), night) }));
     ground.position.y = -2;
@@ -1383,6 +1418,7 @@ export class City {
     pmrem.dispose();
     sky.material.dispose();
     sky.geometry.dispose();
+    dome.geometry.dispose();
     setRealEnv(target.texture);
     this.envTarget?.dispose();
     this.envTarget = target;
@@ -1499,10 +1535,7 @@ export class City {
     if (!this.dim) this.traffic.update(dt, this.t);
     setSignals(this.t, this.night);
     setWaterTime(this.t);
-    if (this.rain) {
-      this.rainTime.value = this.t;
-      this.rain.position.set(this.controls.target.x, 0, this.controls.target.z);
-    }
+    this.weatherFrame(dt);
 
     let animating = this.dying.length > 0 || this.fx.falling;
     let busy = false;
@@ -1526,9 +1559,10 @@ export class City {
     // idle: no frames while nothing moves (camera at rest, no auto-rotate, no
     // traffic, effects or transitions): a focus timer's city can sit on screen
     // for hours, and a still frame costs as much as a busy one.
-    const moving = !!this.rain || this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
+    const moving = this.precip.active || this.lightning.flash > 0 || this.controls.autoRotate || !!this.focus || this.shake > 0 || this.queue.length > 0 || animating || busy || this.fx.active || (this.traffic.active && !this.dim) || this.impostors.pending > 0;
     if (!moving && !this.dirty && !this.bench) return;
     this.dirty = false;
+    this.driftClouds();
     if (this.warm) {
       this.warm = false;
       this.prewarm();

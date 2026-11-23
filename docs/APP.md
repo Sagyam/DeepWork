@@ -37,7 +37,9 @@ A renderer failure only loses the picture: the HUD keeps working.
 | File | Role |
 |---|---|
 | `plan.ts` | The `World` as places, from the daemon's layout: a block shows once land in it is bought, parks by level; road classes per block side, street labels. `PUBLIC` and `NEED_LOOKS` pick models for public buildings. Pure, tested |
-| `weather.ts` | The day's weather (clear, haze, overcast, rain) by date; the scene dims the sun and draws rain in one shader-animated draw. Pure, tested |
+| `weather.ts` | What the weather is: nine kinds (`KINDS`), the day's by date and season, or a live report mapped by `fromReport()`. Pure, tested |
+| `live.ts` | Opt-in live weather from Open-Meteo for a place picked in Settings, Appearance; localStorage only |
+| `weatherfx.ts` | Drawing it: snow cover and wet puddles patched into every lit material, rain and snow, the cloud dome, lightning |
 | `models.ts` | Builds buildings from model pieces, their yards, construction sites, damage, ruins (`shell()`), parks |
 | `real.ts` | Loads the models, all or none; `DEFS` (size, set-back, the plan style drawn), `PROPS`, materials and shaders |
 | `scene.ts` | Sky, sun by local time, shadows, bloom, camera; carries the performance work below |
@@ -47,6 +49,15 @@ A renderer failure only loses the picture: the HUD keeps working.
 | `street.ts` | Where pavement furniture stands; the scene, cars and people share it |
 | `traffic.ts` | Draws the cars (tilted on the hills) and people (limbs swung in the vertex shader) |
 | `fx.ts` | Dust, sparks, fireworks |
+
+### Weather
+
+- **By date** by default: one weather a day, the same for everyone, with seasonal odds (`ODDS`); snow only in winter, storms mostly in summer.
+- **Live** when the viewer names a place: Open-Meteo every 15 minutes, coordinates rounded to ~1 km; three hours without an answer falls back to the day's.
+- **Surfaces**: `weatherize()` chains onto each material's own patch in `prepare()`; snow settles on what faces up (`userData.snow` scales it), wet darkens, puddles mirror the sky cube and ring with rain.
+- **Rain and snow** are one instanced draw each in a box ahead of the camera, moved in the vertex shader; drops are sized in pixels so far ones stay visible.
+- **Clouds** are a dome in the sky scene, so they live in the background cube; they drift only on frames that draw anyway.
+- Ambience only: weather rewards nothing.
 
 ### Street life
 
@@ -211,5 +222,7 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 - 30 fps for an end-game city on a weak iGPU is acceptable.
 - **Long vehicles take no tight right turns** and park in no lot: a 12 m bus on a 4 m radius swung its tail into the oncoming lane.
 - **Pedestrians walk fixed lines, not free steering**: per-person avoidance kept finding new overlaps and deadlocks.
+- **Live weather is opt-in, by a named place**: locating by IP would tell a third party about the viewer without asking.
+- **Tree impostors drop alpha to coverage in fog**: their half-covered edges showed as white outlines once fog greyed out the rest.
 - Glbs gzipped, not meshopt: lossless meshopt shrank them less (31 MB to 18,
   gzip to 10) and its decoder needs WebAssembly, which the CSP refuses.

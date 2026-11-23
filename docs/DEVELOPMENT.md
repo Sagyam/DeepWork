@@ -38,7 +38,8 @@ bunx tauri build --no-bundle   # binary in target/release/deepwork-ui
 **Mock scenarios** (`?mock=`): `empty`, `hamlet`, `city`, `metropolis`,
 `session`, `stopwatch`, `surrender`, `ruins`, `desk`, `nearmiss`,
 `levelup`, `inverted`. `&hour=16` fixes the time of day, `&weather=rain`
-(or `clear`, `haze`, `overcast`) the weather;
+(any of `KINDS` in `weather.ts`: `clear`, `fair`, `haze`, `overcast`, `fog`,
+`drizzle`, `rain`, `storm`, `snow`) the weather;
 `&quality=low|medium|high` and `&taps=1|4|5` override the quality preset and
 shadow filter; `&leaves=0` turns off the leaf pre-pass and backlight;
 `&people=0` leaves out the pedestrians. In the console,

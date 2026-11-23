@@ -51,6 +51,7 @@ export class Land {
 
   constructor() {
     this.waterMat = new THREE.MeshStandardMaterial({ color: 0x3d6e86, roughness: 0.06, metalness: 0.3, envMapIntensity: 1.2, normalMap: ripples(), normalScale: new THREE.Vector2(0.3, 0.3) });
+    this.waterMat.userData.noWeather = true;
   }
 
   /** Rebuild for a city of a new size. */

@@ -19,7 +19,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost models:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: models:"
+      "csp": "default-src 'self'; connect-src 'self' ipc: http://ipc.localhost models: https://api.open-meteo.com https://geocoding-api.open-meteo.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: models:"
     }
   },
   "bundle": {

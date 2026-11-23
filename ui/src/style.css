@@ -319,6 +319,8 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .danger-quiet:hover:not(:disabled) { background: var(--loss-soft); }
 
 .add-rule { display: grid; grid-template-columns: minmax(0, 1fr) 170px auto; gap: 6px; margin-bottom: 14px; }
+.place-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; margin-top: 8px; }
+.place-list { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 6px; }
 .rule-groups { display: grid; gap: 10px; }
 .rule-group, .routine-card, .backup-card { border: 1px solid var(--border); border-radius: 10px; background: var(--background); }
 .rule-group { padding: 10px 12px; }
@@ -375,7 +377,7 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
   .sheet-body { grid-template-columns: 1fr; }
   .sheet-nav { flex-direction: row; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
   .nav-blurb { display: none; }
-  .grid2, .grid4, .routine-top, .profile-bar, .add-rule { grid-template-columns: 1fr; }
+  .grid2, .grid4, .routine-top, .profile-bar, .add-rule, .place-search { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {
