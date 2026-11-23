@@ -12,7 +12,7 @@ import { GLTFLoader, type GLTF } from "three/examples/jsm/loaders/GLTFLoader.js"
 import { KTXLoader } from "three/examples/jsm/loaders/KTXLoader.js";
 import { glass, interiorUniforms, type RoomKind } from "./interior";
 import type { Kind } from "./plan";
-import { signal } from "./roads";
+import { signal, walkLeft } from "./roads";
 
 export { interiorUniforms };
 
@@ -1554,14 +1554,15 @@ const LENS: Record<string, number> = { sig_red: 0xff2a1a, sig_amber: 0xffa21a, s
 
 /**
  * Lights the traffic signals by the cycle the cars obey (signal() in
- * roads.ts); the walk signal shows white across the road that has red.
- * `night` (0-1) brightens the lit lenses.
+ * roads.ts); the walk signal shows white in the walk phase, when every road
+ * has red (walkLeft()). `night` (0-1) brightens the lit lenses.
  */
 export function setSignals(t: number, night = 0) {
   sprayBright.value = 1 - 0.78 * night;
+  const walk = walkLeft(t) > 0;
   for (const { m, role, phase } of signals) {
     const state = signal(t, phase);
-    const on = role === "ped_white" ? state === "red" : role === "ped_red" ? state !== "red" : role === `sig_${state}`;
+    const on = role === "ped_white" ? walk : role === "ped_red" ? !walk : role === `sig_${state}`;
     m.emissiveIntensity = on ? 2.2 + 3 * night : 0;
   }
 }

@@ -42,9 +42,19 @@ A renderer failure only loses the picture: the HUD keeps working.
 | `real.ts` | Loads the models, all or none; `DEFS` (size, set-back, the plan style drawn), `PROPS`, materials and shaders |
 | `scene.ts` | Sky, sun by local time, shadows, bloom, camera; carries the performance work below |
 | `terrain.ts`, `land.ts` | Hills, river, woods (instanced, with impostors from `impostor.ts`) |
-| `roads.ts` | The lane graph and the cars on it: turns, signals, gaps. Pure, tested |
-| `traffic.ts` | Draws the cars, and pedestrians on the pavements |
+| `roads.ts` | The lane graph, the road out of town, and car trips: routes, signals, parking. Pure, tested |
+| `walks.ts` | Pedestrians: two walking lines per pavement, zebras on the walk phase. Pure, tested |
+| `street.ts` | Where pavement furniture stands; the scene, cars and people share it |
+| `traffic.ts` | Draws the cars (tilted on the hills) and people (limbs swung in the vertex shader) |
 | `fx.ts` | Dust, sparks, fireworks |
+
+### Street life
+
+- **Cars make trips**: in by the road out of town, along the shortest way to a lot (pull in, park a while, back out), a bus stop, or out the other side.
+- **Signals** run a cycle with an all-red walk phase (`signal()`, `walkLeft()` in `roads.ts`); the lenses follow it.
+- **Cars yield**: gap to the car ahead, the crossing held until a tail clears it, stop for anyone on a zebra or a driveway.
+- **People** keep to their line (inside one way, kerb side the other), each bent round furniture; cross only on the walk phase.
+- `roads.test.ts` and `walks.test.ts` run minutes of traffic and check outlines for overlaps, red-light running and gridlock.
 
 ## Realistic models
 
@@ -199,5 +209,7 @@ Open items are in [ROADMAP.md](ROADMAP.md#rendering).
 - Landmarks include civic buildings, squares, parks and monuments on half
   or whole blocks; the master plan reserves their ground.
 - 30 fps for an end-game city on a weak iGPU is acceptable.
+- **Long vehicles take no tight right turns** and park in no lot: a 12 m bus on a 4 m radius swung its tail into the oncoming lane.
+- **Pedestrians walk fixed lines, not free steering**: per-person avoidance kept finding new overlaps and deadlocks.
 - Glbs gzipped, not meshopt: lossless meshopt shrank them less (31 MB to 18,
   gzip to 10) and its decoder needs WebAssembly, which the CSP refuses.

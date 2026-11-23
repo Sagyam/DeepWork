@@ -24,6 +24,7 @@ import { IMPOSTOR_NEAR, Impostors, loaded } from "./impostor";
 import { thumbnail } from "./thumbs";
 import { groundMat, interiorUniforms, LEAF_OPT, leafDepth, loadReal, realMat, realPiece, setRealEnv, setSignals, setSprayScale, setWaterTime, useModels } from "./real";
 import { modelsStatus, type ModelsStatus } from "../models";
+import { KERB_SET, LAMP_T, streetProps, TREE_T } from "./street";
 import { Traffic } from "./traffic";
 import { Land } from "./land";
 import { RADIUS, ROAD_Z, WATER } from "./terrain";
@@ -843,12 +844,12 @@ export class City {
         if (rw > 0) for (let i = 0; i < 6; i++) surf.box(line, 0.5, 0.07, 2.6, b.x - BLOCK_X / 2 - pw - 0.8 - i * ((kerb - 1) / 5), 0, z);
       }
       // Street lamps along the kerb, and trees between them.
-      const ex = BLOCK_X / 2 + pw - 0.45;
-      const ez = BLOCK_Z / 2 + pw - 0.45;
+      const ex = BLOCK_X / 2 + pw - KERB_SET;
+      const ez = BLOCK_Z / 2 + pw - KERB_SET;
       for (const lz of [-1, 1]) {
         // Lamps from a street up, trees from a boulevard up.
         const cls = lz < 0 ? rn : rs;
-        if (cls > 0) for (const t of [-1, -1 / 3, 1 / 3, 1]) {
+        if (cls > 0) for (const t of LAMP_T) {
           const x = b.x + t * (BLOCK_X / 2 - 1);
           const z = b.z + lz * ez;
           // The arm reaches out over the road; at night its light pools
@@ -858,7 +859,7 @@ export class City {
           furniture(props, "lamp_led", x, KERB, z, lz > 0 ? 0 : Math.PI);
           surf.add(pool, new THREE.PlaneGeometry(11, 11), x, 0.08, z + lz * 1.8, -Math.PI / 2);
         }
-        if (cls > 1) for (const t of [-5 / 6, -1 / 2, -1 / 6, 1 / 6, 1 / 2, 5 / 6]) {
+        if (cls > 1) for (const t of TREE_T) {
           treeAt(trees, b.x + t * (BLOCK_X / 2 - 1), b.z + lz * ez, 0.5, Math.floor(b.x * 31 + b.z * 17 + t * 12 + lz * 5), KERB);
         }
       }
@@ -990,7 +991,7 @@ export class City {
     });
     this.scene.add(this.base);
     this.applyNight({ height: 0, emitters: [], beacons: [], night: this.lampMats, debris: 0 });
-    this.traffic.build(p);
+    this.traffic.build(p, ground);
     this.prepare(this.base);
     this.prepare(this.land.group);
     this.prepare(this.traffic.group);
@@ -998,27 +999,9 @@ export class City {
     this.fitShadows(p);
   }
 
-  /**
-   * The realistic pavement furniture round a block: from a town on, traffic
-   * signals at its corners (mast arms over the roads running along z, posts
-   * for those along x, on opposite phases); a hydrant, litter bins and a
-   * bench; a bus stop from a city on.
-   */
+  /** The realistic pavement furniture round a block (streetProps() in street.ts). */
   private streetFurniture(parts: Parts, b: { x: number; z: number }, tier: number) {
-    const pw = PAVEMENT;
-    const cx = BLOCK_X / 2 + pw - 0.55;
-    const cz = BLOCK_Z / 2 + pw - 0.55;
-    const kerb = BLOCK_Z / 2 + pw - 0.4;
-    if (tier >= 1) {
-      furniture(parts, "signal_mast", b.x + cx, KERB, b.z + cz, Math.PI / 2, undefined, "a");
-      furniture(parts, "signal_mast", b.x - cx, KERB, b.z - cz, -Math.PI / 2, undefined, "a");
-      furniture(parts, "signal_post", b.x - cx, KERB, b.z + cz, 0, undefined, "b");
-      furniture(parts, "signal_post", b.x + cx, KERB, b.z - cz, Math.PI, undefined, "b");
-    }
-    furniture(parts, "hydrant", b.x, KERB, b.z + kerb, 0);
-    for (const sx of [-1, 1]) furniture(parts, "bin", b.x + sx * (BLOCK_X / 2 - 3.2), KERB, b.z - sx * kerb, sx > 0 ? 0 : Math.PI);
-    furniture(parts, "bench", b.x - 20.7, KERB, b.z + BLOCK_Z / 2 + pw - 1.3, 0);
-    if (tier >= 2) furniture(parts, "busstop", b.x + 20.7, KERB, b.z - (BLOCK_Z / 2 + pw - 1.0), Math.PI);
+    for (const f of streetProps(b, tier)) furniture(parts, f.piece, f.x, KERB, f.z, f.rot, undefined, f.phase);
   }
 
   private fitShadows(p: CityPlan) {

@@ -85,10 +85,9 @@ Check each against the rule in [GAME.md](GAME.md#the-one-rule).
 - **Junctions and structures**: signals only where busy streets meet,
   stop signs on lanes, a roundabout at district centres, a flyover where
   the highway meets downtown, an underpass under the river road.
-- **Traffic with trips**: cars now roam the lane graph (`roads.ts`) at
-  random. Next they leave a lot, route to another (homes to offices in the
-  morning, shops at midday, home at dusk), park and vanish. Buses on fixed
-  lines; volume follows what is built. Budget the CPU on the iGPU.
+- **Trips by the hour**: cars go lot to lot at random (`roads.ts`). Next:
+  homes to offices in the morning, shops at midday, home at dusk; buses on
+  fixed lines; volume follows what is built.
 - **Congestion**, after trips: residents complain about jammed streets,
   and only a paid upgrade (a signal, a roundabout, widening) meets it.
 
