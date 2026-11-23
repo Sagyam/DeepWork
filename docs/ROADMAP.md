@@ -72,6 +72,22 @@ with a root shell open in another terminal for the PAM checks.
 - [ ] Shrink the pack further: the AO bakes are ~90 MB of it, one channel
       stored as BC7; BC4 (RGTC) would halve them.
 
+## Code health
+
+From the audit, after the security fixes.
+
+- [ ] The app's `read_file` / `write_file` accept any path from the page:
+      open the dialogs from Rust, and build HTML with an escaping `html` tag.
+- [ ] Every `World` request refolds the whole ledger under the core's lock;
+      keep the folded `City` and apply new facts to it.
+- [ ] Split `world.rs` into fold, `check_*` rules and the `World` view; give
+      `engine.rs`'s mayor requests one `check → decide` helper.
+- [ ] Generate `ui/src/proto.ts` from `crates/proto`, or test that they match;
+      have Rust write `mockcity.ts`'s prices next to `layout.json`.
+- [ ] One renderer setup for `city/scene.ts`, `town.html` and `proto.html`, so
+      town benchmarks measure the app; split `City` in `scene.ts` by layer.
+- [ ] Rename `ui/src/proto/` (showcases) apart from `ui/src/proto.ts` (IPC).
+
 ## Packaging
 
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
