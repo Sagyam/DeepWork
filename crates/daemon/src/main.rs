@@ -182,17 +182,17 @@ async fn main() -> Result<()> {
         let resolver = resolver.clone();
         nfqueue::spawn(Arc::new(move || resolver.rules()));
     }
-    let core = Arc::new(Mutex::new(
-        Core::new(
-            (cfg_state, outcome),
-            args.config.clone(),
-            store,
-            enforcer,
-            resolver.clone(),
-            args.dry_run,
-        )
-        .await?,
-    ));
+    let core = Core::new(
+        (cfg_state, outcome),
+        args.config.clone(),
+        store,
+        enforcer,
+        resolver.clone(),
+        args.dry_run,
+    )
+    .await?;
+    let gate = core.gate_watch();
+    let core = Arc::new(Mutex::new(core));
 
     let ticker = {
         let core = core.clone();
@@ -223,7 +223,7 @@ async fn main() -> Result<()> {
     tokio::select! {
         () = reloader => {}
         res = resolver.serve() => res?,
-        res = server::serve(listener, core.clone()) => res?,
+        res = server::serve(listener, core.clone(), gate) => res?,
         () = ticker => {}
         _ = sigterm.recv() => info!("SIGTERM"),
         _ = tokio::signal::ctrl_c() => info!("interrupted"),

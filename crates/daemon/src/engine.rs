@@ -13,6 +13,7 @@ use deepwork_proto::{
 };
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
+use tokio::sync::watch;
 use tracing::{error, info, warn};
 
 use crate::backup::{self, Backup, BackupSession};
@@ -43,6 +44,36 @@ const CLOCK_JUMP: SignedDuration = SignedDuration::from_secs(120);
 const AMBIENT_RETRY: Duration = Duration::from_secs(60);
 /// Store key for the free-minute bank.
 const BANK_KEY: &str = "free_bank";
+
+/// What the privilege gate needs from a running session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lockout {
+    pub session_id: i64,
+    /// "12 min left", for the refusal message.
+    pub left: String,
+}
+
+/// The lockout as the core last published it. The socket server answers the
+/// gate from this without waiting for the core's lock: the PAM hook gives up
+/// (and allows) after 2 s, so a busy core must not be able to delay it.
+pub type GateWatch = watch::Receiver<Option<Lockout>>;
+
+/// The gate's answer for `uid` given the lockout. Root is always allowed.
+pub fn gate_answer(lockout: Option<&Lockout>, uid: Option<u32>) -> Response {
+    let (allow, message) = match lockout {
+        _ if uid == Some(0) => (true, "root".into()),
+        None => (true, "no session".into()),
+        Some(l) => (
+            false,
+            format!(
+                "deepwork: root access is locked during the focus session ({}). \
+                 TTY root login still works; `deepwork surrender` ends the session.",
+                l.left
+            ),
+        ),
+    };
+    Response::Gate { allow, message }
+}
 
 pub struct Core {
     cfg: Config,
@@ -77,6 +108,7 @@ pub struct Core {
     /// The profile enforced outside sessions (inverted mode), if engaged.
     ambient: Option<Profile>,
     ambient_retry_at: Option<Instant>,
+    lockout: watch::Sender<Option<Lockout>>,
 }
 
 /// Time since boot, including suspend (`CLOCK_BOOTTIME`).
@@ -154,6 +186,7 @@ impl Core {
             bank,
             ambient: None,
             ambient_retry_at: None,
+            lockout: watch::Sender::new(None),
         };
         core.log_config_outcome(&outcome);
         match core.store.running_session()? {
@@ -161,7 +194,54 @@ impl Core {
             // Clears anything left behind by a crash outside a session.
             None => core.settle().await,
         }
+        core.publish_lockout();
         Ok(core)
+    }
+
+    pub fn gate_watch(&self) -> GateWatch {
+        self.lockout.subscribe()
+    }
+
+    fn current_lockout(&self) -> Option<Lockout> {
+        let session = self.session.as_ref().filter(|s| s.is_running())?;
+        let i = session.info(self.stopwatch_min());
+        let left = if i.state == SessionState::Surrendering {
+            format!(
+                "surrender finishes in {} min",
+                i.surrender_remaining_secs.unwrap_or(0).div_ceil(60)
+            )
+        } else {
+            match i.remaining_secs {
+                Some(rem) => format!("{} min left", rem.div_ceil(60)),
+                None => "stopwatch running".into(),
+            }
+        };
+        Some(Lockout {
+            session_id: session.id,
+            left,
+        })
+    }
+
+    /// Called after anything that may start, change or end a session.
+    fn publish_lockout(&self) {
+        let now = self.current_lockout();
+        self.lockout.send_if_modified(|l| {
+            let changed = *l != now;
+            *l = now;
+            changed
+        });
+    }
+
+    /// Records a refused escalation. Separate from the answer, which the
+    /// server gives without the core's lock.
+    pub fn log_denied(&self, session_id: i64, service: &str, uid: Option<u32>) {
+        let who = uid.map(|u| format!(" uid {u}")).unwrap_or_default();
+        warn!("refused {service}{who} during session {session_id}");
+        self.log(
+            Some(session_id),
+            EventKind::EscalationDenied,
+            &format!("{service}{who}"),
+        );
     }
 
     fn stopwatch_min(&self) -> Duration {
@@ -208,10 +288,12 @@ impl Core {
     }
 
     pub async fn handle(&mut self, req: Request, uid: u32) -> Response {
-        match self.try_handle(req, uid).await {
+        let resp = match self.try_handle(req, uid).await {
             Ok(resp) => resp,
             Err(message) => Response::error(message),
-        }
+        };
+        self.publish_lockout();
+        resp
     }
 
     async fn try_handle(&mut self, req: Request, uid: u32) -> Result<Response, String> {
@@ -246,7 +328,15 @@ impl Core {
                 Ok(Response::Session(info))
             }
             Request::Skip { routine } => self.skip(routine.as_deref(), uid),
-            Request::Gate { service, uid } => Ok(self.gate(&service, uid)),
+            Request::Gate { service, uid } => {
+                let lockout = self.current_lockout();
+                if let Some(l) = &lockout
+                    && uid != Some(0)
+                {
+                    self.log_denied(l.session_id, &service, uid);
+                }
+                Ok(gate_answer(lockout.as_ref(), uid))
+            }
             Request::ConfigStatus => {
                 Ok(Response::Config(self.config_info(match self.pending_cfg {
                     Some(_) => "a loosening change is waiting".into(),
@@ -1022,45 +1112,6 @@ impl Core {
         self.set_config(p.config);
     }
 
-    /// Decides whether a privilege escalation may go ahead: not while a
-    /// session is running. Root is always allowed.
-    fn gate(&self, service: &str, uid: Option<u32>) -> Response {
-        let allow = |message: &str| Response::Gate {
-            allow: true,
-            message: message.into(),
-        };
-        if uid == Some(0) {
-            return allow("root");
-        }
-        let Some(session) = self.session.as_ref().filter(|s| s.is_running()) else {
-            return allow("no session");
-        };
-        let left = match session.info(self.stopwatch_min()) {
-            i if i.state == SessionState::Surrendering => format!(
-                "surrender finishes in {} min",
-                i.surrender_remaining_secs.unwrap_or(0).div_ceil(60)
-            ),
-            i => match i.remaining_secs {
-                Some(rem) => format!("{} min left", rem.div_ceil(60)),
-                None => "stopwatch running".into(),
-            },
-        };
-        let who = uid.map(|u| format!(" uid {u}")).unwrap_or_default();
-        warn!("refused {service}{who} during session {}", session.id);
-        self.log(
-            Some(session.id),
-            EventKind::EscalationDenied,
-            &format!("{service}{who}"),
-        );
-        Response::Gate {
-            allow: false,
-            message: format!(
-                "deepwork: root access is locked during the focus session ({left}). \
-                 TTY root login still works; `deepwork surrender` ends the session."
-            ),
-        }
-    }
-
     /// Starts the routine run that is due, if any.
     async fn check_routines(&mut self) {
         if self.session.is_some() || self.routine_retry_at.is_some_and(|t| Instant::now() < t) {
@@ -1213,6 +1264,11 @@ impl Core {
     }
 
     pub async fn tick(&mut self) {
+        self.advance().await;
+        self.publish_lockout();
+    }
+
+    async fn advance(&mut self) {
         let now = Instant::now();
         let delta = now - self.last_tick;
         self.last_tick = now;

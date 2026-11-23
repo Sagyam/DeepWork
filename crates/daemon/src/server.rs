@@ -12,7 +12,7 @@ use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::Mutex;
 use tracing::debug;
 
-use crate::engine::Core;
+use crate::engine::{self, Core, GateWatch};
 
 /// Backups can carry thousands of sessions, so a request line may be large.
 /// 8 MiB is far past the ~2 MB a decade of sessions takes.
@@ -35,19 +35,20 @@ pub fn bind(path: &Path) -> Result<UnixListener> {
     Ok(listener)
 }
 
-pub async fn serve(listener: UnixListener, core: Arc<Mutex<Core>>) -> Result<()> {
+pub async fn serve(listener: UnixListener, core: Arc<Mutex<Core>>, gate: GateWatch) -> Result<()> {
     loop {
         let (stream, _) = listener.accept().await?;
         let core = core.clone();
+        let gate = gate.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_conn(stream, core).await {
+            if let Err(e) = handle_conn(stream, core, gate).await {
                 debug!("client disconnected: {e:#}");
             }
         });
     }
 }
 
-async fn handle_conn(stream: UnixStream, core: Arc<Mutex<Core>>) -> Result<()> {
+async fn handle_conn(stream: UnixStream, core: Arc<Mutex<Core>>, gate: GateWatch) -> Result<()> {
     let uid = stream.peer_cred()?.uid();
     let (read, mut write) = stream.into_split();
     let mut reader = BufReader::new(read);
@@ -58,6 +59,7 @@ async fn handle_conn(stream: UnixStream, core: Arc<Mutex<Core>>) -> Result<()> {
             return Ok(());
         }
         let resp = match serde_json::from_str::<Request>(&line) {
+            Ok(Request::Gate { service, uid }) => answer_gate(&core, &gate, service, uid),
             Ok(req) => core.lock().await.handle(req, uid).await,
             Err(e) => Response::error(format!("bad request: {e}")),
         };
@@ -65,4 +67,21 @@ async fn handle_conn(stream: UnixStream, core: Arc<Mutex<Core>>) -> Result<()> {
         out.push(b'\n');
         write.write_all(&out).await?;
     }
+}
+
+/// Answers the privilege gate from the published lockout, never waiting for
+/// the core: a refusal is logged afterwards, in the background.
+fn answer_gate(
+    core: &Arc<Mutex<Core>>,
+    gate: &GateWatch,
+    service: String,
+    uid: Option<u32>,
+) -> Response {
+    let lockout = gate.borrow().clone();
+    let resp = engine::gate_answer(lockout.as_ref(), uid);
+    if let (Response::Gate { allow: false, .. }, Some(l)) = (&resp, lockout) {
+        let core = core.clone();
+        tokio::spawn(async move { core.lock().await.log_denied(l.session_id, &service, uid) });
+    }
+    resp
 }
