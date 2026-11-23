@@ -424,12 +424,12 @@ let places: Place[] = [];
 let placeNote = "";
 
 function weatherField(): string {
-  const { live, place } = weatherPref();
+  const { live, place, auto } = weatherPref();
   const seg = `<div class="seg" role="group" aria-label="Weather">
       <button class="${live ? "" : "on"}" data-action="weather-live" data-live="0" aria-pressed="${!live}">By date</button>
-      <button class="${live ? "on" : ""}" data-action="weather-live" data-live="1" aria-pressed="${live}"${place ? "" : " disabled"}>Live</button></div>`;
+      <button class="${live ? "on" : ""}" data-action="weather-live" data-live="1" aria-pressed="${live}">Live</button></div>`;
   const search = `<div class="place-search">
-      <input id="weather-place" type="text" placeholder="Your town or city" value="${escapeHtml(place?.name ?? "")}" autocomplete="off" />
+      <input id="weather-place" type="text" placeholder="Your town or city" value="${auto ? "" : escapeHtml(place?.name ?? "")}" autocomplete="off" />
       <button data-action="weather-find">Find</button></div>`;
   const found = places.length
     ? `<div class="place-list">${places
@@ -438,11 +438,13 @@ function weatherField(): string {
     : placeNote
       ? `<span class="hint">${escapeHtml(placeNote)}</span>`
       : "";
-  const where = place ? `<span class="hint">Place: ${escapeHtml(place.name)}${place.detail ? `, ${escapeHtml(place.detail)}` : ""}.</span>` : "";
+  const where = place
+    ? `<span class="hint">Place: ${escapeHtml(place.name)}${place.detail ? `, ${escapeHtml(place.detail)}` : ""}${auto ? " (from your time zone; find another to change it)" : ""}.</span>`
+    : "";
   return field(
     "Weather",
     `${seg}${search}${found}${where}`,
-    `${escapeHtml(weatherLine())} Live asks Open-Meteo (free, no account) every 15 minutes, sending only the place's rounded coordinates.`,
+    `${escapeHtml(weatherLine())} Live asks Open-Meteo (free, no account) every 15 minutes, sending only the place's rounded coordinates. By date sends nothing.`,
   );
 }
 

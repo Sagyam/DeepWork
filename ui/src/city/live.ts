@@ -1,9 +1,12 @@
-// Live weather, opt-in: the viewer names a place in Settings, and the city
-// shows the weather there now, from Open-Meteo (free, no key, no account).
-// A view preference like the theme: kept in this window's localStorage,
-// never sent to deepworkd. Off, or with no answer for three hours, the city
-// falls back to the day's weather by date (weather.ts). The only thing sent
-// is the place's coordinates, rounded to about a kilometre.
+// Live weather, on by default: the city shows the weather now where the
+// viewer is, from Open-Meteo (free, no key, no account). The place is the
+// one named in Settings, or else the city of the system time zone
+// (Asia/Kathmandu: Kathmandu), so nothing is located by IP. A view
+// preference like the theme: kept in this window's localStorage, never sent
+// to deepworkd. Turned off ("By date"), with no place found, or with no
+// answer for three hours, the city falls back to the day's weather by date
+// (weather.ts). The only thing sent is the place's name to find it, then its
+// coordinates rounded to about a kilometre.
 import { forcedWeather, fromReport, weatherByDate, type Report, type Weather } from "./weather";
 
 export interface Place {
@@ -17,6 +20,8 @@ export interface Place {
 export interface WeatherPref {
   live: boolean;
   place: Place | null;
+  /** The place came from the time zone, not from the viewer. */
+  auto?: boolean;
 }
 
 interface Cached {
@@ -28,6 +33,8 @@ interface Cached {
 
 const KEY = "weather";
 const CACHE = "weather.live";
+/** The place found from the time zone. */
+const AUTO = "weather.auto";
 /** How often to ask again while the window is open. */
 const EVERY = 15 * 60_000;
 /** How long an answer stands in when the next ask fails (offline, the API down). */
@@ -59,11 +66,12 @@ function write(key: string, value: unknown) {
 
 export function weatherPref(): WeatherPref {
   const p = read<WeatherPref>(KEY);
-  return { live: !!p?.live && !!p.place, place: p?.place ?? null };
+  if (p?.place) return { live: !!p.live, place: p.place };
+  return { live: p ? !!p.live : true, place: read<Place>(AUTO), auto: true };
 }
 
 export function setWeatherPref(p: WeatherPref) {
-  write(KEY, p.place ? p : null);
+  write(KEY, { live: p.live, place: p.auto ? null : p.place });
   if (!p.live) write(CACHE, null);
   schedule();
   notify();
@@ -99,6 +107,7 @@ export function weatherLine(): string {
     return `${cap(w.kind)} in ${place.name} now (checked ${at}).`;
   }
   if (live && place) return `Asking for the weather in ${place.name}… Until it answers, the city shows the day's weather (${w.kind}).`;
+  if (live) return `Looking for your town from the time zone… Until then, the day's weather (${w.kind}).`;
   return `The day's weather, picked by the date and season: ${w.kind} today.`;
 }
 
@@ -134,10 +143,43 @@ export async function findPlaces(query: string): Promise<Place[]> {
   }));
 }
 
+/** The time zone's city ("America/New_York": "New York"), or null for UTC and the like. */
+export function zoneCity(zone: string): string | null {
+  const parts = zone.split("/");
+  if (parts.length < 2 || parts[0] === "Etc") return null;
+  return parts[parts.length - 1].replaceAll("_", " ");
+}
+
+/** Finds the time zone's city once and keeps it. */
+async function autoPlace(): Promise<Place | null> {
+  const known = read<Place>(AUTO);
+  if (known) return known;
+  let zone = "";
+  try {
+    zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  } catch {
+    return null;
+  }
+  const city = zoneCity(zone);
+  if (!city) return null;
+  const found = (await findPlaces(city))[0];
+  if (found) write(AUTO, found);
+  return found ?? null;
+}
+
 /** Asks for the weather at the chosen place now; tells the listeners when it changes. */
 export async function refresh(): Promise<void> {
-  const { live, place } = weatherPref();
-  if (!live || !place) return;
+  let { live, place } = weatherPref();
+  if (!live) return;
+  if (!place) {
+    try {
+      place = await autoPlace();
+    } catch {
+      return;
+    }
+    if (!place) return;
+    notify();
+  }
   const lat = round(place.lat);
   const lon = round(place.lon);
   try {
