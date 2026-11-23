@@ -590,7 +590,7 @@ impl Store {
     }
 
     #[cfg(test)]
-    fn event_kinds(&self) -> Result<Vec<String>> {
+    pub fn event_kinds(&self) -> Result<Vec<String>> {
         let mut stmt = self.conn.prepare("SELECT kind FROM events ORDER BY id")?;
         let rows = stmt.query_map([], |r| r.get(0))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)

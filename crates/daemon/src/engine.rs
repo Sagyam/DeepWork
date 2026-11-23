@@ -1439,3 +1439,207 @@ impl Core {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::*;
+
+    /// No network in tests: priming DNS goes to a closed local port.
+    const CONFIG: &str = r#"
+        [dns]
+        upstreams = ["127.0.0.1:9"]
+
+        [session]
+        default_profile = "deep"
+
+        [inverted]
+        enabled = true
+        max_bank_mins = 120
+
+        [profiles.deep]
+        rules = [{ domain = "youtube.com" }]
+    "#;
+
+    /// Removes the test's temp dir when dropped.
+    struct TempDir(PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A dry-run core over an in-memory store; files go to a fresh temp dir.
+    async fn core() -> (Core, TempDir) {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "deepworkd-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = Config::parse(CONFIG).unwrap();
+        let enforcer = EnforcerHandle::spawn(true, &cfg.dns, &dir);
+        let resolver = Resolver::new(cfg.dns.clone(), true, enforcer.clone()).unwrap();
+        let state = cfgstate::State {
+            config: cfg,
+            pending: None,
+        };
+        let core = Core::new(
+            (state, Outcome::Unchanged),
+            dir.join("config.toml"),
+            Store::in_memory().unwrap(),
+            enforcer,
+            resolver,
+            true,
+        )
+        .await
+        .unwrap();
+        (core, TempDir(dir))
+    }
+
+    const USER: u32 = 1000;
+
+    async fn ask(core: &mut Core, req: Request) -> Response {
+        core.handle(req, USER).await
+    }
+
+    fn refused(resp: &Response) -> bool {
+        matches!(resp, Response::Error { .. })
+    }
+
+    fn start(secs: u64) -> Request {
+        Request::Start {
+            kind: SessionKind::Countdown { secs },
+            profile: None,
+            stake: None,
+        }
+    }
+
+    fn gate(uid: u32) -> Request {
+        Request::Gate {
+            service: "sudo auth".into(),
+            uid: Some(uid),
+        }
+    }
+
+    fn allowed(resp: Response) -> bool {
+        match resp {
+            Response::Gate { allow, .. } => allow,
+            other => panic!("not a gate answer: {other:?}"),
+        }
+    }
+
+    /// Lets `secs` of session time pass on the next tick.
+    async fn pass(core: &mut Core, secs: u64) {
+        core.last_tick -= Duration::from_secs(secs);
+        core.tick().await;
+    }
+
+    #[tokio::test]
+    async fn gate_locks_root_only_during_a_session() {
+        let (mut core, _dir) = core().await;
+        let watch = core.gate_watch();
+        assert!(allowed(ask(&mut core, gate(USER)).await));
+        assert!(watch.borrow().is_none());
+
+        assert!(!refused(&ask(&mut core, start(600)).await));
+        assert!(!allowed(ask(&mut core, gate(USER)).await));
+        assert!(
+            allowed(ask(&mut core, gate(0)).await),
+            "root is never gated"
+        );
+        let published = watch.borrow().clone().expect("the lockout is published");
+        assert_eq!(published.left, "10 min left");
+        assert_eq!(
+            core.store
+                .event_kinds()
+                .unwrap()
+                .iter()
+                .filter(|k| *k == "escalation_denied")
+                .count(),
+            1,
+            "only the refusal is logged"
+        );
+
+        pass(&mut core, 601).await;
+        assert!(core.session.is_none(), "the countdown ended");
+        assert!(watch.borrow().is_none(), "the lockout is lifted");
+        assert!(allowed(ask(&mut core, gate(USER)).await));
+    }
+
+    #[tokio::test]
+    async fn countdown_cannot_be_stopped_or_stretched_past_the_cap() {
+        let (mut core, _dir) = core().await;
+        ask(&mut core, start(600)).await;
+        assert!(refused(&ask(&mut core, Request::Stop).await));
+        let too_long = crate::session::MAX_SESSION.as_secs();
+        assert!(refused(
+            &ask(&mut core, Request::Extend { secs: too_long }).await
+        ));
+        assert!(!refused(
+            &ask(&mut core, Request::Extend { secs: 60 }).await
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_mayor_and_backups_wait_for_the_session() {
+        let (mut core, _dir) = core().await;
+        let backup = match ask(&mut core, Request::Export).await {
+            Response::Backup { backup } => backup,
+            other => panic!("{other:?}"),
+        };
+        ask(&mut core, start(600)).await;
+        for req in [
+            Request::Buy {
+                blueprint: "c1".into(),
+            },
+            Request::Pause,
+            Request::Import { backup },
+            Request::Free { secs: None },
+        ] {
+            assert!(refused(&ask(&mut core, req).await));
+        }
+    }
+
+    fn backup_with(edit: impl FnOnce(&mut Backup)) -> Request {
+        let mut b = Backup::new(CONFIG.into());
+        edit(&mut b);
+        Request::Import {
+            backup: serde_json::to_value(&b).unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn imported_bank_is_capped() {
+        let (mut core, _dir) = core().await;
+        let req = backup_with(|b| {
+            b.free_bank = Some(serde_json::json!({ "balance_ms": 1u64 << 50, "spending": null }));
+        });
+        assert!(!refused(&ask(&mut core, req).await));
+        assert_eq!(core.bank.balance_secs(), 120 * 60);
+        assert!(!core.bank.is_spending());
+    }
+
+    #[tokio::test]
+    async fn impossible_sessions_are_refused() {
+        let (mut core, _dir) = core().await;
+        let now = unix_now();
+        let req = backup_with(|b| {
+            b.sessions.push(BackupSession {
+                id: 1,
+                kind: SessionKind::Stopwatch,
+                profile: "deep".into(),
+                routine: None,
+                state: SessionState::Completed,
+                started_at: now - 86_400,
+                elapsed_secs: 86_000,
+                ended_at: now - 400,
+            });
+        });
+        assert!(refused(&ask(&mut core, req).await));
+        assert!(core.store.all_finished().unwrap().is_empty());
+    }
+}
