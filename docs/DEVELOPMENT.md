@@ -166,7 +166,7 @@ deepwork config reload | export f | import f
 
 Screenshots and the demo come from the mock UI in headless Chromium
 (Playwright, real GPU: `--use-angle=gl --ignore-gpu-blocklist`), with
-`&people=0` (pedestrians glide until they get a walk cycle), `&weather=clear`
+`&people=0`, `&weather=clear`
 and a fixed camera. Set `localStorage["deepwork.seen"]` high first, or the
 mock's past events replay with captions.
 
