@@ -33,7 +33,8 @@ with a root shell open in another terminal for the PAM checks.
 
 - [ ] Root lock: during `deepwork start 5m --profile trial`, `sudo true`,
       `pkexec true` and `systemctl stop deepworkd` are refused; TTY root
-      works; after the session all work again.
+      works; after the session all work again. The journal shows
+      `refused sudo auth uid 1000` (the gate's peer is root).
 - [ ] Tamper: from the root shell, delete an nft rule; it is back within a
       second and `journalctl -u deepworkd` shows `tamper`.
 - [ ] SNI: journal shows "SNI inspection reading queue"; YouTube slow,
