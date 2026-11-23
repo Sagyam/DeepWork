@@ -2,16 +2,17 @@
 //!
 //! Loosening changes wait [`LOOSEN_DELAY`] before they apply; tightening and
 //! neutral changes (DNS plumbing, heads-up timing) apply at once. A change is
-//! judged against the config in effect, field by field, and anything that is
-//! not clearly stricter or equal counts as loosening.
+//! judged against the config in effect, field by field: [`loosenings`] lists
+//! every way a field can loosen, and [`every_field_is_judged`] makes a new
+//! config field a compile error until it is judged there or marked neutral.
 
 use std::time::Duration;
 
 use std::collections::BTreeSet;
 
 use crate::config::{
-    Action, Config, Day, InvertedConfig, ListMode, NudgeConfig, Profile, Routine, Throttle,
-    Verdict, judge, on_day,
+    Action, Config, Day, DnsConfig, InvertedConfig, ListMode, NudgeConfig, Profile, Routine, Rule,
+    ScheduleConfig, SessionConfig, Stage, Throttle, Verdict, judge, on_day,
 };
 
 /// Fixed in code, so it cannot itself be loosened through the config.
@@ -19,6 +20,7 @@ pub const LOOSEN_DELAY: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// Every way `new` is looser than `old`, in words. Empty if none.
 pub fn loosenings(old: &Config, new: &Config) -> Vec<String> {
+    every_field_is_judged(new);
     let mut out = Vec::new();
     let (os, ns) = (&old.session, &new.session);
     if ns.default_profile != os.default_profile {
@@ -51,6 +53,88 @@ pub fn loosenings(old: &Config, new: &Config) -> Vec<String> {
         }
     }
     out
+}
+
+/// Names every config field, with no `..`, so adding one fails to compile
+/// until it is judged in [`loosenings`] (named here as `_`) or marked neutral
+/// (with the reason). Costs nothing at run time.
+fn every_field_is_judged(c: &Config) {
+    let Config {
+        dns,
+        session,
+        schedule,
+        nudge,
+        inverted,
+        routines,
+        profiles,
+    } = c;
+    // Neutral: plumbing that only says where DNS goes; port 53 is redirected
+    // to the daemon and SNI is judged whatever the upstream answers.
+    let DnsConfig {
+        port: _,
+        upstreams: _,
+        forward: _,
+        manage_resolved: _,
+        container_dns: _,
+    } = dns;
+    let SessionConfig {
+        default_profile: _,
+        stopwatch_min_secs: _,
+        surrender_wait_secs: _,
+    } = session;
+    let ScheduleConfig {
+        heads_up_secs: _, // neutral: when the warning shows, not what runs
+        skip_tokens_per_week: _,
+    } = schedule;
+    let NudgeConfig {
+        enabled: _,
+        days: _,
+        from: _,
+        until: _,
+        after_mins: _,
+        repeat_mins: _,
+    } = nudge;
+    let InvertedConfig {
+        enabled: _,
+        profile: _,
+        free_mins_per_hour: _,
+        max_bank_mins: _,
+    } = inverted;
+    for Routine {
+        name: _,
+        days: _,
+        start: _,
+        duration_mins: _,
+        profile: _,
+    } in routines
+    {}
+    for Profile {
+        mode: _,
+        throttle,
+        block_quic: _,
+        inspect_sni: _,
+        lock_docker: _,
+        rules,
+        escalation,
+    } in profiles.values()
+    {
+        let Throttle {
+            rtt_ms: _,
+            jitter_ms: _,
+            rate_kbit: _,
+            loss_pct: _,
+        } = throttle;
+        for Rule {
+            domain: _,
+            action: _,
+        } in rules
+        {}
+        for Stage {
+            after_mins: _,
+            throttle: _, // judged with `gentler`, like the profile's
+        } in escalation
+        {}
+    }
 }
 
 /// True if every day in `old` is also in `new` (empty means every day).

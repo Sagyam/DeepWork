@@ -69,7 +69,42 @@ pub struct BackupRun {
     pub session_id: Option<i64>,
 }
 
+/// Leeway for clocks that differ a little between machines.
+const CLOCK_SLACK_SECS: i64 = 5 * 60;
+
 impl Backup {
+    /// Refuses a bundle no daemon could have written: sessions longer than
+    /// [`MAX_SESSION`](crate::session::MAX_SESSION), ending before they start,
+    /// or anything dated in the future. Overlapping sessions are dropped on
+    /// merge instead (`Store::import_backup`), since clock changes can make
+    /// genuine ones touch.
+    pub fn check(&self, now: i64) -> Result<(), String> {
+        let max = crate::session::MAX_SESSION.as_secs();
+        let future = |ts: i64| ts > now.saturating_add(CLOCK_SLACK_SECS);
+        for s in &self.sessions {
+            let what = format!("session {} (started {})", s.id, s.started_at);
+            if s.elapsed_secs > max {
+                return Err(format!("{what} lasts longer than a session can"));
+            }
+            if s.ended_at < s.started_at {
+                return Err(format!("{what} ends before it starts"));
+            }
+            if future(s.ended_at) {
+                return Err(format!("{what} ends in the future"));
+            }
+        }
+        if let Some(e) = self.events.iter().find(|e| future(e.ts)) {
+            return Err(format!("event {} at {} is in the future", e.kind, e.ts));
+        }
+        if let Some(r) = self.routine_runs.iter().find(|r| future(r.ts)) {
+            return Err(format!(
+                "routine run {} {} is in the future",
+                r.routine, r.date
+            ));
+        }
+        Ok(())
+    }
+
     pub fn new(config: String) -> Self {
         Self {
             format: FORMAT.into(),
@@ -87,6 +122,48 @@ impl Backup {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn check_refuses_what_no_daemon_writes() {
+        let now = 1_700_000_000;
+        let session = |started_at: i64, elapsed_secs: u64, ended_at: i64| BackupSession {
+            id: 1,
+            kind: SessionKind::Stopwatch,
+            profile: "deep".into(),
+            routine: None,
+            state: SessionState::Completed,
+            started_at,
+            elapsed_secs,
+            ended_at,
+        };
+        let with = |s: BackupSession| {
+            let mut b = Backup::new(String::new());
+            b.sessions.push(s);
+            b
+        };
+        assert!(
+            with(session(now - 7200, 3600, now - 3600))
+                .check(now)
+                .is_ok()
+        );
+        let longest = crate::session::MAX_SESSION.as_secs();
+        assert!(
+            with(session(now - 86_400, longest + 1, now - 1))
+                .check(now)
+                .is_err()
+        );
+        assert!(with(session(now - 100, 60, now - 200)).check(now).is_err());
+        assert!(with(session(now, 3600, now + 3600)).check(now).is_err());
+
+        let mut b = Backup::new(String::new());
+        b.events.push(BackupEvent {
+            ts: now + 86_400,
+            session_id: None,
+            kind: "tamper".into(),
+            detail: String::new(),
+        });
+        assert!(b.check(now).is_err());
+    }
 
     #[test]
     fn round_trips_through_json() {

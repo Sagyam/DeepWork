@@ -18,8 +18,9 @@ Commands for building, running and releasing. How things work is in
 ## Daemon, without root
 
 ```sh
-cargo test
-cargo clippy --all-targets
+cargo test --workspace                     # --workspace adds the Tauri crate
+cargo clippy --workspace --all-targets
+python3 -I -m unittest discover -s dist -p '*_test.py'   # pam.py, on a scratch root
 cargo run -p deepworkd -- --dry-run        # logs nft/tc commands instead of running them
 cargo run -p deepworkd -- --print-rules    # the exact nft ruleset and tc script
 DEEPWORK_SOCKET=$XDG_RUNTIME_DIR/deepwork-dev.sock cargo run -p deepwork -- start 25m
@@ -112,8 +113,9 @@ user's go-ahead.**
 
 ## Releases
 
-- CI (`ci.yml`): fmt, clippy `-D warnings`, `cargo test` on Rust changes;
-  `tsc` and `bun test` on UI changes. Markdown triggers nothing.
+- CI (`ci.yml`): fmt, clippy `-D warnings`, `cargo test` (whole workspace)
+  on Rust changes; `tsc` and `bun test` on UI changes; shellcheck and the
+  `pam.py` tests on `dist/` changes. Markdown triggers nothing.
 - `package.yml` builds the Arch package on pushes to `main`.
 - `release.yml` on a `v*` tag builds deb / rpm / tarball (x86_64, aarch64,
   Ubuntu 22.04 glibc) with nfpm, the Arch package, and publishes a GitHub

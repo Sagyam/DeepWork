@@ -13,6 +13,7 @@ use deepwork_proto::{
 };
 use jiff::tz::TimeZone;
 use jiff::{SignedDuration, Timestamp, ToSpan, Zoned};
+use tokio::sync::watch;
 use tracing::{error, info, warn};
 
 use crate::backup::{self, Backup, BackupSession};
@@ -43,6 +44,36 @@ const CLOCK_JUMP: SignedDuration = SignedDuration::from_secs(120);
 const AMBIENT_RETRY: Duration = Duration::from_secs(60);
 /// Store key for the free-minute bank.
 const BANK_KEY: &str = "free_bank";
+
+/// What the privilege gate needs from a running session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Lockout {
+    pub session_id: i64,
+    /// "12 min left", for the refusal message.
+    pub left: String,
+}
+
+/// The lockout as the core last published it. The socket server answers the
+/// gate from this without waiting for the core's lock: the PAM hook gives up
+/// (and allows) after 2 s, so a busy core must not be able to delay it.
+pub type GateWatch = watch::Receiver<Option<Lockout>>;
+
+/// The gate's answer for `uid` given the lockout. Root is always allowed.
+pub fn gate_answer(lockout: Option<&Lockout>, uid: Option<u32>) -> Response {
+    let (allow, message) = match lockout {
+        _ if uid == Some(0) => (true, "root".into()),
+        None => (true, "no session".into()),
+        Some(l) => (
+            false,
+            format!(
+                "deepwork: root access is locked during the focus session ({}). \
+                 TTY root login still works; `deepwork surrender` ends the session.",
+                l.left
+            ),
+        ),
+    };
+    Response::Gate { allow, message }
+}
 
 pub struct Core {
     cfg: Config,
@@ -77,6 +108,7 @@ pub struct Core {
     /// The profile enforced outside sessions (inverted mode), if engaged.
     ambient: Option<Profile>,
     ambient_retry_at: Option<Instant>,
+    lockout: watch::Sender<Option<Lockout>>,
 }
 
 /// Time since boot, including suspend (`CLOCK_BOOTTIME`).
@@ -154,6 +186,7 @@ impl Core {
             bank,
             ambient: None,
             ambient_retry_at: None,
+            lockout: watch::Sender::new(None),
         };
         core.log_config_outcome(&outcome);
         match core.store.running_session()? {
@@ -161,7 +194,54 @@ impl Core {
             // Clears anything left behind by a crash outside a session.
             None => core.settle().await,
         }
+        core.publish_lockout();
         Ok(core)
+    }
+
+    pub fn gate_watch(&self) -> GateWatch {
+        self.lockout.subscribe()
+    }
+
+    fn current_lockout(&self) -> Option<Lockout> {
+        let session = self.session.as_ref().filter(|s| s.is_running())?;
+        let i = session.info(self.stopwatch_min());
+        let left = if i.state == SessionState::Surrendering {
+            format!(
+                "surrender finishes in {} min",
+                i.surrender_remaining_secs.unwrap_or(0).div_ceil(60)
+            )
+        } else {
+            match i.remaining_secs {
+                Some(rem) => format!("{} min left", rem.div_ceil(60)),
+                None => "stopwatch running".into(),
+            }
+        };
+        Some(Lockout {
+            session_id: session.id,
+            left,
+        })
+    }
+
+    /// Called after anything that may start, change or end a session.
+    fn publish_lockout(&self) {
+        let now = self.current_lockout();
+        self.lockout.send_if_modified(|l| {
+            let changed = *l != now;
+            *l = now;
+            changed
+        });
+    }
+
+    /// Records a refused escalation. Separate from the answer, which the
+    /// server gives without the core's lock.
+    pub fn log_denied(&self, session_id: i64, service: &str, uid: Option<u32>) {
+        let who = uid.map(|u| format!(" uid {u}")).unwrap_or_default();
+        warn!("refused {service}{who} during session {session_id}");
+        self.log(
+            Some(session_id),
+            EventKind::EscalationDenied,
+            &format!("{service}{who}"),
+        );
     }
 
     fn stopwatch_min(&self) -> Duration {
@@ -208,10 +288,12 @@ impl Core {
     }
 
     pub async fn handle(&mut self, req: Request, uid: u32) -> Response {
-        match self.try_handle(req, uid).await {
+        let resp = match self.try_handle(req, uid).await {
             Ok(resp) => resp,
             Err(message) => Response::error(message),
-        }
+        };
+        self.publish_lockout();
+        resp
     }
 
     async fn try_handle(&mut self, req: Request, uid: u32) -> Result<Response, String> {
@@ -246,7 +328,15 @@ impl Core {
                 Ok(Response::Session(info))
             }
             Request::Skip { routine } => self.skip(routine.as_deref(), uid),
-            Request::Gate { service, uid } => Ok(self.gate(&service, uid)),
+            Request::Gate { service, uid } => {
+                let lockout = self.current_lockout();
+                if let Some(l) = &lockout
+                    && uid != Some(0)
+                {
+                    self.log_denied(l.session_id, &service, uid);
+                }
+                Ok(gate_answer(lockout.as_ref(), uid))
+            }
             Request::ConfigStatus => {
                 Ok(Response::Config(self.config_info(match self.pending_cfg {
                     Some(_) => "a loosening change is waiting".into(),
@@ -898,17 +988,18 @@ impl Core {
                 b.version
             ));
         }
+        b.check(unix_now())
+            .map_err(|e| format!("not a backup this daemon could have written: {e}"))?;
         Config::parse(&b.config)
             .map_err(|e| format!("the backup's settings are invalid: {e:#}"))?;
         let message = self.apply_config_text(&b.config).await?;
+        let today = self.now().date();
         let sessions = self
             .store
-            .import_backup(&b)
+            .import_backup(&b, &today.to_string())
             .map_err(|e| format!("could not import the progress: {e:#}"))?;
         // Refresh what the daemon mirrors in memory.
-        let since = Timestamp::now()
-            .to_zoned(self.tz.clone())
-            .date()
+        let since = today
             .checked_sub(3.days())
             .map(|d| d.to_string())
             .unwrap_or_default();
@@ -934,8 +1025,10 @@ impl Core {
         // Merging progress never takes earned time away: an older backup
         // cannot shrink a newer bank. A backup restores the balance, never an
         // active spend.
+        // Nor more than the bank can hold: the balance comes from the file.
         bank.stop();
-        bank.balance_ms = bank.balance_ms.max(current_balance);
+        let cap = u64::from(self.cfg.inverted.max_bank_mins) * 60_000;
+        bank.balance_ms = bank.balance_ms.min(cap).max(current_balance);
         self.bank = bank;
         self.save_bank();
         self.log(
@@ -1017,45 +1110,6 @@ impl Core {
         );
         self.log(None, EventKind::ConfigApplied, "after delay");
         self.set_config(p.config);
-    }
-
-    /// Decides whether a privilege escalation may go ahead: not while a
-    /// session is running. Root is always allowed.
-    fn gate(&self, service: &str, uid: Option<u32>) -> Response {
-        let allow = |message: &str| Response::Gate {
-            allow: true,
-            message: message.into(),
-        };
-        if uid == Some(0) {
-            return allow("root");
-        }
-        let Some(session) = self.session.as_ref().filter(|s| s.is_running()) else {
-            return allow("no session");
-        };
-        let left = match session.info(self.stopwatch_min()) {
-            i if i.state == SessionState::Surrendering => format!(
-                "surrender finishes in {} min",
-                i.surrender_remaining_secs.unwrap_or(0).div_ceil(60)
-            ),
-            i => match i.remaining_secs {
-                Some(rem) => format!("{} min left", rem.div_ceil(60)),
-                None => "stopwatch running".into(),
-            },
-        };
-        let who = uid.map(|u| format!(" uid {u}")).unwrap_or_default();
-        warn!("refused {service}{who} during session {}", session.id);
-        self.log(
-            Some(session.id),
-            EventKind::EscalationDenied,
-            &format!("{service}{who}"),
-        );
-        Response::Gate {
-            allow: false,
-            message: format!(
-                "deepwork: root access is locked during the focus session ({left}). \
-                 TTY root login still works; `deepwork surrender` ends the session."
-            ),
-        }
     }
 
     /// Starts the routine run that is due, if any.
@@ -1210,6 +1264,11 @@ impl Core {
     }
 
     pub async fn tick(&mut self) {
+        self.advance().await;
+        self.publish_lockout();
+    }
+
+    async fn advance(&mut self) {
         let now = Instant::now();
         let delta = now - self.last_tick;
         self.last_tick = now;
@@ -1378,5 +1437,209 @@ impl Core {
         if let Err(e) = self.store.log_event(unix_now(), session_id, kind, detail) {
             error!("could not log event: {e:#}");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    use super::*;
+
+    /// No network in tests: priming DNS goes to a closed local port.
+    const CONFIG: &str = r#"
+        [dns]
+        upstreams = ["127.0.0.1:9"]
+
+        [session]
+        default_profile = "deep"
+
+        [inverted]
+        enabled = true
+        max_bank_mins = 120
+
+        [profiles.deep]
+        rules = [{ domain = "youtube.com" }]
+    "#;
+
+    /// Removes the test's temp dir when dropped.
+    struct TempDir(PathBuf);
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// A dry-run core over an in-memory store; files go to a fresh temp dir.
+    async fn core() -> (Core, TempDir) {
+        static N: AtomicU32 = AtomicU32::new(0);
+        let dir = std::env::temp_dir().join(format!(
+            "deepworkd-test-{}-{}",
+            std::process::id(),
+            N.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let cfg = Config::parse(CONFIG).unwrap();
+        let enforcer = EnforcerHandle::spawn(true, &cfg.dns, &dir);
+        let resolver = Resolver::new(cfg.dns.clone(), true, enforcer.clone()).unwrap();
+        let state = cfgstate::State {
+            config: cfg,
+            pending: None,
+        };
+        let core = Core::new(
+            (state, Outcome::Unchanged),
+            dir.join("config.toml"),
+            Store::in_memory().unwrap(),
+            enforcer,
+            resolver,
+            true,
+        )
+        .await
+        .unwrap();
+        (core, TempDir(dir))
+    }
+
+    const USER: u32 = 1000;
+
+    async fn ask(core: &mut Core, req: Request) -> Response {
+        core.handle(req, USER).await
+    }
+
+    fn refused(resp: &Response) -> bool {
+        matches!(resp, Response::Error { .. })
+    }
+
+    fn start(secs: u64) -> Request {
+        Request::Start {
+            kind: SessionKind::Countdown { secs },
+            profile: None,
+            stake: None,
+        }
+    }
+
+    fn gate(uid: u32) -> Request {
+        Request::Gate {
+            service: "sudo auth".into(),
+            uid: Some(uid),
+        }
+    }
+
+    fn allowed(resp: Response) -> bool {
+        match resp {
+            Response::Gate { allow, .. } => allow,
+            other => panic!("not a gate answer: {other:?}"),
+        }
+    }
+
+    /// Lets `secs` of session time pass on the next tick.
+    async fn pass(core: &mut Core, secs: u64) {
+        core.last_tick -= Duration::from_secs(secs);
+        core.tick().await;
+    }
+
+    #[tokio::test]
+    async fn gate_locks_root_only_during_a_session() {
+        let (mut core, _dir) = core().await;
+        let watch = core.gate_watch();
+        assert!(allowed(ask(&mut core, gate(USER)).await));
+        assert!(watch.borrow().is_none());
+
+        assert!(!refused(&ask(&mut core, start(600)).await));
+        assert!(!allowed(ask(&mut core, gate(USER)).await));
+        assert!(
+            allowed(ask(&mut core, gate(0)).await),
+            "root is never gated"
+        );
+        let published = watch.borrow().clone().expect("the lockout is published");
+        assert_eq!(published.left, "10 min left");
+        assert_eq!(
+            core.store
+                .event_kinds()
+                .unwrap()
+                .iter()
+                .filter(|k| *k == "escalation_denied")
+                .count(),
+            1,
+            "only the refusal is logged"
+        );
+
+        pass(&mut core, 601).await;
+        assert!(core.session.is_none(), "the countdown ended");
+        assert!(watch.borrow().is_none(), "the lockout is lifted");
+        assert!(allowed(ask(&mut core, gate(USER)).await));
+    }
+
+    #[tokio::test]
+    async fn countdown_cannot_be_stopped_or_stretched_past_the_cap() {
+        let (mut core, _dir) = core().await;
+        ask(&mut core, start(600)).await;
+        assert!(refused(&ask(&mut core, Request::Stop).await));
+        let too_long = crate::session::MAX_SESSION.as_secs();
+        assert!(refused(
+            &ask(&mut core, Request::Extend { secs: too_long }).await
+        ));
+        assert!(!refused(
+            &ask(&mut core, Request::Extend { secs: 60 }).await
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_mayor_and_backups_wait_for_the_session() {
+        let (mut core, _dir) = core().await;
+        let backup = match ask(&mut core, Request::Export).await {
+            Response::Backup { backup } => backup,
+            other => panic!("{other:?}"),
+        };
+        ask(&mut core, start(600)).await;
+        for req in [
+            Request::Buy {
+                blueprint: "c1".into(),
+            },
+            Request::Pause,
+            Request::Import { backup },
+            Request::Free { secs: None },
+        ] {
+            assert!(refused(&ask(&mut core, req).await));
+        }
+    }
+
+    fn backup_with(edit: impl FnOnce(&mut Backup)) -> Request {
+        let mut b = Backup::new(CONFIG.into());
+        edit(&mut b);
+        Request::Import {
+            backup: serde_json::to_value(&b).unwrap(),
+        }
+    }
+
+    #[tokio::test]
+    async fn imported_bank_is_capped() {
+        let (mut core, _dir) = core().await;
+        let req = backup_with(|b| {
+            b.free_bank = Some(serde_json::json!({ "balance_ms": 1u64 << 50, "spending": null }));
+        });
+        assert!(!refused(&ask(&mut core, req).await));
+        assert_eq!(core.bank.balance_secs(), 120 * 60);
+        assert!(!core.bank.is_spending());
+    }
+
+    #[tokio::test]
+    async fn impossible_sessions_are_refused() {
+        let (mut core, _dir) = core().await;
+        let now = unix_now();
+        let req = backup_with(|b| {
+            b.sessions.push(BackupSession {
+                id: 1,
+                kind: SessionKind::Stopwatch,
+                profile: "deep".into(),
+                routine: None,
+                state: SessionState::Completed,
+                started_at: now - 86_400,
+                elapsed_secs: 86_000,
+                ended_at: now - 400,
+            });
+        });
+        assert!(refused(&ask(&mut core, req).await));
+        assert!(core.store.all_finished().unwrap().is_empty());
     }
 }

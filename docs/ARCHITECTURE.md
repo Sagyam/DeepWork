@@ -64,7 +64,7 @@ they can ask to start a session, never end one outside the rules.
 | nft / tc | Driven through their CLIs (`nft -f -`, `tc -batch -`): atomic, inspectable. Rendering is pure (`enforcer/nft.rs`, `enforcer/tc.rs`); only `enforcer/mod.rs` runs commands |
 | Store | SQLite in `/var/lib/deepwork`, root-owned. The ledger of sessions and events is the source of every derived number |
 | Config | TOML in `/etc/deepwork/config.toml`; the config *in effect* lives in the store |
-| IPC | `/run/deepwork/deepworkd.sock` (0666), caller identified by `SO_PEERCRED` |
+| IPC | `/run/deepwork/deepworkd.sock` (0666); `SO_PEERCRED` refuses system accounts (uid 1–999, `nobody`) |
 | Platform | Linux with systemd only. Snap / Flatpak can't host a root daemon with PAM hooks |
 | Bar | The user runs the Omarchy shell, not Waybar; `deepwork bar` serves both |
 
@@ -129,6 +129,9 @@ they can ask to start a session, never end one outside the rules.
 | Shared CDN IP, hardcoded IP, stale cache | SNI inspection judges by name |
 | SSH SOCKS / userspace proxy (Tor, v2ray, ...) | Detected (`tunnel.rs`), minor penalty every 10 min; not blocked |
 | Kernel VPN, Tailscale exit node | Not a bypass: nft sees packets before encryption |
+| Flood the daemon so the PAM gate times out | The gate is answered from a published lockout, never behind the core's lock |
+| Forge a backup | Import refuses impossible sessions, drops overlaps, caps the bank, skips today's routine runs |
+| A compromised service account | System accounts are refused on the socket |
 | Live USB, GRUB cmdline, TTY root | Out of scope; TTY root is the intended exit |
 
 Details worth knowing before changing these:
@@ -141,7 +144,9 @@ Details worth knowing before changing these:
 - **Root lock**: `dist/pam.py` puts a `pam_exec` gate at the top of `sudo`,
   `sudo-i`, `su`, `su-l` and `polkit-1` (`auth` and `account`, so cached
   credentials are covered). It is built so that any gate failure skips
-  `pam_deny`. Root callers are always allowed.
+  `pam_deny`. Root callers are always allowed. Only gate requests from
+  root (`pam_exec` keeps root's effective uid) or polkitd may name the
+  asking uid and count as `escalation_denied`.
 - **Tamper repair** keeps the dynamic sets' contents and timeouts across a
   re-apply; a device whose shaping fails is retried after 30 s, not in a loop.
 - **Docker lock** saves the socket mode to `/var/lib/deepwork/docker-sock.mode`

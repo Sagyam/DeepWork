@@ -1,8 +1,8 @@
 name: ci
 
-# Lint and test pull requests and pushes to main that touch code. The Rust job
-# only runs for Rust changes and the UI job only for UI changes. Packaging is
-# covered by package.yml and release.yml.
+# Lint and test pull requests and pushes to main that touch code. Each job runs
+# only for its own changes. Building packages is covered by package.yml and
+# release.yml; this checks the install scripts and the PAM hook.
 
 on:
   pull_request:
@@ -11,6 +11,7 @@ on:
       - "ui/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "dist/**"
       - ".github/workflows/ci.yml"
       - "!**/*.md"
   push:
@@ -35,6 +36,7 @@ jobs:
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       ui: ${{ steps.filter.outputs.ui }}
+      scripts: ${{ steps.filter.outputs.scripts }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
@@ -49,6 +51,8 @@ jobs:
               - "{ui/**,.github/workflows/ci.yml}"
               - "!ui/src-tauri/**"
               - "!**/*.md"
+            scripts:
+              - "{dist/**,.github/workflows/ci.yml}"
           predicate-quantifier: every
 
   rust:
@@ -72,8 +76,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets --locked -- -D warnings
-      - run: cargo test --locked
+      # --workspace: the Tauri crate (deepwork-ui) is not a default member.
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
 
   ui:
     name: UI
@@ -90,3 +95,15 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bunx tsc --noEmit
       - run: bun test
+
+  scripts:
+    name: Scripts
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      # shellcheck ships with the runner image.
+      - run: shellcheck --severity=warning dist/*.sh dist/packaging/*.sh
+      - run: python3 -I -m unittest discover -s dist -p '*_test.py'
