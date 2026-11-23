@@ -1594,6 +1594,7 @@ const BACKLIGHT = `RE_Direct( directLight, geometryPosition, geometryNormal, geo
 function foliage(name: string, color: number, ao: THREE.Texture): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ map: tex(`${name}_col`), color, alphaTest: 0.45, side: THREE.DoubleSide, roughness: 0.78, aoMap: ao, aoMapIntensity: 0.55 });
   m.userData.foliage = true;
+  m.userData.snow = 0.5;
   m.onBeforeCompile = (sh) => {
     sh.fragmentShader = sh.fragmentShader
       .replace("#include <normal_fragment_begin>", THREE.ShaderChunk.normal_fragment_begin.replace("normal *= faceDirection;", ""))
@@ -1650,6 +1651,8 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
   };
   m.customProgramCacheKey = () => "ground";
   m.userData.real = true;
+  // Traffic keeps the roads to slush under snow (weatherfx.ts).
+  if (name === "asphalt") m.userData.snow = 0.4;
   cache.set(key, m);
   return m;
 }

@@ -9,6 +9,7 @@ import { runsPanel, skippable } from "./panels";
 import { cleanDomain, defaultProfileName, putPath } from "./settings-model";
 import { setThemePref, themePref, type ThemePref } from "./theme";
 import { QUALITIES, qualityPref, setQualityPref, type Quality } from "./city/quality";
+import { findPlaces, onWeather, setWeatherPref, weatherLine, weatherPref, type Place } from "./city/live";
 import type { Config, ListMode, PendingConfig, Profile, RuleAction, Status, Throttle } from "./proto";
 
 export type SettingsSection = "session" | "lists" | "routines" | "inverted" | "dns" | "backup" | "appearance" | "about";
@@ -23,7 +24,7 @@ const SECTIONS: { key: SettingsSection; label: string; blurb: string }[] = [
   { key: "inverted", label: "Inverted mode", blurb: "Throttle between sessions" },
   { key: "dns", label: "DNS", blurb: "Resolver and upstreams" },
   { key: "backup", label: "Backup", blurb: "Export and import everything" },
-  { key: "appearance", label: "Appearance", blurb: "Theme and city quality" },
+  { key: "appearance", label: "Appearance", blurb: "Theme, city quality, weather" },
   { key: "about", label: "About", blurb: "Version and build" },
 ];
 
@@ -414,7 +415,51 @@ function appearanceSection(): string {
         (q) => `<button class="${quality === q.key ? "on" : ""}" data-action="quality" data-quality="${q.key}" aria-pressed="${quality === q.key}">${q.label}</button>`,
       ).join("")}</div>`,
       "Lower draws the city at a lower resolution, without the glow, and with simpler shadows. Try it if the city stutters on a large screen.",
-    )}`;
+    )}
+    ${weatherField()}`;
+}
+
+/** Places found for the weather search, and what went wrong if it failed. */
+let places: Place[] = [];
+let placeNote = "";
+
+function weatherField(): string {
+  const { live, place, auto } = weatherPref();
+  const seg = `<div class="seg" role="group" aria-label="Weather">
+      <button class="${live ? "" : "on"}" data-action="weather-live" data-live="0" aria-pressed="${!live}">By date</button>
+      <button class="${live ? "on" : ""}" data-action="weather-live" data-live="1" aria-pressed="${live}">Live</button></div>`;
+  const search = `<div class="place-search">
+      <input id="weather-place" type="text" placeholder="Your town or city" value="${auto ? "" : escapeHtml(place?.name ?? "")}" autocomplete="off" />
+      <button data-action="weather-find">Find</button></div>`;
+  const found = places.length
+    ? `<div class="place-list">${places
+        .map((p, i) => `<button class="link" data-action="weather-pick" data-index="${i}">${escapeHtml(p.name)}<span class="muted">${p.detail ? ` · ${escapeHtml(p.detail)}` : ""}</span></button>`)
+        .join("")}</div>`
+    : placeNote
+      ? `<span class="hint">${escapeHtml(placeNote)}</span>`
+      : "";
+  const where = place
+    ? `<span class="hint">Place: ${escapeHtml(place.name)}${place.detail ? `, ${escapeHtml(place.detail)}` : ""}${auto ? " (from your time zone; find another to change it)" : ""}.</span>`
+    : "";
+  return field(
+    "Weather",
+    `${seg}${search}${found}${where}`,
+    `${escapeHtml(weatherLine())} Live asks Open-Meteo (free, no account) every 15 minutes, sending only the place's rounded coordinates. By date sends nothing.`,
+  );
+}
+
+async function findWeatherPlace() {
+  const q = document.querySelector<HTMLInputElement>("#weather-place")?.value ?? "";
+  placeNote = "Searching…";
+  places = [];
+  render();
+  try {
+    places = await findPlaces(q);
+    placeNote = places.length ? "" : "No place by that name.";
+  } catch {
+    placeNote = "Could not reach Open-Meteo. Check the connection and try again.";
+  }
+  render();
 }
 
 /** A date and time in the viewer's locale, or "unknown". */
@@ -787,6 +832,10 @@ async function closeSettings() {
 
 function start() {
   const d = dialog();
+  // The weather line follows a live answer that arrives while Appearance is open.
+  onWeather(() => {
+    if (d.open && section === "appearance") render();
+  });
   d.addEventListener("click", (ev) => {
     const target = ev.target as HTMLElement;
     const btn = target.closest<HTMLButtonElement>("button[data-action]");
@@ -806,6 +855,19 @@ function start() {
       case "quality":
         setQualityPref(btn.dataset.quality as Quality);
         return render();
+      case "weather-live":
+        setWeatherPref({ ...weatherPref(), live: btn.dataset.live === "1" });
+        return render();
+      case "weather-find":
+        return void findWeatherPlace();
+      case "weather-pick": {
+        const place = places[Number(btn.dataset.index)];
+        if (!place) return;
+        places = [];
+        placeNote = "";
+        setWeatherPref({ live: true, place });
+        return render();
+      }
     }
     if (!draft) return;
     switch (btn.dataset.action) {
@@ -905,6 +967,9 @@ function start() {
     } else if (el.id === "new-profile") {
       ev.preventDefault();
       addProfile();
+    } else if (el.id === "weather-place") {
+      ev.preventDefault();
+      void findWeatherPlace();
     }
   });
 

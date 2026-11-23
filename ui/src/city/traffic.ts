@@ -362,6 +362,7 @@ function rig(parts: { role: string; geo: THREE.BufferGeometry }[]): { role: stri
  * instance `aWalk` is the stride phase and how much to swing (0 standing).
  */
 function striding(m: THREE.MeshStandardMaterial) {
+  m.userData.noWeather = true;
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace("#include <common>", "#include <common>\nattribute vec3 aLimb;\nattribute vec2 aWalk;")

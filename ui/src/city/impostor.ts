@@ -34,6 +34,26 @@ export class Impostors {
 
   constructor(private renderer: THREE.WebGLRenderer) {}
 
+  /**
+   * fog: alpha to coverage leaves the cards' sharpened edges (sharpen())
+   * half covered, and in thick fog those samples show as white outlines
+   * round every far tree. Fog hides the jaggies it smooths, so it goes.
+   */
+  coverage(on: boolean) {
+    this.cover = on;
+    for (const m of [this.mat_, this.far_]) if (m) this.cover_(m);
+  }
+
+  private cover = true;
+
+  /** scene.ts's prepare() turns coverage on for cut-outs unless `noCoverage`. */
+  private cover_(m: THREE.Material) {
+    m.userData.noCoverage = !this.cover;
+    if (m.alphaToCoverage === this.cover) return;
+    m.alphaToCoverage = this.cover;
+    m.needsUpdate = true;
+  }
+
   /** Impostors still waiting for their textures. */
   get pending() {
     return this.jobs.length;
@@ -46,6 +66,7 @@ export class Impostors {
     this.mat_.onBeforeCompile = (sh) => sharpen(sh);
     // The real trees draw the shadow map; the cards cast none.
     this.mat_.userData.noShadow = true;
+    this.cover_(this.mat_);
     return this.mat_;
   }
 
@@ -58,6 +79,7 @@ export class Impostors {
       sh.vertexShader = sh.vertexShader.replace("#include <project_vertex>", `#include <project_vertex>\nif (distance(cameraPosition, (modelMatrix * instanceMatrix * vec4(0.0, 0.0, 0.0, 1.0)).xyz) < ${IMPOSTOR_NEAR.toFixed(1)}) gl_Position = vec4(0.0, 0.0, 2.0, 1.0);`);
     };
     m.customProgramCacheKey = () => "impostor-far";
+    this.cover_(m);
     return m;
   }
 
