@@ -898,17 +898,18 @@ impl Core {
                 b.version
             ));
         }
+        b.check(unix_now())
+            .map_err(|e| format!("not a backup this daemon could have written: {e}"))?;
         Config::parse(&b.config)
             .map_err(|e| format!("the backup's settings are invalid: {e:#}"))?;
         let message = self.apply_config_text(&b.config).await?;
+        let today = self.now().date();
         let sessions = self
             .store
-            .import_backup(&b)
+            .import_backup(&b, &today.to_string())
             .map_err(|e| format!("could not import the progress: {e:#}"))?;
         // Refresh what the daemon mirrors in memory.
-        let since = Timestamp::now()
-            .to_zoned(self.tz.clone())
-            .date()
+        let since = today
             .checked_sub(3.days())
             .map(|d| d.to_string())
             .unwrap_or_default();
@@ -934,8 +935,10 @@ impl Core {
         // Merging progress never takes earned time away: an older backup
         // cannot shrink a newer bank. A backup restores the balance, never an
         // active spend.
+        // Nor more than the bank can hold: the balance comes from the file.
         bank.stop();
-        bank.balance_ms = bank.balance_ms.max(current_balance);
+        let cap = u64::from(self.cfg.inverted.max_bank_mins) * 60_000;
+        bank.balance_ms = bank.balance_ms.min(cap).max(current_balance);
         self.bank = bank;
         self.save_bank();
         self.log(

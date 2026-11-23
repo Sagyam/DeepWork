@@ -392,7 +392,11 @@ impl Store {
     /// Merges a backup into the store. Returns how many sessions were new.
     /// Sessions already present (same profile and start) are skipped, and the
     /// same bundle is never merged twice, so importing is safe to repeat.
-    pub fn import_backup(&self, b: &Backup) -> Result<usize> {
+    /// Merges a checked backup (`Backup::check`). A session overlapping one
+    /// already here is dropped, so focus time can never exceed wall time.
+    /// Routine runs from `today` on are left out: the daemon decides those
+    /// itself, and a run marked done would skip a routine without a token.
+    pub fn import_backup(&self, b: &Backup, today: &str) -> Result<usize> {
         // Exported-at plus the shape: two bundles exported in the same second
         // but with different contents are still merged.
         let marker = format!("{}:{}:{}", b.exported_at, b.sessions.len(), b.events.len());
@@ -417,6 +421,16 @@ impl Store {
             if let Some(id) = existing {
                 seen.insert(s.id);
                 ids.insert(s.id, id);
+                continue;
+            }
+            let end = s.started_at.saturating_add_unsigned(s.elapsed_secs);
+            let overlaps: bool = tx.query_row(
+                "SELECT EXISTS (SELECT 1 FROM sessions
+                     WHERE started_at < ?2 AND started_at + elapsed_ms / 1000 > ?1)",
+                params![s.started_at, end],
+                |r| r.get(0),
+            )?;
+            if overlaps {
                 continue;
             }
             tx.execute(
@@ -468,7 +482,7 @@ impl Store {
                 )?;
             }
         }
-        for r in &b.routine_runs {
+        for r in b.routine_runs.iter().filter(|r| r.date.as_str() < today) {
             let session_id = r.session_id.and_then(|old| ids.get(&old).copied());
             tx.execute(
                 "INSERT OR IGNORE INTO routine_runs (routine, date, outcome, ts, session_id)
@@ -927,7 +941,7 @@ mod tests {
         };
 
         let to = Store::in_memory().unwrap();
-        assert_eq!(to.import_backup(&backup).unwrap(), 1);
+        assert_eq!(to.import_backup(&backup, "2099-01-01").unwrap(), 1);
         let (session, ended) = to.last_finished().unwrap().unwrap();
         assert_eq!(
             (session.profile.as_str(), session.elapsed.as_secs(), ended),
@@ -937,9 +951,66 @@ mod tests {
         assert_eq!(to.all_runs().unwrap()[0].session_id, Some(session.id));
         assert_eq!(to.get("free_bank").unwrap(), from.get("free_bank").unwrap());
         // Importing the same bundle again changes nothing.
-        assert_eq!(to.import_backup(&backup).unwrap(), 0);
+        assert_eq!(to.import_backup(&backup, "2099-01-01").unwrap(), 0);
         assert_eq!(to.all_finished().unwrap().len(), 1);
         assert_eq!(to.penalty_events().unwrap().len(), 1);
+    }
+
+    fn bundle(sessions: &[(i64, i64, u64)], runs: &[&str]) -> Backup {
+        let mut b = Backup::new(String::new());
+        b.exported_at = 9;
+        b.sessions = sessions
+            .iter()
+            .map(
+                |&(id, started_at, elapsed_secs)| crate::backup::BackupSession {
+                    id,
+                    kind: SessionKind::Stopwatch,
+                    profile: "deep".into(),
+                    routine: None,
+                    state: SessionState::Completed,
+                    started_at,
+                    elapsed_secs,
+                    ended_at: started_at + elapsed_secs as i64,
+                },
+            )
+            .collect();
+        b.routine_runs = runs
+            .iter()
+            .map(|date| crate::backup::BackupRun {
+                routine: "morning".into(),
+                date: (*date).into(),
+                outcome: "started".into(),
+                ts: 0,
+                session_id: None,
+            })
+            .collect();
+        b
+    }
+
+    #[test]
+    fn backup_overlaps_are_dropped() {
+        let store = Store::in_memory().unwrap();
+        // The second starts inside the first; the third starts as the first
+        // ends, which is fine.
+        let b = bundle(&[(1, 1000, 3600), (2, 2000, 3600), (3, 4600, 600)], &[]);
+        assert_eq!(store.import_backup(&b, "2099-01-01").unwrap(), 2);
+        // A second bundle cannot fill time the first already covers.
+        let b = bundle(&[(1, 500, 3600)], &[]);
+        assert_eq!(store.import_backup(&b, "2099-01-01").unwrap(), 0);
+    }
+
+    #[test]
+    fn backup_leaves_todays_runs_to_the_daemon() {
+        let store = Store::in_memory().unwrap();
+        let b = bundle(&[], &["2026-11-22", "2026-11-23", "2026-11-24"]);
+        store.import_backup(&b, "2026-11-23").unwrap();
+        let dates: Vec<_> = store
+            .all_runs()
+            .unwrap()
+            .into_iter()
+            .map(|r| r.date)
+            .collect();
+        assert_eq!(dates, ["2026-11-22"]);
     }
 
     #[test]
