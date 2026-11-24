@@ -822,10 +822,105 @@ def ground_tex(t, n=1024):
     t.save("asphalt_nrm", normals(g, 1.5))
 
 
+def fieldstone_tex(t, n=1024):
+    """Coursed rubble walling: rough stones about 0.3 x 0.2 m in thick lime mortar: tile 2 x 2 m.
+
+    Pale buff for the app to tint (honey limestone, grey granite, red
+    sandstone): each stone its own tone with a pitched, bulging face, the
+    mortar raked back between them. Stones are cells of a jittered grid,
+    twelve courses to the tile, so they lie in rough courses.
+    """
+    T, cols, rows = 2.0, 5, 12
+    rng = np.random.default_rng(201)
+    jx = 0.1 + 0.8 * rng.random((rows, cols))
+    jy = 0.42 + 0.16 * rng.random((rows, cols))
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    px, py = x / n * T, y / n * T
+    cu, cv = np.floor(px / (T / cols)).astype(int), np.floor(py / (T / rows)).astype(int)
+    f1 = np.full((n, n), 9.0, np.float32)
+    f2 = f1.copy()
+    sid = np.zeros((n, n), int)
+    for dv in (-1, 0, 1):
+        for du in (-2, -1, 0, 1, 2):
+            r, c = cv + dv, cu + du
+            rr, cc = r % rows, c % cols
+            # Odd courses shift by half a stone, so joints break.
+            sx = (c + jx[rr, cc] + 0.5 * (rr % 2)) * T / cols
+            sy = (r + jy[rr, cc]) * T / rows
+            d = np.hypot(sx - px, (sy - py) * 2.4)
+            closer = d < f1
+            f2 = np.where(closer, f1, np.minimum(f2, d))
+            sid = np.where(closer, rr * cols + cc, sid)
+            f1 = np.minimum(f1, d)
+    edge = (f2 - f1) * 0.5  # metres to the joint's centre line
+    wob = 0.012 * (fbm(n, 32, 3, 202) - 0.5)
+    mortar = edge + wob < 0.009
+    tone = rng.random(rows * cols)[sid]
+    hue = rng.random(rows * cols)[sid]
+    face = fbm(n, 24, 5, 203)
+    col = np.ones((n, n, 3), np.float32) * srgb(206, 192, 162)
+    col *= (0.72 + 0.34 * tone + 0.3 * (face - 0.5))[..., None]
+    col *= 1 + 0.1 * (hue - 0.5)[..., None] * np.array([1.0, 0.1, -1.0], np.float32)
+    lichen = fbm(n, 6, 5, 204)
+    moss = (np.clip((lichen - 0.68) / 0.1, 0, 1) * 0.35)[..., None]
+    col = col * (1 - moss) + srgb(150, 154, 120) * moss
+    col *= (0.7 + 0.3 * np.clip((edge - 0.009) / 0.03, 0, 1))[..., None]  # dirt in the arrises
+    mcol = srgb(196, 188, 170) * (0.85 + 0.25 * fbm(n, 128, 3, 205))[..., None]
+    col[mortar] = mcol[mortar]
+    h = np.clip((edge - 0.01) / 0.05, 0, 1) ** 0.6 * (0.8 + 0.4 * face)
+    h[mortar] = 0.05 * fbm(n, 128, 3, 206)[mortar]
+    t.save("fieldstone_col", col)
+    t.save("fieldstone_nrm", normals(h, 7.0))
+
+
+def plaintile_tex(t, n=1024):
+    """Handmade clay plain tiles 0.165 m wide at a 0.1 m gauge, half-bonded: tile 1.32 x 1.2 m.
+
+    Warm terracotta for the app to tint (red, brindled brown, old orange):
+    each tile its own tone, a little camber shading across it, the butt's
+    edge over a shadow on the course below, lichen and moss; row 0 (the
+    image's top) is up the slope.
+    """
+    rows, cols = 12, 8
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / rows)
+    row = np.floor(cy).astype(int)
+    fy = cy - row
+    rng = np.random.default_rng(211)
+    shift = rng.random(rows) * 0.08
+    u = (x / (n / cols) + 0.5 * (row % 2) + shift[row]) % cols
+    tl = np.floor(u).astype(int)
+    fx = u - tl
+    sid = row * cols + tl
+    fx = fx + (rng.random(rows * cols)[sid] - 0.5) * 0.05 * (1 - fy)  # handmade: joints wander
+    joint = np.minimum(fx, 1 - fx) * 0.165 < 0.004
+    tone = rng.random(rows * cols)[sid]
+    burnt = rng.random(rows * cols)[sid] < 0.15
+    off = (rng.random(rows * cols)[sid] * n).astype(int)
+    grain = fbm(n, 32, 5, 212)
+    grain = grain[(y.astype(int) + off) % n, x.astype(int)]
+    hue = rng.random(rows * cols)[sid]
+    col = np.ones((n, n, 3), np.float32) * srgb(160, 90, 66)
+    col *= (0.7 + 0.42 * tone + 0.3 * (grain - 0.5))[..., None]
+    col *= 1 + 0.16 * (hue - 0.5)[..., None] * np.array([0.4, -0.3, -1.0], np.float32)
+    col[burnt] *= np.array([0.7, 0.62, 0.6], np.float32)
+    col *= (0.88 + 0.12 * np.sin(fx * math.pi))[..., None]  # the camber across the tile
+    lichen = fbm(n, 8, 5, 213)
+    moss = (np.clip((lichen - 0.6) / 0.12, 0, 1) * np.clip(fy * 1.5 - 0.2, 0, 1) * 0.5)[..., None]
+    col = col * (1 - moss) + srgb(120, 128, 84) * moss
+    col *= (0.45 + 0.55 * np.clip(fy / 0.18, 0, 1) ** 0.6)[..., None]
+    col[fy > 0.96] *= 1.2
+    col[joint] = srgb(40, 28, 24)
+    h = 0.2 + 0.8 * fy + 0.2 * np.sin(fx * math.pi) + 0.15 * (grain - 0.5)
+    h[joint] = 0.0
+    t.save("plaintile_col", col)
+    t.save("plaintile_nrm", normals(h, 6.0))
+
+
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
     render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
-    cladstone_tex, chevron_tex, grime_tex,
+    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex,
 )
 
 

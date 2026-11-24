@@ -99,7 +99,9 @@ are blueprints and their prices.
 | C2 | Brick cottage | cottage classic | `c2_cottage.py` | in |
 | C3 | Modern house | cottage modern | `c3_modern.py` | in |
 | C4 | A-frame cabin | cottage A-frame | `c4_aframe.py` | in |
-| C5-C7 | Stone cottage, craftsman bungalow, half-timbered house | cottage | | |
+| C5 | Stone cottage | cottage classic | `c5_stone.py` | in |
+| C6 | Craftsman bungalow | cottage classic | `c6_bungalow.py` | in |
+| C7 | Half-timbered house | cottage classic | `c7_timber.py` | in |
 | S1 | Main-street shop | shop classic | `s1_shop.py` | in |
 | S2 | Corner café | shop classic | `s2_cafe.py` | in |
 | S3 | Diner | shop diner | `s3_diner.py` | in |

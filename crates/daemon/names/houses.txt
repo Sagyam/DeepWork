@@ -31,6 +31,27 @@ Brook Farm
 Fletcher's Farm
 Sorensen Farm
 Hillside Farm
+[c5]
+Rose Cottage
+The Old Forge
+Stonecroft
+Mill Cottage
+The Wold House
+Yew Tree Cottage
+[c6]
+The Arroyo
+Cedar Lodge
+The Larkin Bungalow
+Oak Hollow
+Willow Bend
+The Greene House
+[c7]
+Tudor Cottage
+The Old Hall
+Whitbourne House
+The Wool House
+Hollins Hall
+The Gatehouse
 [c4]
 Pine Hollow
 Larch Cabin

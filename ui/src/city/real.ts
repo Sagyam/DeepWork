@@ -84,6 +84,12 @@ const C3_G = 3.3;
 const C3_TOP = 6.3;
 const C4_TOP = 3.35;
 const C4_RIDGE = 7.8;
+const C5_PLATE = 3.6;
+const C6_PLATE = 3.45;
+const C6_RIDGE = 5.55;
+const C7_G = 3.0;
+const C7_TOP = 5.6;
+const C7_RIDGE = 9.34;
 const S1_G = 4.45;
 const S1_FL = 3.3;
 const S2_G = 4.5;
@@ -274,6 +280,56 @@ export const DEFS: Record<string, RealDef> = {
     height: () => C4_RIDGE + 0.2,
     smoke: () => new THREE.Vector3(-1.0, C4_RIDGE + 0.8, -3.38),
     debris: 0x8a6a4c,
+  },
+  c5: {
+    id: "c5",
+    kind: "cottage",
+    style: "classic",
+    // The porch stands out in front; the water butt behind.
+    w: 10,
+    d: 8.4,
+    front: 2.4,
+    floors: () => 2,
+    // One storey and the rooms in the roof, lit by the dormers: the walls to the plate, then the roof.
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: C5_PLATE }] : [])],
+    top: () => C5_PLATE,
+    height: () => 7.6,
+    smoke: () => new THREE.Vector3(-4.59, 9.3, -0.35),
+    debris: 0xb8aa8c,
+  },
+  c6: {
+    id: "c6",
+    kind: "cottage",
+    style: "classic",
+    // The porch and its steps in front, the back stoop behind; the eaves stand 0.75 m out.
+    w: 10.6,
+    d: 12.6,
+    front: 1.0,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: C6_PLATE }] : [])],
+    top: () => C6_PLATE,
+    height: () => C6_RIDGE + 0.2,
+    smoke: () => new THREE.Vector3(4.75, C6_RIDGE + 0.8, -1.6),
+    debris: 0xa89478,
+  },
+  c7: {
+    id: "c7",
+    kind: "cottage",
+    style: "classic",
+    // The cross gable jetties out in front; the stack stands out on the left.
+    w: 10,
+    d: 7.4,
+    front: 2.5,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "upper", y: C7_G }] : []),
+      ...(floors > 1 && roof ? [{ piece: "roof", y: C7_TOP }] : []),
+    ],
+    top: (floors) => (floors > 1 ? C7_TOP : C7_G),
+    height: () => C7_RIDGE + 0.1,
+    smoke: () => new THREE.Vector3(-4.37, C7_RIDGE + 2.3, -0.22),
+    debris: 0xd8cfc0,
   },
   s1: {
     id: "s1",
@@ -1392,6 +1448,16 @@ const SHINGLES = [0x5a5a5c, 0x6e5a48, 0x4e5660, 0x5c6252, 0x7a6e64, 0x3e3e40];
 /** Pressed-metal cornices: cream, stone, bottle green, oxblood, slate. */
 const CORNICES = [0xe6dcc4, 0xc8beac, 0x2e4434, 0x5a2420, 0x4a5058];
 /** Slates: Welsh blue-grey, purple, Westmorland green, dark, silver-grey. */
+/** Rubble walling (C5, C6's river rock): honey limestone, grey, buff, red sandstone, pale. */
+const FIELDSTONES = [0xf2e6cc, 0xdcdcd8, 0xeee6d8, 0xe8ccbc, 0xf6f2ea];
+/** Stone slates: lichened grey-buff, darker. */
+/** Limewash on C7's infill: white, cream, Suffolk pink, ochre, pale grey. */
+const LIMEWASH = [0xf6f2e8, 0xf2e6c8, 0xeec8b8, 0xead29a, 0xe4e4de];
+/** Oak framing: tarred black, weathered brown, silvered. */
+const OAKS = [0x2a2624, 0x5a4232, 0x8a7c6c, 0x3a2e26];
+/** Plain tiles: red, brindled brown, old orange. */
+const PLAINTILES = [0xffffff, 0xd8c4bc, 0xf4d8c0, 0xc8b8b0];
+const STONESLATES = [0xd8d0bc, 0xc8c4b8, 0xb8b0a0, 0xe0d4bc];
 const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
 /** Ridge rolls: red clay, blue-black, buff. */
 const RIDGES = [0x9a4a32, 0x2e3034, 0x9a4a32, 0xb08a60];
@@ -1770,7 +1836,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -1833,11 +1899,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : id === "a2" ? pick(SASHES, paint.roof) : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "a2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : id === "c7" ? pick(LIMEWASH, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
       // A3's walls sit deep between balconies: the bake over-darkens them against the bounce they would get.
       if (id === "a3") (m as THREE.MeshStandardMaterial).aoMapIntensity = 0.55;
       break;
@@ -1870,6 +1936,10 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "boards": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.82, color: pick(STAINS, paint.wall) }), 0.6); break;
     case "timber": m = w(plain(pick(TRIMS, paint.accent), 0.6)); break;
     case "slate": m = w(pbr("slate", [2, 1.2], { rough: true, color: pick(SLATES, paint.roof) }), 0.7); break;
+    case "stoneslate": m = w(pbr("slate", [2, 1.2], { rough: true, color: new THREE.Color(pick(STONESLATES, paint.roof)).multiply(new THREE.Color(0xe8d8c0)).getHex() }), 1.0); break;
+    case "oak": m = w(pbr("wood", [1.2, 1.2], { roughness: 0.85, color: pick(OAKS, paint.accent) }), 0.8); break;
+    case "plaintile": m = w(pbr("plaintile", [1.32, 1.2], { color: pick(PLAINTILES, paint.roof) }), 0.9); break;
+    case "fieldstone": m = w(pbr("fieldstone", [2, 2], { roughness: 0.9, normal: 1.2, color: pick(FIELDSTONES, paint.wall) }), 1.4); break;
     case "ridge": m = w(plain(pick(RIDGES, paint.roof + 1), 0.7), 0.6); break;
     case "lead": m = w(plain(0x6e7276, 0.55, 0.3), 0.8); break;
     case "chair": m = w(plain(pick(BRIGHTS, paint.accent + paint.wall + 2), 0.55)); break;
