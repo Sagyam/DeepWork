@@ -1,6 +1,6 @@
 {
- "id": "935530fafa54050f",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-935530fafa54050f/",
+ "id": "c834e6687df3812d",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-c834e6687df3812d/",
  "files": [
   {
    "path": "a1.glb",
@@ -49,6 +49,24 @@
    "size": 83878,
    "sha256": "a81bd198fe45b3d615726e727593507efd5abc577b46e954c35591b132d28791",
    "asset": "c4.glb"
+  },
+  {
+   "path": "c5.glb",
+   "size": 104632,
+   "sha256": "c34b2dcae599f2ba1715483389d0e1f911216496e5940598cc9648b39be8c2c3",
+   "asset": "c5.glb"
+  },
+  {
+   "path": "c6.glb",
+   "size": 110417,
+   "sha256": "29b6fdfa4078187fabb788595b9c8692d09e3542ce7949ae33d8115c01e4be87",
+   "asset": "c6.glb"
+  },
+  {
+   "path": "c7.glb",
+   "size": 274951,
+   "sha256": "84fef880446048cb2a321f0342de591af9f477b5a404f69cf13ed02ea3b75ebc",
+   "asset": "c7.glb"
   },
   {
    "path": "cars.glb",
@@ -208,8 +226,8 @@
   },
   {
    "path": "bc7.json",
-   "size": 1845,
-   "sha256": "b7e755bc1c3f76802ab05b3aa81c80c2b19b3bcd406624e9baca0375fb32507e",
+   "size": 1951,
+   "sha256": "1e6b915297308ab4355cf51a2eeea49af8586d9c6207343cb7c0c33b944d6778",
    "asset": "bc7.json"
   },
   {
@@ -259,6 +277,24 @@
    "size": 2919371,
    "sha256": "676d83ab955e015cabbb3ca7bc1634c7310eb55479672bc122c2ff7f91e14b0c",
    "asset": "c4_ao.bc7"
+  },
+  {
+   "path": "c5_ao.bc7",
+   "size": 3298255,
+   "sha256": "4413e60187b997d3e3e30bab30a01524ba0e46e1b80a00e31a32b83f32d78a12",
+   "asset": "c5_ao.bc7"
+  },
+  {
+   "path": "c6_ao.bc7",
+   "size": 2922146,
+   "sha256": "3ff3c6839fb5be7bf082f6c727625b7f9e2fc3b6a868bcfd74fa662dec94dd19",
+   "asset": "c6_ao.bc7"
+  },
+  {
+   "path": "c7_ao.bc7",
+   "size": 3192950,
+   "sha256": "97cb5b324d064515e2f1247bd2d8045bbc71b4ae3fbeb571ad993d2497eb287f",
+   "asset": "c7_ao.bc7"
   },
   {
    "path": "cars_ao.bc7",
@@ -609,6 +645,18 @@
    "asset": "tex.corrugated_rgh.bc7"
   },
   {
+   "path": "tex/fieldstone_col.bc7",
+   "size": 1058484,
+   "sha256": "a8fa92c886f1178cef9548e9f6d0f47655c09311409d9bbc91f67534cb0f9379",
+   "asset": "tex.fieldstone_col.bc7"
+  },
+  {
+   "path": "tex/fieldstone_nrm.bc7",
+   "size": 1078471,
+   "sha256": "89fd363f6254af8a2e05848f90d6fd48041c625763f0b16ed34e2bafcb4ca30e",
+   "asset": "tex.fieldstone_nrm.bc7"
+  },
+  {
    "path": "tex/firs_col.bc7",
    "size": 200293,
    "sha256": "71d621644a5547f3043ca0022b5cee9c0895c238ef7296f5ed13baa9f57fd309",
@@ -769,6 +817,18 @@
    "size": 821886,
    "sha256": "dc57811baec8e37ac49ac1c74fa81103c2e6839c0ae682c58fc2d94d2b64c8a7",
    "asset": "tex.pave_nrm.bc7"
+  },
+  {
+   "path": "tex/plaintile_col.bc7",
+   "size": 953755,
+   "sha256": "2b1b095a1478d1bef7cb00dee54b1eaaba05c9c92608a60d5a1f7d09d4db81d3",
+   "asset": "tex.plaintile_col.bc7"
+  },
+  {
+   "path": "tex/plaintile_nrm.bc7",
+   "size": 844135,
+   "sha256": "1af553131d34a29708ae7ba7aed780b25cc815a7c51ff10597f9632b16e4b79e",
+   "asset": "tex.plaintile_nrm.bc7"
   },
   {
    "path": "tex/render_col.bc7",
