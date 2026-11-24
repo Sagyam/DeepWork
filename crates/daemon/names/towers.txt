@@ -9,3 +9,21 @@ Sterling Trust
 Aurora Tower
 Monarch Building
 The Beacon Building
+[l3]
+The Cathedral Building
+Ashford Tower
+Mercantile Trust
+The Guildhall Tower
+Pilgrim Life Building
+St. Clair Tower
+The Abbey Building
+Wexford Tower
+[l2]
+Horizon Tower
+The Spire
+Apex Tower
+Vantage Tower
+Crystal Tower
+One Riverside
+Meridian Heights
+The Needle

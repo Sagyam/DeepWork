@@ -486,6 +486,8 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("s4", "Brick factory", Workshop, &[Works], 0, 400),
     bp("c3", "Modern house", Cottage, &[Village], 1, 400),
     bp("s2", "Corner café", Shop, &[MainStreet, Downtown], 1, 500),
+    bp("s6", "Tower brewery", Workshop, &[Works], 1, 600),
+    bp("s5", "Department store", Shop, &[Downtown], 2, 1200),
     bp(
         "a1",
         "Brick apartment block",
@@ -521,6 +523,8 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("o2", "Round glass tower", Office, &[Downtown], 2, 1800),
     bp("o3", "Brutalist office", Office, &[Downtown], 2, 1600),
     bp("l1", "Art deco skyscraper", Tower, &[Downtown], 2, 3000),
+    bp("l3", "Gothic skyscraper", Tower, &[Downtown], 2, 2800),
+    bp("l2", "Glass supertall", Tower, &[Downtown], 3, 4000),
 ];
 
 pub fn blueprint(id: &str) -> Option<&'static Blueprint> {
