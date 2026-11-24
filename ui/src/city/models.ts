@@ -456,7 +456,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.9);
       break;
     }
-    case "o2": {
+    case "o2":
+    case "l2": {
       // A plaza paved to the pavement round the drum: bollards before the
       // canopy, a tree in a planter and a bench at each front corner where
       // the round tower leaves room; the bins at a back corner.

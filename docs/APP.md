@@ -112,7 +112,8 @@ are blueprints and their prices.
 | O3 | Brutalist office | office | `o3_brutalist.py` | in |
 | O4, O5 | Stone office, modernist slab | office | | |
 | L1 | Art deco skyscraper | tower | `l1_deco.py` | in |
-| L2-L4 | Glass supertall, twisting tower, TV tower | tower | | |
+| L2 | Glass supertall | tower supertall | `l2_supertall.py` | in |
+| L3, L4 | Twisting tower, TV tower | tower | | |
 | P1 | Substation | Hamlet / Town power | `p1_substation.py` | in |
 | P2 | Power station | City power | `p2_power.py` | in |
 | W2 | Pumping station | City water | `w2_pumping.py` | in |

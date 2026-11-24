@@ -126,6 +126,10 @@ const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
 const L1_CROWN = 12.8;
+const L2_G = 7.0;
+const L2_FL = 3.8;
+/** L2's crown above its top storey: the parapet and the lantern to 17.4 m, the spire to 42 m. */
+const L2_CROWN = 17.4;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -635,6 +639,37 @@ export const DEFS: Record<string, RealDef> = {
     top: (floors) => L1_G + (floors - 1) * L1_FL,
     height: (floors) => L1_G + (floors - 1) * L1_FL + L1_CROWN,
     debris: 0xc8bca4,
+  },
+  l2: {
+    id: "l2",
+    kind: "landmark",
+    style: "supertall",
+    // 14.4 m square with the corners cut; the canopy is inside the footprint.
+    w: 14.4,
+    d: 14.4,
+    front: 1.6,
+    floors: (plan) => Math.max(16, plan),
+    stack(floors, roof, _r, total) {
+      // Three tiers, stepping in at about 45 and 75 percent of the finished
+      // height; the first storey of a tier is a sky storey of louvres with
+      // the terrace round it. The crown on top.
+      const n = Math.max(total, floors);
+      const e1 = Math.round(n * 0.45);
+      const e2 = Math.round(n * 0.75);
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      let tier = 1;
+      for (let f = 1; f < floors; f++) {
+        const y = L2_G + (f - 1) * L2_FL;
+        const t = f < e1 ? 1 : f < e2 ? 2 : 3;
+        out.push({ piece: t !== tier ? `sky${t}` : `floor${t}`, y });
+        tier = t;
+      }
+      if (roof) out.push({ piece: "crown", y: L2_G + (floors - 1) * L2_FL });
+      return out;
+    },
+    top: (floors) => L2_G + (floors - 1) * L2_FL,
+    height: (floors) => L2_G + (floors - 1) * L2_FL + L2_CROWN,
+    debris: 0x5a6a70,
   },
 };
 
@@ -1978,7 +2013,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" ? "atrium" : "lobby"); break;
+    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" || id === "l2" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;

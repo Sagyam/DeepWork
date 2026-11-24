@@ -9,3 +9,12 @@ Sterling Trust
 Aurora Tower
 Monarch Building
 The Beacon Building
+[l2]
+Horizon Tower
+The Spire
+Apex Tower
+Vantage Tower
+Crystal Tower
+One Riverside
+Meridian Heights
+The Needle

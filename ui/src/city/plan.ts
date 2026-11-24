@@ -32,7 +32,7 @@ export const STYLES: Record<Kind, [string, number][]> = {
   shop: [["classic", 0.5], ["diner", 0.25], ["factory", 0.25]],
   apartment: [["classic", 0.6], ["townhouse", 0.4]],
   office: [["classic", 1]],
-  landmark: [["deco", 1]],
+  landmark: [["deco", 0.6], ["supertall", 0.4]],
 };
 
 /**
@@ -55,6 +55,7 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
   o2: { kind: "office", style: "classic" },
   o3: { kind: "office", style: "classic" },
   l1: { kind: "landmark", style: "deco" },
+  l2: { kind: "landmark", style: "supertall" },
 };
 
 /**

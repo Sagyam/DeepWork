@@ -521,6 +521,7 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("o2", "Round glass tower", Office, &[Downtown], 2, 1800),
     bp("o3", "Brutalist office", Office, &[Downtown], 2, 1600),
     bp("l1", "Art deco skyscraper", Tower, &[Downtown], 2, 3000),
+    bp("l2", "Glass supertall", Tower, &[Downtown], 3, 4000),
 ];
 
 pub fn blueprint(id: &str) -> Option<&'static Blueprint> {
