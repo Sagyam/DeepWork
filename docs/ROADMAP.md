@@ -17,14 +17,10 @@ area, if anything a reader needs changed.
 
 1. **Use it for real** and tune: coin prices, build hours, shiny odds,
    escalation stages, nudges. Add real `[[routines]]`.
-2. **Models**: a second workshop (timber mill or brewery; S4 is the only
-   one, so the mayor never chooses), a third downtown shop (only S1 and S2
-   fit), and a tower blueprint for the City's landmark (L2 is Metropolis
-   only, so that need still has just L1).
-3. **Landmark ground**: reserve half blocks in `layout.rs` for L5 city
+2. **Landmark ground**: reserve half blocks in `layout.rs` for L5 city
    hall and the landmarks; then L6 town square and L12 city park replace
    the parks assembled from props.
-4. **Before-and-after picture** on the deed card.
+3. **Before-and-after picture** on the deed card.
 
 ## Host checks
 
@@ -90,8 +86,8 @@ From the audit, after the security fixes.
 
 ## Packaging
 
-- [ ] Publish a model pack with L2 before the next app release: the
-      current pack lacks it, and a missing model stops the city.
+- [ ] Publish a model pack with L2, L3, S5 and S6 before the next app
+      release: the current pack lacks them, and a missing model stops the city.
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
       user is creating the accounts.
 

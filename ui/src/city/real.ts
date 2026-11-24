@@ -126,6 +126,12 @@ const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
 const L1_CROWN = 12.8;
+const S5_G = 5.2;
+const S5_FL = 4.0;
+const L3_G = 7.0;
+const L3_FL = 3.6;
+/** L3's crown above its top storey: the lancet arcade to 7.9 m, the spire and finial to 23.5 m. */
+const L3_CROWN = 7.9;
 const L2_G = 7.0;
 const L2_FL = 3.8;
 /** L2's crown above its top storey: the parapet and the lantern to 17.4 m, the spire to 42 m. */
@@ -346,6 +352,42 @@ export const DEFS: Record<string, RealDef> = {
     height: () => 7.85,
     smoke: () => new THREE.Vector3(5.4, 17.6, 1.2),
     debris: 0x8a4e3c,
+  },
+  s6: {
+    id: "s6",
+    kind: "shop",
+    style: "factory",
+    // The brewhouse tower and the store range; the casks stand in front of it.
+    w: 13.2,
+    d: 8.4,
+    front: 3.0,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: 7.4 }] : [])],
+    top: () => 7.4,
+    // The tower's ridge; the vane rises 3.7 m more.
+    height: () => 19.0,
+    smoke: () => new THREE.Vector3(4.4, 13.8, -2.3),
+    debris: 0x8a4e3c,
+  },
+  s5: {
+    id: "s5",
+    kind: "shop",
+    style: "classic",
+    // The store; its canopy stands 2 m out in front of the footprint, over the set-back.
+    w: 14,
+    d: 12,
+    front: 2.2,
+    floors: (plan) => Math.min(4, Math.max(2, plan)),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: "floor", y: S5_G + (f - 1) * S5_FL });
+      if (roof) out.push({ piece: "roof", y: S5_G + (floors - 1) * S5_FL });
+      return out;
+    },
+    top: (floors) => S5_G + (floors - 1) * S5_FL,
+    // The attic, cornice and parapet; the clock's centre rises 2.2 m more.
+    height: (floors) => S5_G + (floors - 1) * S5_FL + 2.9,
+    debris: 0xc8bca4,
   },
   p1: {
     id: "p1",
@@ -639,6 +681,33 @@ export const DEFS: Record<string, RealDef> = {
     top: (floors) => L1_G + (floors - 1) * L1_FL,
     height: (floors) => L1_G + (floors - 1) * L1_FL + L1_CROWN,
     debris: 0xc8bca4,
+  },
+  l3: {
+    id: "l3",
+    kind: "landmark",
+    style: "deco",
+    // 13.2 m square on a 1.65 m bay; the portal's step is inside the footprint.
+    w: 13.4,
+    d: 13.4,
+    front: 1.0,
+    floors: (plan) => Math.max(12, plan),
+    stack(floors, roof, _r, total) {
+      // Two tiers, stepping in at about 60 percent of the finished height
+      // behind the ledge; the crown on top.
+      const n = Math.max(total, floors);
+      const e1 = Math.round(n * 0.6);
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) {
+        const y = L3_G + (f - 1) * L3_FL;
+        if (f === e1) out.push({ piece: "ledge1", y });
+        out.push({ piece: f < e1 ? "floor1" : "floor2", y });
+      }
+      if (roof) out.push({ piece: "crown", y: L3_G + (floors - 1) * L3_FL });
+      return out;
+    },
+    top: (floors) => L3_G + (floors - 1) * L3_FL,
+    height: (floors) => L3_G + (floors - 1) * L3_FL + L3_CROWN,
+    debris: 0xd8d0bc,
   },
   l2: {
     id: "l2",

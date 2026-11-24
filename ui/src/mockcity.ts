@@ -85,7 +85,10 @@ const BLUEPRINTS: Omit<BlueprintInfo, "owned" | "unlocked" | "built">[] = [
   { id: "o1", name: "Curtain-wall office tower", kind: "office", districts: ["downtown"], level: 2, price: 1500 },
   { id: "o2", name: "Round glass tower", kind: "office", districts: ["downtown"], level: 2, price: 1800 },
   { id: "o3", name: "Brutalist office", kind: "office", districts: ["downtown"], level: 2, price: 1600 },
+  { id: "s6", name: "Tower brewery", kind: "workshop", districts: ["works"], level: 1, price: 600 },
+  { id: "s5", name: "Department store", kind: "shop", districts: ["downtown"], level: 2, price: 1200 },
   { id: "l1", name: "Art deco skyscraper", kind: "tower", districts: ["downtown"], level: 2, price: 3000 },
+  { id: "l3", name: "Gothic skyscraper", kind: "tower", districts: ["downtown"], level: 2, price: 2800 },
   { id: "l2", name: "Glass supertall", kind: "tower", districts: ["downtown"], level: 3, price: 4000 },
 ];
 
@@ -120,6 +123,9 @@ const PILES: Record<string, string[]> = {
   o2: ["The Rotunda", "Compass House", "Orbit House", "The Lantern", "Circle Point", "Halo House", "Meridian House", "One Harbour Place"],
   o3: ["Federation House", "Concord House", "Bastion House", "Keystone House", "Monolith House", "Unity House", "Meridian House", "One Harbour Place"],
   l1: ["The Orion Building", "Halcyon Tower", "Continental Life", "The Zenith Building"],
+  s5: ["Hargreaves & Co.", "The Emporium", "Whitlock's", "Fairbanks & Sons"],
+  s6: ["Kestrel Ales", "Old Mill Brewery", "Castle Brewery Co.", "Hartley & Sons · Brewers"],
+  l3: ["The Cathedral Building", "Ashford Tower", "Mercantile Trust", "The Guildhall Tower"],
   l2: ["Horizon Tower", "The Spire", "Apex Tower", "Vantage Tower"],
 };
 

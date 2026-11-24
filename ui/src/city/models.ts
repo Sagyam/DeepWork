@@ -397,6 +397,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
+    case "s6": {
+      // Setts to the pavement before the cart arch, the casks on them;
+      // behind, the yard with the brewery's van along the back wall and the bins.
+      p.box(mat(0x8c8780, { roughness: 0.95 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      parked(p, 1.0, back + 1.6, Math.PI / 2, s.seed + 3, KERB, { name: "van" });
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, -half + 0.8 + i * 0.85, KERB, back + 0.7);
+      break;
+    }
     case "s4": {
       // Concrete to the pavement: an apron before the dock with a vehicle
       // drawn up and pallets by the dock steps, oil drums by the boiler
@@ -485,7 +494,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, -half + 1.0 + i * 1.3, KERB, back + 0.7);
       break;
     }
-    case "l1": {
+    case "l1":
+    case "l3": {
       // Granite paving to the pavement, heritage lamps either side of the
       // portal; behind, the bins by the service door.
       p.box(mat(0x9c9890, { roughness: 0.6 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
@@ -554,6 +564,19 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       p.box(mat(0x8e8a84, { roughness: 0.9 }), 3.2, KERB + 0.01, 2.0, 0, 0, front - 4.2);
       for (const [x, z] of [[-6.8, 0], [-6.8, -3], [7.0, 3.0]]) shrub(p, x, z, s.seed * 5 + x * 3 + z, KERB, 0.8);
       tree(p, -5.2, back + 1.4, 0.9, s.seed + 1, KERB);
+      break;
+    }
+    case "s5": {
+      // Paved to the pavement under the canopy, lamp posts at its ends;
+      // behind, a strip of asphalt before the loading door, the bins by
+      // the staff door.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 7.2, KERB, front - 0.4, 0);
+      const yardZ = -s.d / 2;
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
+      p.box(asphalt, LOT - 0.4, KERB + 0.01, Math.max(0.5, yardZ - back), 0, 0, (yardZ + back) / 2);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, 3.4 + i * 0.85, KERB, yardZ - 0.6);
       break;
     }
     case "s1": {
@@ -785,7 +808,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "c2", "l1", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "s5", "s6", "c2", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,
