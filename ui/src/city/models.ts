@@ -260,6 +260,62 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       tree(p, -half + 2.2, back + 1.6, 0.7, s.seed + 2, KERB, ["young", "cherry", "linden"]);
       break;
     }
+    case "c5": {
+      // A cottage garden behind a dry-stone wall: flagstones from the gap in
+      // the wall to the porch, lavender and roses under the windows, an old
+      // fruit tree; behind, the lawn closed by a hedge.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.5;
+      const steps = s.d / 2 - 0.1;
+      const gx = 0; // the door
+      for (let z = steps + 0.35; z < fz - 0.2; z += 0.62) p.box(paving, 0.9 + r() * 0.2, KERB + 0.03, 0.52, gx + (r() - 0.5) * 0.08, 0, z, (r() - 0.5) * 0.1);
+      const run = (x0: number, x1: number) => {
+        const L = x1 - x0;
+        const n = Math.max(1, Math.round(L / 2.4));
+        for (let i = 0; i < n; i++) putReal(rp, def, "wall", paintOf(s), 0, null, x0 + ((i + 0.5) * L) / n, KERB, fz, 0, new THREE.Vector3(L / n / 2.4, 1, 1));
+      };
+      run(-half, gx - 0.6);
+      run(gx + 0.6, half);
+      for (const x of [-4.2, -3.4, -2.6, 2.2, 3.0, 3.8]) if (r() < 0.85) shrub(p, x, 3.15, s.seed * 5 + x * 3, KERB, 0.55);
+      tree(p, -half + 1.3, fz - 1.3, 0.5, s.seed + 1, KERB, ["cherry", "oak", "cherry", "maple"]);
+      for (const x of [-half + 0.1, half - 0.1]) fenceRun(p, "fence_panel", x, -s.d / 2 + 0.6, x, back + 0.6);
+      hedge(p, LOT - 0.4, KERB + 1.5, 0.7, 0, 0, back + 0.55, s.seed);
+      tree(p, -half + 2.0, back + 1.8, 0.75, s.seed + 2, KERB, ["young", "linden", "cherry"]);
+      break;
+    }
+    case "c6": {
+      // Lawn to the pavement: a concrete walk straight to the porch steps, a
+      // drive down the right with the car, foundation shrubs, a street tree.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const walk = mat(0xb4b0a6, { roughness: 0.92 });
+      const gx = -1.1; // the steps
+      p.box(walk, 1.3, KERB + 0.03, Math.max(0.3, front - s.d / 2), gx, 0, (front + s.d / 2) / 2);
+      const dx = half - 1.5;
+      p.box(walk, 2.6, KERB + 0.03, front - cz + 0.5, dx, 0, (front + cz - 0.5) / 2);
+      parked(p, dx, 0.8, 0, s.seed + 3);
+      for (const x of [-4.4, -3.4, 0.6, 1.6]) if (r() < 0.85) shrub(p, x, 5.7, s.seed * 5 + x * 3, KERB, 0.6);
+      for (const x of [2.9, 3.9]) if (r() < 0.85) shrub(p, x, 3.6, s.seed * 7 + x * 3, KERB, 0.65);
+      tree(p, -half + 1.4, front - 1.2, 0.8, s.seed + 1, KERB, ["maple", "oak", "linden"]);
+      hedge(p, LOT - 0.4, KERB + 1.3, 0.7, 0, 0, back + 0.55, s.seed);
+      break;
+    }
+    case "c7": {
+      // A brick path between low box hedges to the door, a clipped hedge
+      // along the street, a tree by the stack; behind, the lawn walled in brick.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.5;
+      const gx = -0.6; // the door
+      const brick = mat(0x9a5040, { roughness: 0.85 });
+      p.box(brick, 1.1, KERB + 0.03, fz - 3.4, gx, 0, (fz + 3.4) / 2);
+      hedge(p, gx - 0.55 + half, KERB + 0.8, 0.5, (-half + gx - 0.55) / 2, 0, fz, s.seed);
+      hedge(p, half - gx - 0.55, KERB + 0.8, 0.5, (half + gx + 0.55) / 2, 0, fz, s.seed);
+      for (const sx of [-1, 1]) hedge(p, 1.8, KERB + 0.45, 0.4, gx + sx * 1.6, 0, 4.4, s.seed + sx);
+      for (const x of [-4.0, -3.0, 1.6, 2.6, 3.6]) if (r() < 0.8) shrub(p, x, 3.75, s.seed * 5 + x * 3, KERB, 0.5);
+      tree(p, -half + 1.6, back + 2.2, 0.7, s.seed + 1, KERB, ["oak", "linden", "maple"]);
+      fenceRun(p, "wall_brick", half, back + 0.12, -half, back + 0.12, 1.6);
+      for (const x of [-half + 0.1, half - 0.1]) fenceRun(p, "wall_brick", x, -s.d / 2 + 0.6, x, back + 0.12, 1.6);
+      break;
+    }
     case "c3": {
       // Lawn; a drive to the garage with the car on it, stepping slabs to
       // the recessed door, a hedge along the street and across the back.
@@ -808,7 +864,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "s5", "s6", "c2", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "s5", "s6", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

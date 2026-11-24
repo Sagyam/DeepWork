@@ -474,6 +474,7 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("c1", "Clapboard farmhouse", Cottage, &[Village], 0, 0),
     bp("c2", "Brick cottage", Cottage, &[Village], 0, 250),
     bp("c4", "A-frame cabin", Cottage, &[Village], 0, 250),
+    bp("c5", "Stone cottage", Cottage, &[Village], 0, 300),
     bp(
         "s1",
         "Main-street shop",
@@ -485,6 +486,8 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("s3", "Diner", Shop, &[MainStreet], 0, 400),
     bp("s4", "Brick factory", Workshop, &[Works], 0, 400),
     bp("c3", "Modern house", Cottage, &[Village], 1, 400),
+    bp("c6", "Craftsman bungalow", Cottage, &[Village], 1, 450),
+    bp("c7", "Half-timbered house", Cottage, &[Village], 1, 550),
     bp("s2", "Corner café", Shop, &[MainStreet, Downtown], 1, 500),
     bp("s6", "Tower brewery", Workshop, &[Works], 1, 600),
     bp("s5", "Department store", Shop, &[Downtown], 2, 1200),
