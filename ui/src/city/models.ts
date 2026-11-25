@@ -453,6 +453,15 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
+    case "s8": {
+      // Concrete to the pavement and under the canopy, a car drawn up at the
+      // pumps (between the islands or outside one); the bins out back.
+      p.box(mat(0xb2aea6, { roughness: 0.92 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      parked(p, s.seed % 2 ? 0 : -4.3, 3.6, 0, s.seed + 3);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, 2.0 + i * 0.85, KERB, back + 0.7);
+      break;
+    }
     case "s6": {
       // Setts to the pavement before the cart arch, the casks on them;
       // behind, the yard with the brewery's van along the back wall and the bins.
