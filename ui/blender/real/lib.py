@@ -917,10 +917,36 @@ def plaintile_tex(t, n=1024):
     t.save("plaintile_nrm", normals(h, 6.0))
 
 
+def zinc_tex(t, n=512):
+    """Standing-seam zinc: trays 0.5 m wide between raised seams, tile 1 x 1 m.
+
+    Pale blue-grey for the app to tint (new zinc, pre-weathered, anthracite):
+    each tray a slightly different patina, streaks run down with the rain,
+    the seam's two faces catch and lose the light.
+    """
+    k = 2
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    fx = (x / (n / k)) % 1
+    tray = (x * k // n).astype(int)
+    rng = np.random.default_rng(221)
+    tone = rng.random(k)[tray]
+    streak = fbm(n, 4, 4, 222, stretch=(1, 10))
+    blotch = fbm(n, 6, 4, 223)
+    col = np.ones((n, n, 3), np.float32) * srgb(200, 206, 210)
+    col *= (0.9 + 0.08 * tone + 0.12 * (streak - 0.5) + 0.06 * (blotch - 0.5))[..., None]
+    # The seam: 25 mm tall, 20 mm wide, at the tray's edge.
+    d = np.minimum(fx, 1 - fx) * 0.5  # metres to the seam
+    seam = np.clip(1 - d / 0.012, 0, 1)
+    col *= (1 - 0.25 * np.clip(1 - d / 0.03, 0, 1) * (fx > 0.5))[..., None]
+    h = seam ** 0.5 + 0.02 * blotch
+    t.save("zinc_col", col)
+    t.save("zinc_nrm", normals(h, 3.0))
+
+
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
     render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
-    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex,
+    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex, zinc_tex,
 )
 
 

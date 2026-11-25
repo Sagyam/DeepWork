@@ -485,6 +485,55 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       fenceRun(p, "wall_brick", half - 0.12, yardZ, half - 0.12, back + 0.12, 1.8);
       break;
     }
+    case "a4": {
+      // A lawn to the pavement and a path of terrazzo-pale slabs to the tower's
+      // steps between low clipped hedges; a tree at each front corner under the
+      // balconies; behind, the lawn, the bins and a bench by a hedge.
+      const wall = 5.5; // the front wall's z (a4_deco.py)
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      p.box(mat(0xd8d2c4, { roughness: 0.75 }), 2.2, KERB + 0.02, front - wall - 1.4, 0, 0, (front + wall + 1.4) / 2);
+      for (const sx of [-1, 1]) {
+        hedge(p, 4.2, KERB + 0.6, 0.45, sx * 3.6, 0, front - 0.6, s.seed + (sx > 0 ? 1 : 2));
+        tree(p, sx * 6.6, front - 1.1, 0.5, s.seed + (sx > 0 ? 3 : 4), KERB, ["young", "cherry", "linden"]);
+        for (const x of [2.2, 3.4, 4.6]) if (r() < 0.8) shrub(p, sx * x, wall + 1.6, s.seed * 5 + sx * x * 3, KERB, 0.55);
+      }
+      const bin = mat(0x2a3a4a, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 0.75, 1.15, 0.75, half - 0.6 - i * 0.85, KERB, back + 1.2);
+      hedge(p, LOT - 0.4, KERB + 1.2, 0.7, 0, 0, back + 0.5, s.seed + 5);
+      furniture(p, "bench", -3.5, KERB, back + 1.5, Math.PI);
+      break;
+    }
+    case "a6": {
+      // Paved to the pavement in pale concrete: a young tree either side of
+      // the lobby, a bench under one, bike stands by the bike store; behind,
+      // a lawn for the flats, the bins in a timber enclosure.
+      p.box(mat(0xc4c0b8, { roughness: 0.85 }), LOT - 0.4, KERB, front - 5.75 + 0.2, 0, 0, (front + 5.75 - 0.2) / 2);
+      p.box(lawn(), LOT - 0.4, KERB, 5.75 - 0.2 - back, 0, 0, (5.75 - 0.2 + back) / 2);
+      tree(p, -2.9, front - 1.1, 0.5, s.seed + 1, KERB, ["young", "birch", "linden"]);
+      tree(p, 6.9, front - 1.2, 0.5, s.seed + 2, KERB, ["young", "birch", "linden"]);
+      furniture(p, "bench", 6.9, KERB, front - 2.6, 0);
+      const stand = mat(0x8a6a44, { roughness: 0.4, metalness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(stand, 0.06, KERB + 0.8, 0.7, -6.6 + i * 0.7, 0, front - 1.0);
+      const fence = mat(0x8a6a4c, { roughness: 0.8 });
+      p.box(fence, 3.0, KERB + 1.4, 0.08, half - 1.7, 0, back + 1.9);
+      p.box(fence, 0.08, KERB + 1.4, 1.6, half - 3.2, 0, back + 1.1);
+      const bin = mat(0x3a3e42, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 0.75, 1.15, 0.75, half - 0.6 - i * 0.85, KERB, back + 1.0);
+      fenceRun(p, "fence_panel", half, back + 0.12, -half, back + 0.12);
+      break;
+    }
+    case "a5": {
+      // Paved to the pavement, as on a boulevard: a young plane tree in an
+      // iron grille, a pair of bollards before the carriage door; behind, the
+      // courtyard with the bins, closed by a wall.
+      p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      tree(p, -5.2, front - 0.9, 0.5, s.seed + 1, KERB, ["linden", "young", "maple"]);
+      for (const x of [-1.9, 1.9]) furniture(p, "bollard", x, KERB, front - 0.35);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 3; i++) p.box(bin, 0.7, 1.1, 0.7, -half + 0.8 + i * 0.85, KERB, back + 0.7);
+      fenceRun(p, "wall_brick", half, back + 0.12, -half, back + 0.12, 2.0);
+      break;
+    }
     case "a3": {
       // Lawn to the pavement, a paved path to the entrance and a gravel
       // strip along the front under the balconies, planted with shrubs, a
@@ -864,7 +913,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "s1", "s2", "s4", "s5", "s6", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,
