@@ -6,7 +6,7 @@
 # lined in timber, sliding doors at the back, a rail of flat bronze bars
 # in front, a chair or a plant out in each. At the foot a glazed lobby under
 # a timber soffit and the bike store's door. On the roof a penthouse set back
-# behind a terrace with a glass balustrade, clad in timber, glass across its
+# behind a terrace, clad in timber, glass across its
 # front; solar panels and a sedum roof over it. The app tints the brick,
 # the timber and the frames.
 #
@@ -57,7 +57,7 @@ def window(F, a, b, c, e, juliet=True, lights=2):
     """A tall window in bronze frames, a deep brick reveal, a precast sill;
     a rail of flat bars across the opening when it runs to the floor."""
     glazing(F, a, b, c, e, lights=lights, D=DEPTH, fr="bronze")
-    F.box("concrete", a - 0.02, b + 0.02, c - 0.05, c, -DEPTH + 0.04, 0.03)
+    F.box("precast", a - 0.02, b + 0.02, c - 0.05, c, -DEPTH + 0.04, 0.03)
     if juliet:
         # A rail of flat bronze bars across it, as in the loggias.
         F.box("bronze", a, b, c + 1.03, c + 1.08, -0.08, -0.03, skip=())
@@ -134,8 +134,8 @@ def ceiling(m, z):
 
 
 def band(m, z):
-    """The precast band at a floor: flush, a shadow gap under it."""
-    m.sweep("concrete", W, D, [(-0.01, z), (0.012, z), (0.012, z + BAND), (-0.01, z + BAND)])
+    """The precast band at a floor, standing proud of the piers, a drip under its nose."""
+    m.sweep("precast", W, D, [(-0.01, z), (0.08, z), (0.1, z + 0.02), (0.1, z + BAND), (-0.01, z + BAND)])
 
 
 def sides_and_back(m, walls, z0, h, ground=False):
@@ -145,7 +145,7 @@ def sides_and_back(m, walls, z0, h, ground=False):
         f = int(round((z0 - G) / FL)) if not ground else 0
         us = [u + (0.6 if (f % 2) else -0.6) for u in SIDE[::2]] if not ground else [SIDE[1], SIDE[2]]
         holes = [(u - 0.45, u + 0.45, z0 + (0.9 if ground else 0.35), z0 + h - BAND - 0.25) for u in us]
-        S.wall("brick", -D / 2, D / 2, z0 + (0.0 if not ground else 0.3), z0 + h - BAND, holes, depth=DEPTH)
+        S.wall("modbrick", -D / 2, D / 2, z0 + (0.0 if not ground else 0.3), z0 + h - BAND, holes, depth=DEPTH)
         for a, b, c, e in holes:
             window(S, a, b, c, e, juliet=False, lights=1)
     B = walls["back"]
@@ -156,12 +156,22 @@ def sides_and_back(m, walls, z0, h, ground=False):
         holes.append((u - hw, u + hw, z0 + (0.15 if wide and not ground else 0.9), z0 + h - BAND - 0.25))
     if ground:
         holes[2] = (BACK[2] - 0.55, BACK[2] + 0.55, z0 + 0.3, z0 + 2.5)
-    B.wall("brick", -W / 2, W / 2, z0 + (0.3 if ground else 0.0), z0 + h - BAND, holes, depth=DEPTH)
+    B.wall("modbrick", -W / 2, W / 2, z0 + (0.3 if ground else 0.0), z0 + h - BAND, holes, depth=DEPTH)
     for i, (a, b, c, e) in enumerate(holes):
         if ground and i == 2:
             glazing(B, a, b, c, e, lights=1, D=DEPTH, fr="bronze", glass="doorglass")
             continue
         window(B, a, b, c, e, juliet=c < z0 + 0.5, lights=2 if b - a > 1.2 else 1)
+
+
+def piers(F, z0, z1):
+    """Brick piers standing out of the front between the bays and at the corners,
+    so the floors read as a frame of brick and precast."""
+    # Only their faces: returns this shallow get a texel or two of the bake and show as black lines.
+    for u in (-2.3, 2.3):
+        F.box("modbrick", u - 0.25, u + 0.25, z0, z1, 0.0, 0.04, skip=("back", "top", "bottom", "left", "right"))
+    for u0, u1, sk in ((X0, X0 + 0.45, ("back", "top", "bottom", "right")), (X1 - 0.45, X1, ("back", "top", "bottom", "left"))):
+        F.box("modbrick", u0, u1, z0, z1, 0.0, 0.04, skip=sk)
 
 
 def storey(M, kind, z0):
@@ -175,7 +185,7 @@ def storey(M, kind, z0):
             holes.append((u - BW, u + BW, z0, z0 + FL - BAND, 0.001))  # lined in timber, not brick
         else:
             holes.append((u - 1.2, u + 1.2, z0 + 0.15, z0 + FL - BAND - 0.25))
-    F.wall("brick", X0, X1, z0, z0 + FL - BAND, holes, depth=DEPTH)
+    F.wall("modbrick", X0, X1, z0, z0 + FL - BAND, holes, depth=DEPTH)
     fills = {"floor_a": (("chairs",), ("plant", "bike")), "floor_b": (("chairs", "plant"),)}[kind]
     k = 0
     for i, u in enumerate(BAYS):
@@ -185,6 +195,7 @@ def storey(M, kind, z0):
             k += 1
         else:
             window(F, a, b, c, e, lights=2)
+    piers(F, z0, z0 + FL - BAND)
     sides_and_back(m, walls, z0, FL)
     band(m, z0 + FL - BAND)
     core(m, z0, z0 + FL)
@@ -200,7 +211,7 @@ def ground(M):
     lobby = (-1.6, 1.6, 0.3, 3.0, 0.001)  # lined in timber
     bikes = (-6.2, -4.2, 0.3, 2.6)
     flat = (2.6, 6.2, 0.9, 3.0)
-    F.wall("brick", X0, X1, 0.3, G - BAND, [lobby, bikes, flat], depth=DEPTH)
+    F.wall("modbrick", X0, X1, 0.3, G - BAND, [lobby, bikes, flat], depth=DEPTH)
     # The lobby: a recess lined in timber, glass from the floor, the door in it.
     a, b, c, e, _ = lobby
     d = 1.2
@@ -251,15 +262,12 @@ def roof(M, z):
     m = M.m
     PH = 1.1
     # The parapet: brick, a bronze coping, the terrace inside it.
-    m.sweep("brick", W, D, [(-0.01, z), (0.0, z), (0.0, z + PH)])
-    m.sweep("bronze", W, D, [(0.0, z + PH), (0.03, z + PH), (0.03, z + PH + 0.06), (-0.3, z + PH + 0.06)])
-    m.sweep("brick", W, D, [(-0.3, z + PH + 0.06), (-0.3, z + 0.15)])
+    m.sweep("modbrick", W, D, [(-0.01, z), (0.0, z), (0.0, z + PH)])
+    m.sweep("precast", W, D, [(0.0, z + PH), (0.1, z + PH), (0.1, z + PH + 0.1), (-0.32, z + PH + 0.1), (-0.32, z + PH + 0.06), (-0.3, z + PH + 0.06)])
+    m.sweep("modbrick", W, D, [(-0.3, z + PH + 0.06), (-0.3, z + 0.15)])
     zr = z + 0.15
     m.poly("deck", [(X0 + 0.3, Y0 + 0.3, zr), (X1 - 0.3, Y0 + 0.3, zr), (X1 - 0.3, Y0 + 3.0, zr), (X0 + 0.3, Y0 + 3.0, zr)], out=Z)
     m.poly("gravel", [(X0 + 0.3, Y0 + 3.0, zr), (X1 - 0.3, Y0 + 3.0, zr), (X1 - 0.3, Y1 - 0.3, zr), (X0 + 0.3, Y1 - 0.3, zr)], out=Z)
-    # A glass balustrade on the parapet along the front, so the terrace has a rail at 1.1 m above its deck.
-    for x0, x1 in ((X0 + 0.1, -0.05), (0.05, X1 - 0.1)):
-        m.box("railglass", (x0, Y0 + 0.12, z + PH + 0.06), (x1, Y0 + 0.14, z + PH + 0.5), skip=("x0", "x1", "z0", "z1"))
     # Planters on the terrace.
     for x in (-5.2, 5.2):
         m.box("concrete", (x - 0.9, Y0 + 0.4, zr), (x + 0.9, Y0 + 0.9, zr + 0.55))

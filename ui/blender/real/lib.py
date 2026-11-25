@@ -917,6 +917,42 @@ def plaintile_tex(t, n=1024):
     t.save("plaintile_nrm", normals(h, 6.0))
 
 
+def modbrick_tex(t, n=1024):
+    """Modern long-format brick, stretcher bond: 8 bricks x 24 courses, tile 2.4 x 1.8 m.
+
+    Bricks 0.29 x 0.065 m, machine-made: a tight range of tone, sharp
+    arrises, flush pale mortar. Pale buff for the app to tint (buff, grey,
+    charcoal, soft red), so a whole wall reads as one colour, as new brick does.
+    """
+    cols, rows = 8, 24
+    y, x = np.mgrid[0:n, 0:n].astype(np.float32)
+    cy = y / (n / rows)
+    course = np.floor(cy).astype(int)
+    fy = cy - course
+    bx = x / (n / cols) + 0.5 * (course % 2)
+    brick = np.floor(bx).astype(int) % cols
+    fx = bx - np.floor(bx)
+    edge = np.minimum(np.minimum(fx, 1 - fx) * 0.3, np.minimum(fy, 1 - fy) * 0.075)
+    mortar = edge < 0.005
+    rng = np.random.default_rng(231)
+    ids = course * cols + brick
+    tone = rng.random(rows * cols)[ids]
+    warm = rng.random(rows * cols)[ids]
+    col = np.ones((n, n, 3), np.float32) * srgb(206, 190, 164)
+    col *= (0.93 + 0.1 * tone)[..., None]
+    col *= 1 + 0.04 * (warm - 0.5)[..., None] * np.array([1.0, 0.2, -0.8], np.float32)
+    speck = fbm(n, 192, 2, 232)
+    col *= (0.95 + 0.08 * speck)[..., None] * (0.97 + 0.05 * fbm(n, 6, 3, 233))[..., None]
+    mcol = srgb(214, 208, 196) * (0.94 + 0.08 * fbm(n, 128, 3, 234))[..., None]
+    col[mortar] = mcol[mortar]
+    # Height: flat faces, crisp arrises, mortar a few millimetres back.
+    h = np.clip((edge - 0.004) / 0.003, 0, 1) * (0.96 + 0.04 * speck)
+    rough = np.where(mortar, 0.95, 0.8 + 0.1 * speck)
+    t.save("modbrick_col", col)
+    t.save("modbrick_nrm", normals(h, 3.0))
+    t.save("modbrick_rgh", rough)
+
+
 def zinc_tex(t, n=512):
     """Standing-seam zinc: trays 0.5 m wide between raised seams, tile 1 x 1 m.
 
@@ -946,7 +982,7 @@ def zinc_tex(t, n=512):
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
     render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
-    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex, zinc_tex,
+    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex, zinc_tex, modbrick_tex,
 )
 
 

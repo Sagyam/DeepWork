@@ -1555,6 +1555,10 @@ const STONESLATES = [0xd8d0bc, 0xc8c4b8, 0xb8b0a0, 0xe0d4bc];
 const PASTELS = [0xf4ead2, 0xd6ecdc, 0xf4d6cc, 0xd4e2ee, 0xf6f4ee, 0xefdcb8];
 /** A4's speed lines: teal, terracotta, navy, jade, flamingo, charcoal. */
 const DECO_BANDS = [0x2e7a78, 0xb45a3c, 0x2a3a5c, 0x3e8a64, 0xd8707a, 0x3a3a3c];
+/** A6's brick: buff, pale grey, charcoal, soft red, near-white, brown-grey. */
+const MODBRICKS = [0xffffff, 0xd4d0cc, 0x6e6660, 0xe8b49c, 0xf6f2ec, 0xb0a090];
+/** A6's anodised frames and rails: bronze, dark grey, champagne, black. */
+const ANODISED = [0x6a5440, 0x3a3836, 0x9a8466, 0x262626];
 const ZINCS = [0xd8dce0, 0xb4bcc4, 0xc4ccd0, 0x8a9098];
 const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
 /** Ridge rolls: red clay, blue-black, buff. */
@@ -1934,7 +1938,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zinc", "band", "fin", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zinc", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2021,6 +2025,10 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     }
     // S2's banded rustication: the stucco a shade deeper.
     case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(id === "a5" ? LIMESTONES : STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
+    // A6's machine-made brick: one even colour across the wall, as new brick is.
+    case "modbrick": m = w(pbr("modbrick", [2.4, 1.8], { rough: true, normal: 0.8, color: pick(MODBRICKS, paint.wall) }), 0.5); break;
+    // A6's precast bands, sills and coping: smooth pale reconstituted stone.
+    case "precast": m = w(pbr("render", [3, 3], { roughness: 0.8, normal: 0.3, color: 0xe6e2d8 }), 0.5); break;
     // A4's speed lines and the canopy's edge, and the tower's fins.
     case "band": m = w(plain(pick(DECO_BANDS, paint.accent), 0.5), 0.6); break;
     case "fin": m = w(plain(new THREE.Color(pick(PASTELS, paint.wall + 2)).lerp(new THREE.Color(0xffffff), 0.4).getHex(), 0.6), 0.6); break;
@@ -2225,7 +2233,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     case "deco": m = w(pbr("chevron", [1, 1], { roughness: 0.5, metalness: 0.35, normal: 1.2, color: pick(DECO_METALS, paint.accent) }), 1.2); break;
-    case "bronze": m = w(plain(pick(DECO_METALS, paint.accent), 0.4, 0.55), 0.8); break;
+    case "bronze": m = w(plain(pick(id === "a6" ? ANODISED : DECO_METALS, paint.accent), 0.4, 0.55), 0.8); break;
     case "jet": {
       // Polished black granite: it shows the sky.
       const jet = new THREE.MeshStandardMaterial({ map: tex("granite_col", [1, 1]), color: 0x3a3a3c, roughness: 0.14 });
