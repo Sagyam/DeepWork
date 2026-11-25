@@ -1938,7 +1938,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zinc", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2027,13 +2027,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(id === "a5" ? LIMESTONES : STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
     // A6's machine-made brick: one even colour across the wall, as new brick is.
     case "modbrick": m = w(pbr("modbrick", [2.4, 1.8], { rough: true, normal: 0.8, color: pick(MODBRICKS, paint.wall) }), 0.5); break;
-    // A6's precast bands, sills and coping: smooth pale reconstituted stone.
-    case "precast": m = w(pbr("render", [3, 3], { roughness: 0.8, normal: 0.3, color: 0xe6e2d8 }), 0.5); break;
     // A4's speed lines and the canopy's edge, and the tower's fins.
     case "band": m = w(plain(pick(DECO_BANDS, paint.accent), 0.5), 0.6); break;
     case "fin": m = w(plain(new THREE.Color(pick(PASTELS, paint.wall + 2)).lerp(new THREE.Color(0xffffff), 0.4).getHex(), 0.6), 0.6); break;
     // Standing-seam zinc on A5's mansard: new, weathered blue-grey, darker, anthracite.
-    case "zinc": m = w(pbr("zinc", [1, 1], { roughness: 0.55, metalness: 0.45, color: pick(ZINCS, paint.roof) }), 0.9); break;
+    case "zincseam": m = w(pbr("zincseam", [1, 1], { roughness: 0.55, metalness: 0.45, color: pick(ZINCS, paint.roof) }), 0.9); break;
     case "parasol": m = w(plain(pick(PARASOLS, paint.accent + paint.signs), 0.9)); break;
     case "cane": m = w(plain(0xc8a46a, 0.85)); break;
     case "cafename": {

@@ -953,7 +953,7 @@ def modbrick_tex(t, n=1024):
     t.save("modbrick_rgh", rough)
 
 
-def zinc_tex(t, n=512):
+def zincseam_tex(t, n=512):
     """Standing-seam zinc: trays 0.5 m wide between raised seams, tile 1 x 1 m.
 
     Pale blue-grey for the app to tint (new zinc, pre-weathered, anthracite):
@@ -975,14 +975,14 @@ def zinc_tex(t, n=512):
     seam = np.clip(1 - d / 0.012, 0, 1)
     col *= (1 - 0.25 * np.clip(1 - d / 0.03, 0, 1) * (fx > 0.5))[..., None]
     h = seam ** 0.5 + 0.02 * blotch
-    t.save("zinc_col", col)
-    t.save("zinc_nrm", normals(h, 3.0))
+    t.save("zincseam_col", col)
+    t.save("zincseam_nrm", normals(h, 3.0))
 
 
 TEXTURES = (
     brick_tex, stone_tex, ashlar_tex, granite_tex, roof_tex, wood_tex, siding_tex, shingle_tex, louvre_tex, bars_tex, grate_tex, awning_tex,
     render_tex, battens_tex, gravel_tex, sedum_tex, solar_tex, shake_tex, boards_tex, fluted_tex, glassblock_tex, corrugated_tex, slate_tex, rustic_tex, brownstone_tex, ground_tex, blades_tex,
-    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex, zinc_tex, modbrick_tex,
+    cladstone_tex, chevron_tex, grime_tex, fieldstone_tex, plaintile_tex, zincseam_tex, modbrick_tex,
 )
 
 

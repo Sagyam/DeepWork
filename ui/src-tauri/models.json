@@ -1,6 +1,6 @@
 {
- "id": "c834e6687df3812d",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-c834e6687df3812d/",
+ "id": "69b5b45241f8dd01",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-69b5b45241f8dd01/",
  "files": [
   {
    "path": "a1.glb",
@@ -19,6 +19,24 @@
    "size": 200547,
    "sha256": "3212f39e028bd7a26dc0123bf3223c111d022faee69cefee3085566611577e20",
    "asset": "a3.glb"
+  },
+  {
+   "path": "a4.glb",
+   "size": 218078,
+   "sha256": "b55e020329988242a9ad6bfa330371dab6ed6b833560cf9aa1a471dd142db63a",
+   "asset": "a4.glb"
+  },
+  {
+   "path": "a5.glb",
+   "size": 589487,
+   "sha256": "f7540a804fd493302e9ee2c6fa0465cab85cdbd43eb8823ef71c6df5085130c1",
+   "asset": "a5.glb"
+  },
+  {
+   "path": "a6.glb",
+   "size": 156187,
+   "sha256": "8315fe9ef4bb3675a7a9832afc0ef182d8324a16d7bc83639ee2fa2ab6ea7add",
+   "asset": "a6.glb"
   },
   {
    "path": "bridge.glb",
@@ -226,8 +244,8 @@
   },
   {
    "path": "bc7.json",
-   "size": 1951,
-   "sha256": "1e6b915297308ab4355cf51a2eeea49af8586d9c6207343cb7c0c33b944d6778",
+   "size": 2070,
+   "sha256": "1cf3de656aa25dae3be51d07e57d07cb92cbe54dc5835330f3e91fe625c52382",
    "asset": "bc7.json"
   },
   {
@@ -247,6 +265,24 @@
    "size": 3051396,
    "sha256": "0d5dc44c21387c70054d5e89fdf04d5acda228f357975a34f26ce9d82d0341be",
    "asset": "a3_ao.bc7"
+  },
+  {
+   "path": "a4_ao.bc7",
+   "size": 2477073,
+   "sha256": "6b0e8e1929e25826c6f6c5332e77137272dc826b9487b1fbdab0fa80a779fbc3",
+   "asset": "a4_ao.bc7"
+  },
+  {
+   "path": "a5_ao.bc7",
+   "size": 3048404,
+   "sha256": "96f8b7cd9783262fc7f7d786e9abf8073deeab16c0fe0357fedaae71b9d90ebb",
+   "asset": "a5_ao.bc7"
+  },
+  {
+   "path": "a6_ao.bc7",
+   "size": 2716088,
+   "sha256": "f1db78243b047b79ee1fdc66e6a3132a34c8ff884d0c1091801350cf7cc2fd93",
+   "asset": "a6_ao.bc7"
   },
   {
    "path": "bridge_ao.bc7",
@@ -292,8 +328,8 @@
   },
   {
    "path": "c7_ao.bc7",
-   "size": 3192950,
-   "sha256": "97cb5b324d064515e2f1247bd2d8045bbc71b4ae3fbeb571ad993d2497eb287f",
+   "size": 3180829,
+   "sha256": "83bfba824b1ed2bcd17c307e18a5616904f5537c7248b61c2abbf7eaa95835aa",
    "asset": "c7_ao.bc7"
   },
   {
@@ -771,6 +807,24 @@
    "asset": "tex.louvre_nrm.bc7"
   },
   {
+   "path": "tex/modbrick_col.bc7",
+   "size": 957020,
+   "sha256": "9d54bd844944ee1ece61c123189345dae586f4a46210fbf81170d805ef271fbc",
+   "asset": "tex.modbrick_col.bc7"
+  },
+  {
+   "path": "tex/modbrick_nrm.bc7",
+   "size": 553977,
+   "sha256": "484e6ae400a0a9206659f7e19c402a45893ec70cdf1e6564c31f3b00accc4c5d",
+   "asset": "tex.modbrick_nrm.bc7"
+  },
+  {
+   "path": "tex/modbrick_rgh.bc7",
+   "size": 746364,
+   "sha256": "d8b495f2f29c1cbf026352763f96d6b64d77231d452278d15bf049be7eb1b23f",
+   "asset": "tex.modbrick_rgh.bc7"
+  },
+  {
    "path": "tex/needles_col.bc7",
    "size": 167227,
    "sha256": "02db9d9a8ae6726427da7a96130f06bfaa01190195bc12c9d1dc358049eb1d48",
@@ -1009,6 +1063,18 @@
    "size": 218227,
    "sha256": "2a99743ccb541197f4c1dbc68716327083421d06be78af1448ee668a8b38e237",
    "asset": "tex.zinc_nrm.bc7"
+  },
+  {
+   "path": "tex/zincseam_col.bc7",
+   "size": 164251,
+   "sha256": "5e312c41ff2c0b3bfbd9533f1db057dadf23b49460bb931b96c4a549814c62d9",
+   "asset": "tex.zincseam_col.bc7"
+  },
+  {
+   "path": "tex/zincseam_nrm.bc7",
+   "size": 43521,
+   "sha256": "08ca9451f21b008432a9ba72918ba317f9c50bfb9bf25d64e512833ba5448d52",
+   "asset": "tex.zincseam_nrm.bc7"
   },
   {
    "path": "trees_ao.bc7",

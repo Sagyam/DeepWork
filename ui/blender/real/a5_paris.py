@@ -262,16 +262,16 @@ def roof(M, TOP):
             F.box("stone", u - 0.07, u + 0.07, cz - 0.05, cz + 0.08, 0.1, 0.44)
     # The zinc gutter's lip, then the brisis from behind it.
     z0 = cz + 0.52
-    m.sweep("zinc", W, D, [(0.5, z0), (0.5, z0 + 0.12), (0.38, z0 + 0.12), (-0.35, z0)])
+    m.sweep("zincseam", W, D, [(0.5, z0), (0.5, z0 + 0.12), (0.38, z0 + 0.12), (-0.35, z0)])
     z1 = z0 + BRISIS
     o1 = slope(BRISIS)
     o2 = o1 - 1.8
     z2 = z1 + TERRASSON
-    m.sweep("zinc", W, D, [(-0.35, z0), (o1, z1)])
-    m.sweep("zinc", W, D, [(o1 + 0.04, z1), (o1 + 0.04, z1 + 0.06), (o1, z1 + 0.08)])
-    m.sweep("zinc", W, D, [(o1, z1 + 0.08), (o2, z2)])
+    m.sweep("zincseam", W, D, [(-0.35, z0), (o1, z1)])
+    m.sweep("zincseam", W, D, [(o1 + 0.04, z1), (o1 + 0.04, z1 + 0.06), (o1, z1 + 0.08)])
+    m.sweep("zincseam", W, D, [(o1, z1 + 0.08), (o2, z2)])
     xa, xb, ya, yb = -W / 2 - o2, W / 2 + o2, -D / 2 - o2, D / 2 + o2
-    m.poly("zinc", [(xa, ya, z2), (xb, ya, z2), (xb, yb, z2), (xa, yb, z2)], out=Z)
+    m.poly("zincseam", [(xa, ya, z2), (xb, ya, z2), (xb, yb, z2), (xa, yb, z2)], out=Z)
     for name, F in sides(m, W, D).items():
         # The sides lose their middle dormer to the stack.
         for u in BAYS[name] if name in ("front", "back") else (-3.4, 3.4):
@@ -294,9 +294,9 @@ def roof(M, TOP):
     for x in (-0.25, 0.25):
         m.cyl("terracotta", x, 0.0, 0.12, z2 + 1.2, z2 + 1.65, seg=8, r1=0.09)
     for x in (-3.2, 3.2):
-        m.cyl("zinc", x, 0.8, 0.09, z2, z2 + 0.9, seg=8)
-        m.cyl("zinc", x, 0.8, 0.16, z2 + 0.9, z2 + 1.05, seg=8, r1=0.04)
-    m.box("zinc", (2.0, -1.2, z2), (2.8, -0.5, z2 + 0.25))
+        m.cyl("zincseam", x, 0.8, 0.09, z2, z2 + 0.9, seg=8)
+        m.cyl("zincseam", x, 0.8, 0.16, z2 + 0.9, z2 + 1.05, seg=8, r1=0.04)
+    m.box("zincseam", (2.0, -1.2, z2), (2.8, -0.5, z2 + 0.25))
     m.poly("skyglass", [(2.05, -1.15, z2 + 0.26), (2.75, -1.15, z2 + 0.26), (2.75, -0.55, z2 + 0.26), (2.05, -0.55, z2 + 0.26)], out=Z)
 
 
@@ -327,7 +327,7 @@ def dormer(M, F, u, z0):
         tm = (ang[k] + ang[k + 1]) / 2
         out = F.t * math.cos(tm) + Z * math.sin(tm)
         m.poly("stone", [F.p(x0, zz0, w + 0.08), F.p(x1, zz1, w + 0.08), F.p(x1, zz1, w - 0.02), F.p(x0, zz0, w - 0.02)], out=out)
-        m.poly("zinc", [F.p(x0, zz0, w - 0.02), F.p(x1, zz1, w - 0.02), F.p(x1, zz1, back), F.p(x0, zz0, back)], out=out)
+        m.poly("zincseam", [F.p(x0, zz0, w - 0.02), F.p(x1, zz1, w - 0.02), F.p(x1, zz1, back), F.p(x0, zz0, back)], out=out)
     # Cheeks from the face back to the slope.
     for uu, out in ((a, -F.t), (b, F.t)):
-        m.poly("zinc", [F.p(uu, zb, w), F.p(uu, zt + 0.1, w), F.p(uu, zt + 0.1, back), F.p(uu, zb, slope(zb - z0))], out=out)
+        m.poly("zincseam", [F.p(uu, zb, w), F.p(uu, zt + 0.1, w), F.p(uu, zt + 0.1, back), F.p(uu, zb, slope(zb - z0))], out=out)
