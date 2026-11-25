@@ -112,7 +112,9 @@ are blueprints and their prices.
 | A1 | Pre-war brick block | apartment classic | `a1_apartment.py` | in |
 | A2 | Brownstone row | apartment townhouse | `a2_brownstone.py` | in |
 | A3 | Balcony block | apartment classic | `a3_balcony.py` | in |
-| A4-A6 | Art deco, Parisian, modern apartments | apartment | | |
+| A4 | Art deco mansions | apartment classic | `a4_deco.py` | in |
+| A5 | Parisian apartments | apartment classic | `a5_paris.py` | in |
+| A6 | Modern apartments | apartment classic | `a6_modern.py` | in |
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
 | O2 | Round glass tower | office | `o2_round.py` | in |
 | O3 | Brutalist office | office | `o3_brutalist.py` | in |

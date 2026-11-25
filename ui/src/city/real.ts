@@ -116,6 +116,22 @@ const H2_PH = 4.8;
 const H2_FL = 3.5;
 const A3_G = 3.2;
 const A3_FL = 2.9;
+const A4_G = 3.6;
+const A4_FL = 3.0;
+/** A4's stair tower over the roof: the glass blocks to 3.3 m, the steps to 5.2, the flagpole to 10.3. */
+const A4_TOWER = 5.2;
+const A6_G = 3.8;
+const A6_FL = 3.1;
+/** A6's penthouse over the roof slab: its oversailing roof at 3.45 m, the solar panels to 4.2. */
+const A6_PENT = 3.45;
+const A5_G = 4.6;
+const A5_NOBLE = 3.5;
+const A5_FL = 3.2;
+const A5_LAST = 3.0;
+/** A5's walls: the ground storey, the étage noble, typical storeys, the fifth floor. */
+const a5Top = (floors: number) => A5_G + A5_NOBLE + Math.max(0, floors - 3) * A5_FL + A5_LAST;
+/** A5's mansard over the cornice: the brisis and terrasson to 4.5 m, the pots to 6.0 m. */
+const A5_MANSARD = 4.5;
 const O1_G = 5.4;
 const O1_FL = 3.6;
 /** Where O1 steps back: after about two thirds of its storeys, never at the top. */
@@ -217,6 +233,83 @@ export const DEFS: Record<string, RealDef> = {
     // The roof slab; the bulkhead and the aerials stand higher.
     height: (floors) => A3_G + (floors - 1) * A3_FL + 0.47,
     debris: 0xd8d4c8,
+  },
+  a4: {
+    id: "a4",
+    kind: "apartment",
+    // The classic apartment, the moderne way.
+    style: "classic",
+    // The corner balconies reach 1.2 m round the walls, the tower and its canopy 1.65 m out in front.
+    w: 15.6,
+    d: 14.3,
+    front: 0.4,
+    floors: (plan) => Math.min(7, Math.max(3, plan)),
+    stack(floors, roof, r) {
+      // The ground storey, typical storeys (two kinds, alternating from a random start), the roof.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      const flip = r() < 0.5 ? 1 : 0;
+      for (let f = 1; f < floors; f++) out.push({ piece: (f + flip) % 2 ? "floor_a" : "floor_b", y: A4_G + (f - 1) * A4_FL });
+      if (roof) out.push({ piece: "roof", y: A4_G + (floors - 1) * A4_FL });
+      return out;
+    },
+    top: (floors) => A4_G + (floors - 1) * A4_FL,
+    height: (floors) => A4_G + (floors - 1) * A4_FL + A4_TOWER,
+    debris: 0xeee0cc,
+    walls: [13.2, 11, 0, 0],
+  },
+  a6: {
+    id: "a6",
+    kind: "apartment",
+    // The classic apartment as it is built now.
+    style: "classic",
+    // The lobby canopy and the planter stand 1.4 m out in front.
+    w: 14.2,
+    d: 14.4,
+    front: 0.6,
+    floors: (plan) => Math.min(8, Math.max(3, plan)),
+    stack(floors, roof, r) {
+      // The ground storey, typical storeys (the loggias' checkerboard: two kinds, alternating from a random start), the roof.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      const flip = r() < 0.5 ? 1 : 0;
+      for (let f = 1; f < floors; f++) out.push({ piece: (f + flip) % 2 ? "floor_a" : "floor_b", y: A6_G + (f - 1) * A6_FL });
+      if (roof) out.push({ piece: "roof", y: A6_G + (floors - 1) * A6_FL });
+      return out;
+    },
+    top: (floors) => A6_G + (floors - 1) * A6_FL,
+    height: (floors) => A6_G + (floors - 1) * A6_FL + A6_PENT,
+    debris: 0x9a6a54,
+    walls: [14, 11.5, 0, 0],
+  },
+  a5: {
+    id: "a5",
+    kind: "apartment",
+    // The classic apartment, Paris's way.
+    style: "classic",
+    // The balconies stand 0.85 m out in front; the cornice and stacks within it behind.
+    w: 15.6,
+    d: 13.7,
+    // Right on the pavement, as on a boulevard.
+    front: 0.4,
+    floors: (plan) => Math.min(7, Math.max(4, plan)),
+    stack(floors, roof, r) {
+      // The ground storey, the étage noble, typical storeys (two kinds,
+      // alternating from a random start), the fifth floor under the roof.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      if (floors > 1) out.push({ piece: "noble", y: A5_G });
+      const flip = r() < 0.5 ? 1 : 0;
+      let y = A5_G + A5_NOBLE;
+      for (let f = 2; f < floors; f++) {
+        const last = f === floors - 1 && roof;
+        out.push({ piece: last ? "last" : (f + flip) % 2 ? "floor_a" : "floor_b", y });
+        y += last ? A5_LAST : A5_FL;
+      }
+      if (roof) out.push({ piece: "roof", y });
+      return out;
+    },
+    top: a5Top,
+    height: (floors) => a5Top(floors) + A5_MANSARD,
+    smoke: (floors) => new THREE.Vector3(6.95, a5Top(floors) + 6.3, 1.0),
+    debris: 0xd8ccb4,
   },
   c1: {
     id: "c1",
@@ -1458,6 +1551,15 @@ const OAKS = [0x2a2624, 0x5a4232, 0x8a7c6c, 0x3a2e26];
 /** Plain tiles: red, brindled brown, old orange. */
 const PLAINTILES = [0xffffff, 0xd8c4bc, 0xf4d8c0, 0xc8b8b0];
 const STONESLATES = [0xd8d0bc, 0xc8c4b8, 0xb8b0a0, 0xe0d4bc];
+/** A4's render: cream, mint, shell pink, powder blue, white, sand. */
+const PASTELS = [0xf4ead2, 0xd6ecdc, 0xf4d6cc, 0xd4e2ee, 0xf6f4ee, 0xefdcb8];
+/** A4's speed lines: teal, terracotta, navy, jade, flamingo, charcoal. */
+const DECO_BANDS = [0x2e7a78, 0xb45a3c, 0x2a3a5c, 0x3e8a64, 0xd8707a, 0x3a3a3c];
+/** A6's brick: buff, pale grey, charcoal, soft red, near-white, brown-grey. */
+const MODBRICKS = [0xffffff, 0xd4d0cc, 0x6e6660, 0xe8b49c, 0xf6f2ec, 0xb0a090];
+/** A6's anodised frames and rails: bronze, dark grey, champagne, black. */
+const ANODISED = [0x6a5440, 0x3a3836, 0x9a8466, 0x262626];
+const ZINCS = [0xd8dce0, 0xb4bcc4, 0xc4ccd0, 0x8a9098];
 const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
 /** Ridge rolls: red clay, blue-black, buff. */
 const RIDGES = [0x9a4a32, 0x2e3034, 0x9a4a32, 0xb08a60];
@@ -1836,7 +1938,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -1865,7 +1967,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
   switch (role) {
     case "gutted": m = plain(0x0b0a09, 0.95); break;
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
-    case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82 }), 1.6); break;
+    // A5's mouldings are cut from the same limestone as its walls.
+    case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82, color: id === "a5" ? new THREE.Color(pick(LIMESTONES, paint.wall)).multiply(new THREE.Color(0xfff6e6)).getHex() : 0xffffff }), 1.6); break;
     // The factory.
     case "bluebrick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: 0x50566e }), 1.2); break;
     case "rubbed": m = w(plain(new THREE.Color(0xa04a32).multiply(new THREE.Color(pick(BRICK_TINTS, paint.wall))).getHex(), 0.85), 1.6); break;
@@ -1899,11 +2002,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : id === "a2" ? pick(SASHES, paint.roof) : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" || id === "a5" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : id === "c7" ? pick(LIMEWASH, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : id === "c7" ? pick(LIMEWASH, paint.wall) : id === "a4" ? pick(PASTELS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
       // A3's walls sit deep between balconies: the bake over-darkens them against the bounce they would get.
       if (id === "a3") (m as THREE.MeshStandardMaterial).aoMapIntensity = 0.55;
       break;
@@ -1921,7 +2024,14 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     // S2's banded rustication: the stucco a shade deeper.
-    case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
+    case "rustic": m = w(pbr("rustic", [3, 1.2], { roughness: 0.88, normal: 0.9, color: new THREE.Color(pick(id === "a5" ? LIMESTONES : STUCCO, paint.wall)).multiplyScalar(0.92).getHex() }), 1.4); break;
+    // A6's machine-made brick: one even colour across the wall, as new brick is.
+    case "modbrick": m = w(pbr("modbrick", [2.4, 1.8], { rough: true, normal: 0.8, color: pick(MODBRICKS, paint.wall) }), 0.5); break;
+    // A4's speed lines and the canopy's edge, and the tower's fins.
+    case "band": m = w(plain(pick(DECO_BANDS, paint.accent), 0.5), 0.6); break;
+    case "fin": m = w(plain(new THREE.Color(pick(PASTELS, paint.wall + 2)).lerp(new THREE.Color(0xffffff), 0.4).getHex(), 0.6), 0.6); break;
+    // Standing-seam zinc on A5's mansard: new, weathered blue-grey, darker, anthracite.
+    case "zincseam": m = w(pbr("zincseam", [1, 1], { roughness: 0.55, metalness: 0.45, color: pick(ZINCS, paint.roof) }), 0.9); break;
     case "parasol": m = w(plain(pick(PARASOLS, paint.accent + paint.signs), 0.9)); break;
     case "cane": m = w(plain(0xc8a46a, 0.85)); break;
     case "cafename": {
@@ -1984,7 +2094,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     }
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
     case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
-    case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1 }); break;
+    // A6's are black monocrystalline panels: the cells' grid stays, the blue goes.
+    case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1, color: id === "a6" ? 0x2c2e32 : 0xffffff }); break;
     case "skyglass": m = sheen({ color: 0x141a20 }); break;
     case "brass": m = w(plain(0xc9a24e, 0.3, 1)); break;
     case "dark": m = w(plain(0x161616, 0.7)); break;
@@ -2121,7 +2232,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     case "deco": m = w(pbr("chevron", [1, 1], { roughness: 0.5, metalness: 0.35, normal: 1.2, color: pick(DECO_METALS, paint.accent) }), 1.2); break;
-    case "bronze": m = w(plain(pick(DECO_METALS, paint.accent), 0.4, 0.55), 0.8); break;
+    case "bronze": m = w(plain(pick(id === "a6" ? ANODISED : DECO_METALS, paint.accent), 0.4, 0.55), 0.8); break;
     case "jet": {
       // Polished black granite: it shows the sky.
       const jet = new THREE.MeshStandardMaterial({ map: tex("granite_col", [1, 1]), color: 0x3a3a3c, roughness: 0.14 });

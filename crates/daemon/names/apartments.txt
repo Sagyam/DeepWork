@@ -27,3 +27,24 @@ Gramercy Row
 Bedford Terrace
 Clifton Terrace
 Hamilton Row
+[a4]
+Ocean Court
+The Normandie
+Carlton Mansions
+Belvedere Court
+Embassy Court
+Marine Gate
+[a5]
+Résidence Monceau
+Maison Haussmann
+Le Malesherbes
+Résidence Lafayette
+Les Tuileries
+Résidence Saint-Honoré
+[a6]
+The Kiln
+Brickworks
+Larch House
+The Yard
+Fenwick Works
+Saltash House
