@@ -7,7 +7,7 @@
 # in front, a chair or a plant out in each. At the foot a glazed lobby under
 # a timber soffit and the bike store's door. On the roof a penthouse set back
 # behind a terrace, clad in timber, glass across its
-# front; solar panels and a sedum roof over it. The app tints the brick,
+# front; black solar panels on a gravelled roof over it. The app tints the brick,
 # the timber and the frames.
 #
 # Pieces (base at the origin, stacked by the app):
@@ -290,10 +290,14 @@ def roof(M, z):
     P["back"].wall("cladding", -hw, hw, 0.0, ph, [(-0.5, 0.5, 0.0, 2.2)], depth=0.15)
     P["back"].quad("door", -0.5, 0.5, 0.0, 2.2, -0.15)
     zt = zr + ph
-    # Its roof: a thin oversailing slab with a bronze fascia, sedum and solar panels on it.
+    # Its roof: a thin oversailing slab with a bronze fascia, gravel ballast and solar panels on it,
+    # a row of paving slabs between the panels to walk on.
     m.box("bronze", (px0 - 0.4, py0 - 0.8, zt), (px1 + 0.4, py1 + 0.3, zt + 0.3), skip=())
-    m.poly("sedum", [(px0 - 0.3, py0 - 0.7, zt + 0.301), (px1 + 0.3, py0 - 0.7, zt + 0.301), (px1 + 0.3, py1 + 0.2, zt + 0.301), (px0 - 0.3, py1 + 0.2, zt + 0.301)], out=Z)
+    m.poly("gravel", [(px0 - 0.3, py0 - 0.7, zt + 0.301), (px1 + 0.3, py0 - 0.7, zt + 0.301), (px1 + 0.3, py1 + 0.2, zt + 0.301), (px0 - 0.3, py1 + 0.2, zt + 0.301)], out=Z)
     zs = zt + 0.3
+    for k in range(int((px1 - px0 + 0.4) / 0.62)):
+        x = px0 - 0.1 + k * 0.62
+        m.box("precast", (x, py0 + 1.8, zs), (x + 0.58, py0 + 2.55, zs + 0.04), skip=("z0",))
     for row in range(2):
         y = py0 + 0.6 + row * 2.2
         for col in range(5):

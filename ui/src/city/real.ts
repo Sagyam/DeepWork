@@ -2096,7 +2096,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     }
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
     case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
-    case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1 }); break;
+    // A6's are black monocrystalline panels: the cells' grid stays, the blue goes.
+    case "solar": m = sheen({ map: tex("solar_col"), roughness: 0.15, metalness: 0.1, color: id === "a6" ? 0x2c2e32 : 0xffffff }); break;
     case "skyglass": m = sheen({ color: 0x141a20 }); break;
     case "brass": m = w(plain(0xc9a24e, 0.3, 1)); break;
     case "dark": m = w(plain(0x161616, 0.7)); break;
