@@ -98,6 +98,8 @@ const S2_F2 = 3.2;
 /** S2's frieze, cornice and roof above its top storey: the slates start 1.04 m up, the stacks top out 4.8 m up. */
 const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
+/** S8's wall head: the roof piece (parapet, fin tower) stands on it. */
+const S8_TOP = 3.8;
 const S4_TOP = 5.3;
 const P1_EAVES = 3.0;
 const F1_G = 5.0;
@@ -484,6 +486,21 @@ export const DEFS: Record<string, RealDef> = {
     // The kitchen's exhaust fan.
     smoke: () => new THREE.Vector3(-1.2, 4.05, -3.4),
     debris: 0xb4b8bc,
+  },
+  s8: {
+    id: "s8",
+    kind: "shop",
+    style: "diner",
+    // The canopy's fascia to the back wall, the air post to the pylon sign.
+    w: 14.2,
+    d: 12.8,
+    front: 1.2,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: S8_TOP }] : [])],
+    top: () => S8_TOP,
+    // The fin tower's cap.
+    height: () => S8_TOP + 5.5,
+    debris: 0xe8e2d4,
   },
   s4: {
     id: "s4",
@@ -1445,6 +1462,19 @@ const dinerNames = new NameSheet(1, 8, 2048, 128, ["STARLITE DINER", "MOONBEAM D
   g.fillText(text, 1024, y, 1900);
 });
 
+/** Filling stations' names for the canopy's fascia, 2048 x 128 a row: white sans capitals with a dark edge, on clear. */
+const stationNames = new NameSheet(1, 8, 2048, 128, ["CROSSROADS SERVICE", "BLUE STAR GASOLINE", "HIGHWAY GARAGE", "PIONEER GAS & OIL", "SUMMIT SERVICE", "MILESTONE GARAGE", "OAK LANE SERVICE", "GOLDEN MILE MOTORS"], (g, _x, y0, name) => {
+  const y = y0 + 66;
+  const text = spaced(name.toUpperCase(), 2);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "800 88px 'Helvetica Neue', Helvetica, Arial, sans-serif";
+  g.fillStyle = "rgba(10,10,12,0.55)";
+  g.fillText(text, 1028, y + 4, 1880);
+  g.fillStyle = "#fbf8f0";
+  g.fillText(text, 1024, y, 1880);
+});
+
 /** Firms' names painted on a factory's frieze, 2048 x 128 a row: cream letters, weathered, on clear. */
 const worksNames = new NameSheet(1, 8, 2048, 128, ["HOLLIS & WARD · ENGINEERS", "BRANDT MACHINE WORKS", "NORTHGATE FOUNDRY CO.", "EAGLE SPRING & AXLE CO.", "MERCER BROS. · BOILERMAKERS", "UNION BOX & PAPER CO.", "CALDER WORSTED MILLS", "PARAGON CASTINGS LTD."], (g, _x, y0, name) => {
   g.textAlign = "center";
@@ -1516,6 +1546,7 @@ function namesFor(id: string, role: string): NameSheet | null {
     case "works": return worksNames;
     case "cafename": return cafeNames;
     case "deconame": return decoNames;
+    case "stationname": return stationNames;
     default: return null;
   }
 }
@@ -1938,7 +1969,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2090,6 +2121,12 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       const t = dinerNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.25, metalness: 0.6, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.45;
+      break;
+    }
+    case "stationname": {
+      const t = stationNames.texture(cell);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.6;
       break;
     }
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;

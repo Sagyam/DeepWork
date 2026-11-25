@@ -108,7 +108,8 @@ are blueprints and their prices.
 | S4 | Brick factory | workshop | `s4_factory.py` | in |
 | S5 | Department store | shop classic | `s5_store.py` | in |
 | S6 | Tower brewery | workshop | `s6_brewery.py` | in |
-| S7-S9 | Corner store, filling station, market hall | shop | | |
+| S8 | Filling station | shop diner | `s8_station.py` | in |
+| S7, S9 | Corner store, market hall | shop | | |
 | A1 | Pre-war brick block | apartment classic | `a1_apartment.py` | in |
 | A2 | Brownstone row | apartment townhouse | `a2_brownstone.py` | in |
 | A3 | Balcony block | apartment classic | `a3_balcony.py` | in |
@@ -147,7 +148,7 @@ carry a FOR SALE board. Park spots draw the
 decorations bought for them (`SPOTS` in `models.ts`).
 
 Signs that carry a name (S1's fascia; the café, diner and works friezes,
-S6's painted wall; the office, L2 and S5 name panels and canopies; L1 and
+S6's painted wall, S8's canopy fascia; the office, L2 and S5 name panels and canopies; L1 and
 L3's gilt names) show the building's own name: `NameSheet` in
 `real.ts` paints each name into a shared sheet the first time a building
 asks for it. A1's two shop signs are stock, by seed.
