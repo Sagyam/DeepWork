@@ -146,6 +146,10 @@ const O3_G = 5.0;
 const O3_FL = 3.7;
 /** O3's service towers above its roof slab: the lids, then the warning light to 6.0 m. */
 const O3_TOWERS = 4.4;
+const O4_G = 6.0;
+const O4_FL = 3.7;
+/** O4's attic, entablature and parapet above its last storey; the water tank reaches 12 m. */
+const O4_TOP = 5.25;
 const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
@@ -816,6 +820,27 @@ export const DEFS: Record<string, RealDef> = {
     debris: 0x9a968e,
     walls: [11.4, 11.4, 0, 0],
   },
+  o4: {
+    id: "o4",
+    kind: "office",
+    style: "classic",
+    // The corner piers and the plinth; the steps and cornice are inside it.
+    w: 15.2,
+    d: 12.8,
+    front: 1.4,
+    floors: (plan) => Math.max(5, plan),
+    stack(floors, roof) {
+      // The base, a first storey with pedimented windows, the typical storeys, the attic and cornice.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: f === 1 ? "first" : "floor", y: O4_G + (f - 1) * O4_FL });
+      if (roof) out.push({ piece: "roof", y: O4_G + (floors - 1) * O4_FL });
+      return out;
+    },
+    top: (floors) => O4_G + (floors - 1) * O4_FL,
+    height: (floors) => O4_G + (floors - 1) * O4_FL + O4_TOP,
+    debris: 0xd8ccb4,
+    walls: [14.4, 12.0, 0, 0],
+  },
   l1: {
     id: "l1",
     kind: "landmark",
@@ -1462,6 +1487,20 @@ const dinerNames = new NameSheet(1, 8, 2048, 128, ["STARLITE DINER", "MOONBEAM D
   g.fillText(text, 1024, y, 1900);
 });
 
+/** Stone offices' names cut in the frieze, 2048 x 128 a row: incised Roman capitals, shadowed inside, on clear. */
+const stoneNames = new NameSheet(1, 16, 2048, 128, ["THE FIDELITY BUILDING", "COMMERCIAL TRUST", "THE GUARANTY BUILDING", "MERCHANTS NATIONAL BANK", "PROVIDENT LIFE", "THE EXCHANGE BUILDING", "MUTUAL ASSURANCE", "CENTRAL TRUST COMPANY"], (g, _x, y0, name) => {
+  const y = y0 + 68;
+  const text = spaced(name.toUpperCase(), 2);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "600 108px 'Trajan Pro', 'Cinzel', 'Times New Roman', Georgia, serif";
+  // A V-cut letter: the lit lower edge, then the shadowed upper face over it.
+  g.fillStyle = "rgba(255,250,236,0.55)";
+  g.fillText(text, 1024, y + 3, 1900);
+  g.fillStyle = "rgba(38,32,24,0.82)";
+  g.fillText(text, 1024, y, 1900);
+});
+
 /** Filling stations' names for the canopy's fascia, 2048 x 128 a row: white sans capitals with a dark edge, on clear. */
 const stationNames = new NameSheet(1, 8, 2048, 128, ["CROSSROADS SERVICE", "BLUE STAR GASOLINE", "HIGHWAY GARAGE", "PIONEER GAS & OIL", "SUMMIT SERVICE", "MILESTONE GARAGE", "OAK LANE SERVICE", "GOLDEN MILE MOTORS"], (g, _x, y0, name) => {
   const y = y0 + 66;
@@ -1547,6 +1586,7 @@ function namesFor(id: string, role: string): NameSheet | null {
     case "cafename": return cafeNames;
     case "deconame": return decoNames;
     case "stationname": return stationNames;
+    case "stonename": return stoneNames;
     default: return null;
   }
 }
@@ -1969,7 +2009,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2121,6 +2161,11 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       const t = dinerNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.25, metalness: 0.6, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.45;
+      break;
+    }
+    case "stonename": {
+      const t = stoneNames.texture(cell);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.3, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       break;
     }
     case "stationname": {
@@ -2298,9 +2343,9 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
+    case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" || id === "o4" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" || id === "l2" ? "atrium" : "lobby"); break;
+    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" || id === "o4" || id === "l2" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;

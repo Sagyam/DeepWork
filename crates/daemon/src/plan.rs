@@ -550,6 +550,7 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     ),
     bp("o2", "Round glass tower", Office, &[Downtown], 2, 1800),
     bp("o3", "Brutalist office", Office, &[Downtown], 2, 1600),
+    bp("o4", "Stone office", Office, &[Downtown], 2, 1400),
     bp("l1", "Art deco skyscraper", Tower, &[Downtown], 2, 3000),
     bp("l3", "Gothic skyscraper", Tower, &[Downtown], 2, 2800),
     bp("l2", "Glass supertall", Tower, &[Downtown], 3, 4000),

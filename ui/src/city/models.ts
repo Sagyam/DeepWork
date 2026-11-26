@@ -609,9 +609,10 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       break;
     }
     case "l1":
-    case "l3": {
+    case "l3":
+    case "o4": {
       // Granite paving to the pavement, heritage lamps either side of the
-      // portal; behind, the bins by the service door.
+      // portal or the steps; behind, the bins by the service door.
       p.box(mat(0x9c9890, { roughness: 0.6 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 4.5, KERB, front - 0.4, 0);
       const bin = mat(0x2a3a4a, { roughness: 0.6 });

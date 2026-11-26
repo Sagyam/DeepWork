@@ -29,6 +29,20 @@ The Lantern
 Circle Point
 Halo House
 
+[o4]
+The Fidelity Building
+Commercial Trust
+The Guaranty Building
+Merchants National Bank
+Provident Life
+The Exchange Building
+Mutual Assurance
+Farmers & Mechanics Bank
+The Ledger Building
+Citizens Savings
+Central Trust Company
+The Equitable Building
+
 [o3]
 Federation House
 Concord House

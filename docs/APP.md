@@ -119,7 +119,8 @@ are blueprints and their prices.
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
 | O2 | Round glass tower | office | `o2_round.py` | in |
 | O3 | Brutalist office | office | `o3_brutalist.py` | in |
-| O4, O5 | Stone office, modernist slab | office | | |
+| O4 | Stone office | office | `o4_stone.py` | in |
+| O5 | Modernist slab | office | | |
 | L1 | Art deco skyscraper | tower deco | `l1_deco.py` | in |
 | L3 | Gothic skyscraper | tower deco | `l3_gothic.py` | in |
 | L2 | Glass supertall | tower supertall | `l2_supertall.py` | in |
@@ -148,7 +149,7 @@ carry a FOR SALE board. Park spots draw the
 decorations bought for them (`SPOTS` in `models.ts`).
 
 Signs that carry a name (S1's fascia; the café, diner and works friezes,
-S6's painted wall, S8's canopy fascia; the office, L2 and S5 name panels and canopies; L1 and
+S6's painted wall, S8's canopy fascia, O4's carved frieze; the office, L2 and S5 name panels and canopies; L1 and
 L3's gilt names) show the building's own name: `NameSheet` in
 `real.ts` paints each name into a shared sheet the first time a building
 asks for it. A1's two shop signs are stock, by seed.
