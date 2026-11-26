@@ -43,6 +43,7 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
   c1: { kind: "cottage", style: "classic" },
   c2: { kind: "cottage", style: "classic" },
   c3: { kind: "cottage", style: "modern" },
+  c8: { kind: "cottage", style: "modern" },
   c4: { kind: "cottage", style: "aframe" },
   c5: { kind: "cottage", style: "classic" },
   c6: { kind: "cottage", style: "classic" },

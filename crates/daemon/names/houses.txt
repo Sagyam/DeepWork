@@ -52,6 +52,13 @@ Whitbourne House
 The Wool House
 Hollins Hall
 The Gatehouse
+[c8]
+The Long Barn
+Hay Barn
+The Granary
+Threshing Barn
+Old Dairy
+The Cart Shed
 [c4]
 Pine Hollow
 Larch Cabin

@@ -89,6 +89,8 @@ const C4_RIDGE = 7.8;
 const C5_PLATE = 3.6;
 const C6_PLATE = 3.45;
 const C6_RIDGE = 5.55;
+const C8_E = 3.0;
+const C8_RIDGE = 6.78;
 const C7_G = 3.0;
 const C7_TOP = 5.6;
 const C7_RIDGE = 9.34;
@@ -401,6 +403,22 @@ export const DEFS: Record<string, RealDef> = {
     height: () => C3_TOP + 0.45,
     smoke: () => new THREE.Vector3(-4.6, C3_TOP + 1.6, -2.2),
     debris: 0xe4e0d6,
+  },
+  c8: {
+    id: "c8",
+    kind: "cottage",
+    style: "modern",
+    // The barn, gable to the street, and the carport on its right; the step in front, the deck behind.
+    w: 10.7,
+    d: 12.0,
+    front: 2.4,
+    floors: () => 2,
+    // The walls to the eaves; the roof carries the gables and the loft.
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: C8_E }] : [])],
+    top: () => C8_E,
+    height: () => C8_RIDGE + 0.05,
+    smoke: () => new THREE.Vector3(-0.2, C8_RIDGE + 1.1, -3.1),
+    debris: 0x3a3a3a,
   },
   c4: {
     id: "c4",
@@ -1791,6 +1809,10 @@ const MID_RENDERS = [0xf4f2ec, 0xeee4cc, 0xf0e6b4, 0xd8dcc8, 0xe4cc9e, 0xeed6c8]
 const INFILLS = [0xb4402e, 0xd2a03a, 0x2e7a78, 0x6a9cc4, 0x7a8a46, 0x3a3e42];
 /** Timber cladding: larch, silver-weathered, charred, cedar, honey. */
 const TIMBER = [0xe6b488, 0xc4c2bc, 0x4a4644, 0xd2905e, 0xf0cc96];
+/** C8's battens: black, charcoal, falu red, tarred brown, silvered larch. */
+const BARNS = [0x2a2a2c, 0x46484a, 0x8a3428, 0x4a3a30, 0xb4aea4];
+/** C8's roof: anthracite, black, graphite, pale zinc. */
+const DARK_ZINCS = [0x5a5e64, 0x404448, 0x6e747a, 0xb4bcc4];
 /** Window frames, copings and doors: anthracite (most), black, bronze. */
 const FRAMES = [0x33373b, 0x1e1f21, 0x33373b, 0x6e5e4a, 0x40454a];
 /** C4's boards: natural cedar, honey pine, walnut, barn red, weathered grey, forest green, whitewash. */
@@ -2214,7 +2236,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : id === "a2" ? pick(SASHES, paint.roof) : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" || id === "a5" || id === "a7" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" || id === "c8" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" || id === "a5" || id === "a7" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
@@ -2243,7 +2265,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "band": m = w(plain(pick(DECO_BANDS, paint.accent), 0.5), 0.6); break;
     case "fin": m = w(plain(new THREE.Color(pick(PASTELS, paint.wall + 2)).lerp(new THREE.Color(0xffffff), 0.4).getHex(), 0.6), 0.6); break;
     // Standing-seam zinc on A5's mansard: new, weathered blue-grey, darker, anthracite.
-    case "zincseam": m = w(pbr("zincseam", [1, 1], { roughness: 0.55, metalness: 0.45, color: pick(ZINCS, paint.roof) }), 0.9); break;
+    case "zincseam": m = w(pbr("zincseam", [1, 1], { roughness: 0.55, metalness: 0.45, color: id === "c8" ? pick(DARK_ZINCS, paint.roof) : pick(ZINCS, paint.roof) }), 0.9); break;
     case "parasol": m = w(plain(pick(PARASOLS, paint.accent + paint.signs), 0.9)); break;
     case "cane": m = w(plain(0xc8a46a, 0.85)); break;
     case "cafename": {
@@ -2252,7 +2274,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 0.3;
       break;
     }
-    case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
+    case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: id === "c8" ? pick(BARNS, paint.wall) : pick(TIMBER, paint.accent) }), 0.4); break;
     case "alu": m = w(plain(id === "a3" ? pick(MULLIONS, paint.roof) : id === "o5" ? 0xc2c6c8 : frame, 0.4, 0.5)); break;
     case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
     case "boards": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.82, color: pick(STAINS, paint.wall) }), 0.6); break;
@@ -2335,6 +2357,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "iron": m = w(plain(0x1b1c1e, 0.5, 0.35)); break;
     case "ac": m = w(plain(0xc4c4be, 0.45, 0.4)); break;
     case "steel": m = w(plain(0x4b423b, 0.75, 0.5)); break;
+    // C8's window boxes: weathering steel, rusted to a dull orange-brown.
+    case "corten": m = w(plain(0x8a4428, 0.85, 0.2)); break;
     case "terracotta": m = w(plain(0x9a5436, 0.8)); break;
     case "canopy": m = plain(0xa8bcc4, 0.08, 0, { transparent: true, opacity: 0.35 }); break;
     case "lamp":

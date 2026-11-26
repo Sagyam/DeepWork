@@ -355,6 +355,22 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       if (r() < 0.7) tree(p, 3.5 + r() * 3, back + 1.2, 0.8, s.seed + 2, KERB);
       break;
     }
+    case "c8": {
+      // Lawn to the pavement; a gravel drive into the carport with the car
+      // under it, a timber walk to the deck, grasses along the glass, a
+      // birch in front, and a hedge across the back.
+      p.box(lawn(), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const fz = front - 0.4;
+      p.box(mat(0x9e978c, { roughness: 1 }), 3.2, KERB + 0.03, fz - 2.8, 3.4, 0, (fz + 2.8) / 2);
+      parked(p, 3.4, 0.8, 0, s.seed + 3);
+      const gx = -1.9; // the step, under the apex (c8_barn.py)
+      for (let z = s.d / 2 + 0.25; z < fz - 0.3; z += 0.85) p.box(paving, 1.4, KERB + 0.04, 0.55, gx, 0, z);
+      for (const x of [-5.0, -4.3, 0.5, 1.2]) if (r() < 0.85) shrub(p, x, 5.75, s.seed * 7 + x * 3, KERB, 0.45);
+      tree(p, -half + 1.6, fz - 1.4, 0.6, s.seed + 1, KERB, ["birch", "birch", "young"]);
+      if (r() < 0.7) tree(p, -half + 1.8, back + 1.6, 0.75, s.seed + 2, KERB, ["birch", "pine", "linden"]);
+      hedge(p, LOT - 0.4, KERB + 1.4, 0.7, 0, 0, back + 0.55, s.seed);
+      break;
+    }
     case "c4": {
       // A cabin in the pines: a lawn, stepping stones to the deck steps, a
       // gravel drive down the side with the car, a post-and-rail fence along

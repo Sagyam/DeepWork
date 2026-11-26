@@ -487,6 +487,7 @@ pub const BLUEPRINTS: &[Blueprint] = &[
     bp("s4", "Brick factory", Workshop, &[Works], 0, 400),
     bp("c3", "Modern house", Cottage, &[Village], 1, 400),
     bp("c6", "Craftsman bungalow", Cottage, &[Village], 1, 450),
+    bp("c8", "Barn house", Cottage, &[Village], 1, 450),
     bp("c7", "Half-timbered house", Cottage, &[Village], 1, 550),
     bp("s2", "Corner café", Shop, &[MainStreet, Downtown], 1, 500),
     bp("s8", "Filling station", Shop, &[MainStreet], 1, 500),
