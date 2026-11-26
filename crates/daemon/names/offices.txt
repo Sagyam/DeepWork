@@ -29,6 +29,34 @@ The Lantern
 Circle Point
 Halo House
 
+[o5]
+Pan Atlantic House
+Meridian Life
+The Skyline Building
+Union Carbide House
+Astra House
+Commonwealth Insurance
+The Jet Age Building
+Capitol Airways House
+Atomic Mutual
+Orbital House
+Horizon Assurance
+The Telstar Building
+
+[o4]
+The Fidelity Building
+Commercial Trust
+The Guaranty Building
+Merchants National Bank
+Provident Life
+The Exchange Building
+Mutual Assurance
+Farmers & Mechanics Bank
+The Ledger Building
+Citizens Savings
+Central Trust Company
+The Equitable Building
+
 [o3]
 Federation House
 Concord House

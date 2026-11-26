@@ -73,3 +73,22 @@ Milestone Garage
 Oak Lane Service
 Golden Mile Motors
 Cornerstone Fuel
+[s9]
+Corn Exchange
+Butter Market
+Victoria Market
+Covered Market
+High Street Market
+Cheese Hall
+Market House
+Wool Exchange
+Piece Hall
+Fish Market
+King Street Market
+The Shambles
+Guildhall Market
+Riverside Market
+North Market Hall
+Town Market
+Market Cross Hall
+Produce Exchange

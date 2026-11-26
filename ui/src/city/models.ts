@@ -453,6 +453,16 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
+    case "s9": {
+      // Setts to the pavement, traders' stalls out on them either side of
+      // the arch; the bins by the cart arch at the back.
+      p.box(mat(0x8e8a84, { roughness: 0.85 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
+      const sz = s.d / 2 + 1.0;
+      for (const x of [-4.6, 4.6]) putReal(rp, def, "stall", paintOf(s), 0, null, x, KERB, sz, (r() - 0.5) * 0.1);
+      const bin = mat(0x2a4a34, { roughness: 0.6 });
+      for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, 2.4 + i * 0.85, KERB, back + 0.5);
+      break;
+    }
     case "s8": {
       // Concrete to the pavement and under the canopy, a car drawn up at the
       // pumps (between the islands or outside one); the bins out back.
@@ -594,7 +604,8 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 3; i++) p.box(bin, 1.2, 1.3, 1.0, half - 0.8 - i * 1.3, KERB, back + 0.7);
       break;
     }
-    case "o3": {
+    case "o3":
+    case "o5": {
       // Concrete paving to the pavement, a tree in a concrete planter and a
       // bench at each front corner, bollards before the entrance; the bins
       // by the loading bay at the back.
@@ -609,9 +620,10 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       break;
     }
     case "l1":
-    case "l3": {
+    case "l3":
+    case "o4": {
       // Granite paving to the pavement, heritage lamps either side of the
-      // portal; behind, the bins by the service door.
+      // portal or the steps; behind, the bins by the service door.
       p.box(mat(0x9c9890, { roughness: 0.6 }), LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
       for (const sx of [-1, 1]) furniture(p, "lamp_heritage", sx * 4.5, KERB, front - 0.4, 0);
       const bin = mat(0x2a3a4a, { roughness: 0.6 });
@@ -922,7 +934,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

@@ -98,6 +98,8 @@ const S2_F2 = 3.2;
 /** S2's frieze, cornice and roof above its top storey: the slates start 1.04 m up, the stacks top out 4.8 m up. */
 const S2_EAVES = 1.04;
 const S3_TOP = 3.36;
+/** S9's eaves line: the roof piece (gables, slates, lantern) stands on it. */
+const S9_E = 7.0;
 /** S8's wall head: the roof piece (parapet, fin tower) stands on it. */
 const S8_TOP = 3.8;
 const S4_TOP = 5.3;
@@ -146,6 +148,14 @@ const O3_G = 5.0;
 const O3_FL = 3.7;
 /** O3's service towers above its roof slab: the lids, then the warning light to 6.0 m. */
 const O3_TOWERS = 4.4;
+const O4_G = 6.0;
+const O4_FL = 3.7;
+/** O4's attic, entablature and parapet above its last storey; the water tank reaches 12 m. */
+const O4_TOP = 5.25;
+const O5_G = 4.6;
+const O5_FL = 3.5;
+/** O5's roof edge and the end walls' caps above its last storey; the butterfly roof reaches 4.6 m, the flagpole 10. */
+const O5_TOP = 0.85;
 const L1_G = 6.0;
 const L1_FL = 3.5;
 /** L1's crown above its top storey: the lit stages to 12.8 m, the spire to 29.6 m. */
@@ -502,6 +512,22 @@ export const DEFS: Record<string, RealDef> = {
     height: () => S8_TOP + 5.5,
     debris: 0xe8e2d4,
   },
+  s9: {
+    id: "s9",
+    kind: "shop",
+    style: "classic",
+    // The eaves and gutters, the quoins and copings; the steps are inside it.
+    w: 14.8,
+    d: 13.4,
+    front: 2.2,
+    floors: () => 1,
+    stack: (floors, roof) => [...(floors > 0 ? [{ piece: "body", y: 0 }] : []), ...(roof ? [{ piece: "roof", y: S9_E }] : [])],
+    top: () => S9_E,
+    // The ridge; the lantern's finials reach 13.6 m.
+    height: () => S9_E + 4.2,
+    debris: 0x8a4e3c,
+    walls: [13.6, 13.0, 0, 0],
+  },
   s4: {
     id: "s4",
     kind: "shop",
@@ -815,6 +841,48 @@ export const DEFS: Record<string, RealDef> = {
     height: (floors) => O3_G + (floors - 1) * O3_FL + O3_TOWERS,
     debris: 0x9a968e,
     walls: [11.4, 11.4, 0, 0],
+  },
+  o4: {
+    id: "o4",
+    kind: "office",
+    style: "classic",
+    // The corner piers and the plinth; the steps and cornice are inside it.
+    w: 15.2,
+    d: 12.8,
+    front: 1.4,
+    floors: (plan) => Math.max(5, plan),
+    stack(floors, roof) {
+      // The base, a first storey with pedimented windows, the typical storeys, the attic and cornice.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: f === 1 ? "first" : "floor", y: O4_G + (f - 1) * O4_FL });
+      if (roof) out.push({ piece: "roof", y: O4_G + (floors - 1) * O4_FL });
+      return out;
+    },
+    top: (floors) => O4_G + (floors - 1) * O4_FL,
+    height: (floors) => O4_G + (floors - 1) * O4_FL + O4_TOP,
+    debris: 0xd8ccb4,
+    walls: [14.4, 12.0, 0, 0],
+  },
+  o5: {
+    id: "o5",
+    kind: "office",
+    style: "classic",
+    // The end walls and the roof edge; the canopy reaches into the forecourt.
+    w: 15.0,
+    d: 11.2,
+    front: 2.4,
+    floors: (plan) => Math.max(6, plan),
+    stack(floors, roof) {
+      // The pilotis and lobby, the storeys (their blinds alternating), the roof.
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: f % 2 ? "floor_a" : "floor_b", y: O5_G + (f - 1) * O5_FL });
+      if (roof) out.push({ piece: "roof", y: O5_G + (floors - 1) * O5_FL });
+      return out;
+    },
+    top: (floors) => O5_G + (floors - 1) * O5_FL,
+    height: (floors) => O5_G + (floors - 1) * O5_FL + O5_TOP,
+    debris: 0xc8ccc8,
+    walls: [15.0, 10.4, 0, 0],
   },
   l1: {
     id: "l1",
@@ -1462,6 +1530,23 @@ const dinerNames = new NameSheet(1, 8, 2048, 128, ["STARLITE DINER", "MOONBEAM D
   g.fillText(text, 1024, y, 1900);
 });
 
+/** Stone offices' names cut in the frieze, 2048 x 128 a row: incised Roman capitals, shadowed inside, on clear. */
+function stoneDraw(g: CanvasRenderingContext2D, _x: number, y0: number, name: string) {
+  const y = y0 + 68;
+  const text = spaced(name.toUpperCase(), 2);
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "600 108px 'Trajan Pro', 'Cinzel', 'Times New Roman', Georgia, serif";
+  // A V-cut letter: the lit lower edge, then the shadowed upper face over it.
+  g.fillStyle = "rgba(255,250,236,0.55)";
+  g.fillText(text, 1024, y + 3, 1900);
+  g.fillStyle = "rgba(38,32,24,0.82)";
+  g.fillText(text, 1024, y, 1900);
+}
+const stoneNames = new NameSheet(1, 16, 2048, 128, ["THE FIDELITY BUILDING", "COMMERCIAL TRUST", "THE GUARANTY BUILDING", "MERCHANTS NATIONAL BANK", "PROVIDENT LIFE", "THE EXCHANGE BUILDING", "MUTUAL ASSURANCE", "CENTRAL TRUST COMPANY"], stoneDraw);
+/** Market halls' names, cut the same way in the stone panel over the arch. */
+const marketNames = new NameSheet(1, 16, 2048, 128, ["CORN EXCHANGE", "BUTTER MARKET", "VICTORIA MARKET", "COVERED MARKET", "HIGH STREET MARKET", "MARKET HOUSE", "WOOL EXCHANGE", "THE SHAMBLES"], stoneDraw);
+
 /** Filling stations' names for the canopy's fascia, 2048 x 128 a row: white sans capitals with a dark edge, on clear. */
 const stationNames = new NameSheet(1, 8, 2048, 128, ["CROSSROADS SERVICE", "BLUE STAR GASOLINE", "HIGHWAY GARAGE", "PIONEER GAS & OIL", "SUMMIT SERVICE", "MILESTONE GARAGE", "OAK LANE SERVICE", "GOLDEN MILE MOTORS"], (g, _x, y0, name) => {
   const y = y0 + 66;
@@ -1547,6 +1632,7 @@ function namesFor(id: string, role: string): NameSheet | null {
     case "cafename": return cafeNames;
     case "deconame": return decoNames;
     case "stationname": return stationNames;
+    case "stonename": return id === "s9" ? marketNames : stoneNames;
     default: return null;
   }
 }
@@ -1650,6 +1736,10 @@ const O3_METALS = [0x4a3e34, 0x1e2022, 0x33373b, 0x8a6a48, 0x7a8086];
 const LIMESTONES = [0xf4ead8, 0xdcdcd8, 0xfff4dc, 0xf0d4c4, 0xc8ccd0, 0xfffaf0];
 /** L1's metalwork, frames to spandrels: statuary bronze, aluminium, verdigris, nickel, black, light bronze. */
 const DECO_METALS = [0x8a6440, 0xc4c8cc, 0x6a8a76, 0xdcd8cc, 0x2e2e30, 0xb08a5a];
+/** O5's mosaic: turquoise, sky blue, pale grey, sea green, sand. */
+const MOSAICS = [0x5ab4b4, 0x8cb4dc, 0xd4d8d8, 0x7cbca0, 0xe4d4b0];
+/** O5's enamel spandrels: teal, cobalt, mustard, coral, slate, mint. */
+const PANELS50 = [0x1f6f78, 0x2a4a8a, 0xd8a838, 0xd8604a, 0x46525e, 0x8ccab0];
 /** Foliage tints over the leaf textures: mid greens, a dark one, a yellow-green, a blue-green. */
 const FOLIAGE = [0xd6e2c4, 0xbcd0a8, 0xe8ecc0, 0xa8bc98, 0xc8dcc8, 0xdce8b0];
 /** Car paint, as on real roads: white, black, silvers and greys most; then blue, red, green, beige, burgundy. */
@@ -1969,7 +2059,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", "mosaic", "o5panel", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2037,7 +2127,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;
-    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" ? 0xece8de : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : id === "c7" ? pick(LIMEWASH, paint.wall) : id === "a4" ? pick(PASTELS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
+    case "render": m = w(pbr("render", [3, 3], { roughness: 0.9, normal: 0.6, color: id === "h1" || id === "o5" ? 0xf0eee8 : id === "s2" ? pick(STUCCO, paint.wall) : id === "a3" ? pick(MID_RENDERS, paint.wall) : id === "c7" ? pick(LIMEWASH, paint.wall) : id === "a4" ? pick(PASTELS, paint.wall) : pick(RENDERS, paint.wall) }), id === "s2" ? 1.2 : id === "a3" ? 0.45 : 0.4);
       // A3's walls sit deep between balconies: the bake over-darkens them against the bounce they would get.
       if (id === "a3") (m as THREE.MeshStandardMaterial).aoMapIntensity = 0.55;
       break;
@@ -2072,7 +2162,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: pick(TIMBER, paint.accent) }), 0.4); break;
-    case "alu": m = w(plain(id === "a3" ? pick(MULLIONS, paint.roof) : frame, 0.4, 0.5)); break;
+    case "alu": m = w(plain(id === "a3" ? pick(MULLIONS, paint.roof) : id === "o5" ? 0xc2c6c8 : frame, 0.4, 0.5)); break;
     case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
     case "boards": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.82, color: pick(STAINS, paint.wall) }), 0.6); break;
     case "timber": m = w(plain(pick(TRIMS, paint.accent), 0.6)); break;
@@ -2123,12 +2213,27 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 0.45;
       break;
     }
+    case "stonename": {
+      const t = (id === "s9" ? marketNames : stoneNames).texture(cell);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.3, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      break;
+    }
     case "stationname": {
       const t = stationNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.3, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
       if (damage < 2) m.userData.night = 0.6;
       break;
     }
+    // O5's skin: glass mosaic on the end walls, porcelain-enamel spandrels, the lobby's mural and floor.
+    case "mosaic": m = w(pbr("mosaic", [1, 1], { roughness: 0.3, normal: 0.7, color: pick(MOSAICS, paint.wall) }), 1.2); break;
+    case "o5panel": m = w(plain(pick(PANELS50, paint.accent), 0.3, 0.1), 0.8); break;
+    case "mural": m = w(new THREE.MeshStandardMaterial({ map: tex("mural_col"), roughness: 0.4 }), 0.6); break;
+    case "terrazzo": m = w(pbr("terrazzo", [1.5, 1.5], { roughness: 0.3 }), 0.8); break;
+    case "blind": m = w(new THREE.MeshStandardMaterial({ map: tex("blind_col"), roughness: 0.7 }), 0.4); break;
+    // S9's stalls: apples, oranges, greens heaped in their crates.
+    case "produce0": m = w(pbr("hedge", [0.6, 0.6], { roughness: 0.6, color: 0xc8382a })); break;
+    case "produce1": m = w(pbr("hedge", [0.6, 0.6], { roughness: 0.6, color: 0xf09028 })); break;
+    case "produce2": m = w(pbr("hedge", [0.6, 0.6], { roughness: 0.8, color: 0x6aa040 })); break;
     case "gravel": m = w(pbr("gravel", [1.5, 1.5], { roughness: 0.95 }), 0.6); break;
     case "sedum": m = w(pbr("sedum", [1.2, 1.2], { roughness: 0.9 })); break;
     // A6's are black monocrystalline panels: the cells' grid stays, the blue goes.
@@ -2298,9 +2403,9 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       m = plain(0x8a1010, 0.3, 0, { emissive: 0xff1a10, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 4;
       break;
-    case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" ? "office" : "home"); break;
+    case "glass": m = room(id === "e1" || id === "h1" || id === "h2" || id === "e2" || id === "o4" ? "office" : "home"); break;
     case "shopglass": m = room("shop"); break;
-    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" || id === "l2" ? "atrium" : "lobby"); break;
+    case "doorglass": m = room(id === "o1" || id === "o2" || id === "o3" || id === "o4" || id === "o5" || id === "l2" ? "atrium" : "lobby"); break;
     case "decoglass": m = room("office"); break;
     case "dinerglass": m = room("diner"); break;
     case "worksglass": m = room("works"); break;

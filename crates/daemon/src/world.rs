@@ -2196,7 +2196,7 @@ mod tests {
         let w = c.world(None, Timestamp::UNIX_EPOCH, &TimeZone::UTC);
         let shops = w.needs.iter().find(|n| n.id == "hamlet-shops").unwrap();
         assert!(shops.fits.is_empty());
-        assert_eq!(shops.fits_locked, ["s1", "s3", "s2", "s8"]);
+        assert_eq!(shops.fits_locked, ["s1", "s3", "s2", "s8", "s9"]);
     }
 
     #[test]
