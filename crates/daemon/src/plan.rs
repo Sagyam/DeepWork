@@ -685,8 +685,11 @@ pub fn lots() -> &'static [Lot] {
         for (ni, need) in NEEDS.iter().enumerate() {
             for n in 1..=need.lots {
                 let ordinal = out.len();
+                // A landmark stands on its site, but still takes its turn in
+                // the district's slots, so no lot after it moves.
                 let k = taken.entry(need.district).or_insert(0);
-                let place = crate::layout::place(need.district, *k)
+                let place = crate::layout::site(need.id)
+                    .or_else(|| crate::layout::place(need.district, *k))
                     .unwrap_or_else(|| panic!("{} has no slot in the layout", need.id));
                 *k += 1;
                 let street = crate::layout::STREETS[place.street].name;

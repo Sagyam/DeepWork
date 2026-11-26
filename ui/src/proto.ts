@@ -427,6 +427,9 @@ export interface LotInfo {
   id: string;
   block: number;
   slot: number;
+  /** Slots across from `slot`, and rows: 1 x 1 for a lot, 2 x 2 or 4 x 2 for a landmark's site. Absent from an older daemon. */
+  cols?: number;
+  rows?: number;
   street: number;
   address: string;
   owned: boolean;

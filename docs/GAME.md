@@ -69,6 +69,12 @@ number (odd north, even south). The Hamlet strings along Main Street, the
 Town fills the far side, downtown grows south. Parks open by level. Lot
 blocks group into named neighbourhoods (`NEIGHBOURHOODS`).
 
+- **Landmark sites** (`SITES`): a landmark stands on several slots of a
+  block, both rows deep: a half block (2 x 2) or a whole one. City hall and
+  the town square share the Civic Centre block north of Church Hill. A
+  landmark still takes its turn in its district's slots, so moving one to
+  a site moves no other lot.
+
 - **Land**: the first plot is free; every other one is bought, by hand
   (`BuyLand`). A site only starts on bought land; until then focus waits
   as crew hours.

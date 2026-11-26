@@ -8,7 +8,7 @@
 // with no layout (tests, an older daemon) fills blocks outward from the
 // centre in rings, every fourth one a park. Lots are roomy, with yards,
 // drives and parking.
-import { DISTRICT_SIZE, type Construction, type Layout, type Plot, type SiteInfo, type World } from "../proto";
+import { DISTRICT_SIZE, type Construction, type Layout, type LotInfo, type Plot, type SiteInfo, type World } from "../proto";
 
 export const LOT = 16;
 /** Kerb to kerb plus the pavements either side. */
@@ -129,6 +129,9 @@ export interface Spec {
   rot: number;
   /** The lot's centre is this far behind the building (local -z). */
   yard: number;
+  /** The ground it stands on: one lot, or a landmark's site. Absent: one lot. */
+  lotW?: number;
+  lotD?: number;
   w: number;
   d: number;
   floors: number;
@@ -188,7 +191,7 @@ export interface CityPlan {
   paused: SiteSpec[];
   /** Empty lots in used blocks: grass, maybe a tree. */
   /** `forSale`: its land is not bought yet. */
-  emptyLots: { x: number; z: number; rot?: number; seed: number; forSale?: boolean }[];
+  emptyLots: { x: number; z: number; rot?: number; w?: number; d?: number; seed: number; forSale?: boolean }[];
   /** Street names painted on the road, mid-way along each street's built stretch. */
   labels: { name: string; x: number; z: number; alongX: boolean }[];
   /** Per shown block (its centre): the streets meeting at its north-east corner, for a sign post there. */
@@ -276,12 +279,27 @@ export function blockCentre(district: number): { x: number; z: number } {
 /** The master plan of the world last laid out by `plan()`. */
 let layout: Layout | null = null;
 
-/** Lot centre and facing for a plot index. Front row faces -z, back row +z. */
-export function lot(index: number): { x: number; z: number; rot: number } {
+/**
+ * Lot centre, facing and size for a plot index. Front row faces -z, back row
+ * +z. A landmark's site spans `cols` slots and both rows, facing its slot's street.
+ */
+export function lot(index: number): { x: number; z: number; rot: number; w: number; d: number } {
   const planned = layout?.lots[index];
   const block = planned && layout!.blocks[planned.block];
-  if (block) return slotPlace({ x: block.x * PITCH_X, z: block.y * PITCH_Z }, planned.slot);
-  return slotPlace(blockCentre(Math.floor(index / DISTRICT_SIZE)), index % DISTRICT_SIZE);
+  if (!block) return { ...slotPlace(blockCentre(Math.floor(index / DISTRICT_SIZE)), index % DISTRICT_SIZE), w: LOT, d: LOT };
+  const c = { x: block.x * PITCH_X, z: block.y * PITCH_Z };
+  const cols = planned.cols ?? 1;
+  if ((planned.rows ?? 1) < 2) return { ...slotPlace(c, planned.slot), w: LOT * cols, d: LOT };
+  const col = planned.slot % 4;
+  return { x: c.x - BLOCK_X / 2 + (col + cols / 2) * LOT, z: c.z, rot: planned.slot >= 4 ? 0 : Math.PI, w: LOT * cols, d: 2 * LOT };
+}
+
+/** The slots a planned lot covers: its own, or a landmark site's. */
+function covered(l: LotInfo): number[] {
+  const cols = l.cols ?? 1;
+  const col = l.slot % 4;
+  const rows = (l.rows ?? 1) > 1 ? [0, 1] : [Math.floor(l.slot / 4)];
+  return rows.flatMap((r) => Array.from({ length: cols }, (_, i) => r * 4 + col + i));
 }
 
 /** A slot of the block centred on `c`: 0-3 west to east facing -z, 4-7 facing +z. */
@@ -340,8 +358,8 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
 function placed(index: number, s: ReturnType<typeof shape>) {
   const l = lot(index);
   const front = FRONT[s.style] ?? FRONT[s.kind];
-  const yard = front === undefined ? 0 : LOT / 2 - s.d / 2 - front;
-  return { x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard, rot: l.rot, yard };
+  const yard = front === undefined ? 0 : l.d / 2 - s.d / 2 - front;
+  return { x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard, rot: l.rot, yard, lotW: l.w, lotD: l.d };
 }
 
 function spec(p: Plot): Spec {
@@ -463,7 +481,7 @@ export function plan(w: World, elapsedSecs = 0): CityPlan {
     for (const bi of shown) {
       const b = L.blocks[bi];
       for (let k = 0; k < DISTRICT_SIZE; k++) {
-        if (!L.lots.some((l) => l.block === bi && l.slot === k)) emptyLots.push({ ...slotPlace({ x: b.x * PITCH_X, z: b.y * PITCH_Z }, k), seed: (bi * 8 + k) * 40503 + 7 });
+        if (!L.lots.some((l) => l.block === bi && covered(l).includes(k))) emptyLots.push({ ...slotPlace({ x: b.x * PITCH_X, z: b.y * PITCH_Z }, k), seed: (bi * 8 + k) * 40503 + 7 });
       }
     }
   } else {

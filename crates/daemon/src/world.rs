@@ -1875,6 +1875,8 @@ impl City {
                     id: l.id.clone(),
                     block: l.place.block as u32,
                     slot: l.place.slot,
+                    cols: l.place.cols,
+                    rows: l.place.rows,
                     street: l.place.street as u32,
                     address: self.address(i),
                     owned: self.land[i],

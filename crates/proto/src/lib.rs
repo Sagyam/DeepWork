@@ -424,12 +424,22 @@ pub struct StreetInfo {
     pub complete: bool,
 }
 
+fn one() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LotInfo {
     pub id: String,
     /// Index into [`Layout::blocks`].
     pub block: u32,
     pub slot: u32,
+    /// Slots across from `slot`, and rows: 1 x 1 for a lot; a landmark's
+    /// site spans both rows (2 x 2 a half block, 4 x 2 a whole one).
+    #[serde(default = "one")]
+    pub cols: u32,
+    #[serde(default = "one")]
+    pub rows: u32,
     /// Index into [`Layout::streets`]: the street it fronts.
     pub street: u32,
     pub address: String,

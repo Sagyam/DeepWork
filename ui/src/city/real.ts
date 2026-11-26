@@ -71,6 +71,8 @@ export interface RealDef {
    * stumps of wall stand on it.
    */
   walls?: [number, number, number, number];
+  /** Stand-back on a landmark's site, bigger than a lot (a forecourt). */
+  siteFront?: number;
 }
 
 const A1_G = 4.5;
@@ -744,6 +746,8 @@ export const DEFS: Record<string, RealDef> = {
     height: () => L5_G + L5_FL + 2.0,
     debris: 0xc8bca4,
     walls: [14.4, 10, 0, -1.675],
+    // On its half block, a forecourt in front and a garden behind.
+    siteFront: 9.5,
   },
   e2: {
     id: "e2",
