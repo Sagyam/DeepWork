@@ -220,7 +220,7 @@ export class City {
     const all = [...p.buildings, ...p.paused, ...(p.site ? [p.site] : [])];
     for (const s of all) {
       const l = lot(s.index);
-      if (Math.abs(hit.x - l.x) <= LOT / 2 && Math.abs(hit.z - l.z) <= LOT / 2) return s.index;
+      if (Math.abs(hit.x - l.x) <= l.w / 2 && Math.abs(hit.z - l.z) <= l.d / 2) return s.index;
     }
     return null;
   }
@@ -899,17 +899,19 @@ export class City {
     // Empty lots: rough grass with survey stakes, waiting to be built on.
     const stake = mat(0xc9a36a);
     const tape = mat(0xff8a2a, { emissive: 0x401800 });
-    const e = LOT / 2 - 1.4;
     for (const l of p.emptyLots) {
-      parts.box(groundMat("grass", 2.2, { roughness: 1, color: 0xc4b080 }), LOT - 0.4, KERB + 0.06, LOT - 0.4, l.x, 0, l.z);
-      for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * e, KERB, l.z + cz * e);
-      for (const cz of [-1, 1]) parts.box(tape, 2 * e, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * e);
-      for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * e, l.x + cx * e, KERB + 0.75, l.z);
+      // A landmark's site is bigger than a lot.
+      const [W, D] = [l.w ?? LOT, l.d ?? LOT];
+      const [ex, ez] = [W / 2 - 1.4, D / 2 - 1.4];
+      parts.box(groundMat("grass", 2.2, { roughness: 1, color: 0xc4b080 }), W - 0.4, KERB + 0.06, D - 0.4, l.x, 0, l.z);
+      for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) parts.box(stake, 0.15, 0.9, 0.15, l.x + cx * ex, KERB, l.z + cz * ez);
+      for (const cz of [-1, 1]) parts.box(tape, 2 * ex, 0.04, 0.04, l.x, KERB + 0.75, l.z + cz * ez);
+      for (const cx of [-1, 1]) parts.box(tape, 0.04, 0.04, 2 * ez, l.x + cx * ex, KERB + 0.75, l.z);
       if (l.forSale) {
         // A board by the pavement: the plan's land, not bought yet.
         const rot = l.rot ?? 0;
-        const fx = l.x + Math.sin(rot) * (e - 0.6);
-        const fz = l.z + Math.cos(rot) * (e - 0.6);
+        const fx = l.x + Math.sin(rot) * (ez - 0.6);
+        const fz = l.z + Math.cos(rot) * (ez - 0.6);
         parts.box(stake, 0.12, 1.9, 0.12, fx - 0.7, KERB, fz);
         parts.box(stake, 0.12, 1.9, 0.12, fx + 0.7, KERB, fz);
         parts.add(forSale(), new THREE.PlaneGeometry(1.7, 0.85), fx, KERB + 1.45, fz + Math.cos(rot) * 0.08, 0, rot, 0);

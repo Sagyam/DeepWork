@@ -10,6 +10,10 @@
 //! Like the lots, this only grows: a district's slots are taken in order, so
 //! new slots go at the end of its list, and streets and parks at the end of
 //! theirs.
+//!
+//! Landmarks stand on sites of several slots (`SITES`): a half block is two
+//! slots across both rows, a whole block all eight. Their blocks are lot
+//! blocks of their district, listed after the parks (`LANDMARK_BLOCKS`).
 
 use crate::plan::District::{self, *};
 
@@ -74,6 +78,19 @@ impl ParkKind {
         }
     }
 }
+
+/// Blocks for landmark sites, after the parks: `(x, y, district)`.
+const LANDMARK_BLOCKS: &[(i32, i32, District)] = &[
+    // North of Church Hill, across Mill Lane: city hall and the town square.
+    (1, -2, Civic),
+];
+
+/// Where a landmark stands: `(need, x, y, slot, cols)`. It takes `cols`
+/// slots across both rows from `slot`, and faces the street of `slot`'s
+/// row. Its district's slot list still counts it, so moving a landmark here
+/// moved no other lot.
+const SITES: &[(&str, i32, i32, u32, u32)] =
+    &[("city-hall", 1, -2, 4, 2), ("town-square", 1, -2, 6, 2)];
 
 /// Blocks kept as open ground: `(x, y, kind, name, level it opens at)`.
 const PARKS: &[(i32, i32, ParkKind, &str, u32)] = &[
@@ -146,6 +163,7 @@ pub const NEIGHBOURHOODS: &[Neighbourhood] = &[
     hood("canal", "The Canal Quarter", &[(2, -1), (2, 0)]),
     hood("exchange", "The Exchange", &[(-1, 1), (0, 1), (1, 1)]),
     hood("highgate", "Highgate", &[(0, 2), (1, 2)]),
+    hood("civic_centre", "Civic Centre", &[(1, -2)]),
 ];
 
 const fn hood(
@@ -206,6 +224,14 @@ pub fn blocks() -> &'static [Block] {
                 level,
             });
         }
+        for &(x, y, district) in LANDMARK_BLOCKS {
+            out.push(Block {
+                x,
+                y,
+                ground: Ground::Lots(district),
+                level: 0,
+            });
+        }
         out
     })
 }
@@ -227,6 +253,21 @@ pub struct Place {
     pub street: usize,
     /// Its number on that street: odd on the north side, even on the south.
     pub number: u32,
+    /// Slots it spans across, from `slot`: 1 for a lot, more for a landmark.
+    pub cols: u32,
+    /// Rows it spans: 1 for a lot, 2 for a landmark (it reaches the back street).
+    pub rows: u32,
+}
+
+impl Place {
+    /// The slots it covers.
+    #[cfg(test)]
+    pub fn slots(&self) -> impl Iterator<Item = u32> + '_ {
+        let col = self.slot % 4;
+        let row = self.slot / 4;
+        let rows = if self.rows > 1 { 0..2 } else { row..row + 1 };
+        rows.flat_map(move |r| (col..col + self.cols).map(move |c| r * 4 + c))
+    }
 }
 
 /// The `n`-th lot (from 0) of a district, or `None` past the plan's slots.
@@ -236,6 +277,18 @@ pub fn place(district: District, n: usize) -> Option<Place> {
         .iter()
         .flat_map(|&(x, y, first, count)| (first..first + count).map(move |s| (x, y, s)))
         .nth(n)?;
+    Some(at(x, y, slot, 1, 1))
+}
+
+/// The landmark site of a need, if it has one (`SITES`).
+pub fn site(need: &str) -> Option<Place> {
+    SITES
+        .iter()
+        .find(|s| s.0 == need)
+        .map(|&(_, x, y, slot, cols)| at(x, y, slot, cols, 2))
+}
+
+fn at(x: i32, y: i32, slot: u32, cols: u32, rows: u32) -> Place {
     let back = slot >= 4;
     let line = if back { y + 1 } else { y };
     let street = STREETS
@@ -243,12 +296,14 @@ pub fn place(district: District, n: usize) -> Option<Place> {
         .position(|s| s.axis == Axis::EastWest && s.line == line && (s.from..=s.to).contains(&x))
         .expect("every planned lot fronts a street");
     let along = (x - STREETS[street].from) as u32 * 4 + slot % 4;
-    Some(Place {
+    Place {
         block: block_at(x, y),
         slot,
         street,
         number: if back { along * 2 + 1 } else { along * 2 + 2 },
-    })
+        cols,
+        rows,
+    }
 }
 
 #[cfg(test)]
@@ -260,7 +315,9 @@ mod tests {
     fn every_lot_has_its_own_slot() {
         let mut seen = std::collections::HashSet::new();
         for lot in plan::lots() {
-            assert!(seen.insert((lot.place.block, lot.place.slot)), "{}", lot.id);
+            for slot in lot.place.slots() {
+                assert!(seen.insert((lot.place.block, slot)), "{}", lot.id);
+            }
             let b = blocks()[lot.place.block];
             assert_eq!(
                 b.ground,
@@ -310,6 +367,27 @@ mod tests {
                 assert!(blocks().iter().any(|b| (b.x, b.y) == (x, y)), "{}", n.id);
             }
         }
+    }
+
+    #[test]
+    fn landmarks_stand_on_their_sites() {
+        for &(need, x, y, slot, cols) in SITES {
+            assert!(plan::NEEDS.iter().any(|n| n.id == need), "{need}");
+            assert!(slot % 4 + cols <= 4, "{need} runs off its block");
+            let lot = plan::lots()
+                .iter()
+                .find(|l| NEEDS[l.need].id == need)
+                .unwrap();
+            let b = blocks()[lot.place.block];
+            assert_eq!(
+                (b.x, b.y, lot.place.slots().count()),
+                (x, y, cols as usize * 2),
+                "{need}"
+            );
+        }
+        // City hall faces Mill Lane, toward Church Hill.
+        let hall = site("city-hall").unwrap();
+        assert_eq!(STREETS[hall.street].id, "mill");
     }
 
     #[test]

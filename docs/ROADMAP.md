@@ -17,10 +17,33 @@ area, if anything a reader needs changed.
 
 1. **Use it for real** and tune: coin prices, build hours, shiny odds,
    escalation stages, nudges. Add real `[[routines]]`.
-2. **Landmark ground**: reserve half blocks in `layout.rs` for L5 city
-   hall and the landmarks; then L6 town square and L12 city park replace
-   the parks assembled from props.
+2. **Landmarks**, one at a time, each with its model (see below).
 3. **Before-and-after picture** on the deed card.
+
+## Landmarks
+
+Sites from the agreed final layout, in `layout.rs` once each is built.
+
+| Landmark | Site | Unlocks |
+|---|---|---|
+| L7 Monument | half, the west gateway on Main Street | Town |
+| Bus station | half, beside the monument | Town |
+| L12 City park | the City Park block, keeping its spots | City |
+| L8 Museum | whole, north of the Canal Quarter | City |
+| L9 Theatre | whole, facing Founders' Square | City |
+| L10 Cathedral | whole, beside the Green | City |
+| L11 Railway station | double, at the head of Station Road; tracks along the north edge | City |
+| University | double, north-west, round a quad | Metropolis |
+| L13 Stadium | 2 x 2 blocks south of Highgate, by the river | Metropolis |
+| Airport | off the plan, across the river by the highway | Metropolis |
+
+- **Unlocks, not needs**: a landmark opens at its level and stays open,
+  and doesn't hold back graduation. A new need in a level a ledger has
+  passed would undo its graduation on the next fold.
+- **Double and 2 x 2 sites** need new rows of blocks and streets that end
+  at the site (the renderer draws a road round every block today).
+- Worth weighing later: a marina on the river, a courthouse by city hall,
+  a hotel as a tower blueprint.
 
 ## Host checks
 

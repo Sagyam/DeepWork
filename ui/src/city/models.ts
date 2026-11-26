@@ -136,9 +136,9 @@ export function fitReal<T extends Spec>(s: T): T {
   const def = realDef(s);
   if (!def) return s;
   const l = lot(s.index);
-  const yard = LOT / 2 - def.d / 2 - def.front;
+  const yard = l.d / 2 - def.d / 2 - (l.d > LOT ? (def.siteFront ?? def.front) : def.front);
   const floors = def.floors(s.floors);
-  return { ...s, w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), yard, x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard };
+  return { ...s, w: def.w, d: def.d, floors, floorH: def.top(floors) / floors, height: def.height(floors), yard, lotW: l.w, lotD: l.d, x: l.x + Math.sin(l.rot) * yard, z: l.z + Math.cos(l.rot) * yard };
 }
 
 const paintOf = (s: Spec): Paint => ({ wall: s.wall, accent: s.accent, roof: Math.floor(s.seed / 7) % 97, signs: Math.floor(s.seed / 3) % 8, ...(s.name ? { name: s.name } : {}) });
@@ -176,11 +176,51 @@ function picket(p: Parts, def: RealDef, s: Spec, x0: number, x1: number, z: numb
 /** The lot round a model: what its kind of building has in front and out back. */
 function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
   const cz = -s.yard;
-  const front = LOT / 2 - s.yard;
-  const back = -LOT / 2 - s.yard;
-  const half = LOT / 2 - 0.2;
+  const LD = s.lotD ?? LOT;
+  const LW = s.lotW ?? LOT;
+  const front = LD / 2 - s.yard;
+  const back = -LD / 2 - s.yard;
+  const half = LW / 2 - 0.2;
   const paving = mat(0xbab4a8, { roughness: 0.9 });
   switch (def.id) {
+    case "l5": {
+      // On its half block: a stone forecourt from the pavement to the
+      // portico steps, lawns either side with flagpoles, lamps along the
+      // walk, plane trees down both sides; a garden behind in clipped hedges.
+      const stone = groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 });
+      p.box(stone, LW - 0.4, KERB, LD - 0.4, 0, 0, cz);
+      const fz0 = s.d / 2 + 0.6;
+      const fz1 = front - 1.6;
+      const lx = half - 1.6;
+      for (const sx of [-1, 1]) {
+        const x0 = sx * 3.4;
+        const x1 = sx * lx;
+        p.box(lawn(), Math.abs(x1 - x0), KERB + 0.06, fz1 - fz0, (x0 + x1) / 2, 0, (fz0 + fz1) / 2);
+        hedge(p, Math.abs(x1 - x0), KERB + 0.55, 0.45, (x0 + x1) / 2, 0, fz1 - 0.25, s.seed + sx);
+        // Flagpoles on the lawns, nearest the walk.
+        const pole = mat(0xe8e6e0, { roughness: 0.4, metalness: 0.5 });
+        const fx = sx * 4.4;
+        p.add(pole, new THREE.CylinderGeometry(0.05, 0.09, 11, 10), fx, KERB + 5.5, (fz0 + fz1) / 2);
+        p.add(mat(0xc9a24e, { roughness: 0.3, metalness: 1 }), new THREE.SphereGeometry(0.12, 10, 8), fx, KERB + 11.1, (fz0 + fz1) / 2);
+        // Lamps along the walk, benches facing it.
+        for (const z of [fz0 + 1.2, fz1 - 0.8]) furniture(p, "lamp_heritage", sx * 2.6, KERB, z);
+        furniture(p, "bench", sx * 2.9, KERB, (fz0 + fz1) / 2 + 1.6, sx * -Math.PI / 2);
+        // Plane trees down the sides, on the paving.
+        for (let z = back + 3; z < front - 2; z += 6.5) tree(p, sx * (half - 0.9), z, 0.85, s.seed * 3 + z * 7 + sx, KERB, ["linden", "maple", "linden"]);
+      }
+      // The garden behind: lawn in a hedge, a bench under a tree.
+      const gz0 = back + 1.0;
+      const gz1 = -s.d / 2 - 1.2;
+      if (gz1 - gz0 > 2) {
+        p.box(lawn(), LW - 6, KERB + 0.06, gz1 - gz0, 0, 0, (gz0 + gz1) / 2);
+        hedge(p, LW - 6, KERB + 1.2, 0.6, 0, 0, gz0 + 0.3, s.seed + 9);
+        tree(p, -4, (gz0 + gz1) / 2, 0.9, s.seed + 11, KERB, ["oak", "linden"]);
+        tree(p, 5, (gz0 + gz1) / 2, 0.8, s.seed + 13, KERB, ["oak", "linden"]);
+      }
+      // Bollards along the kerb, open at the walk.
+      for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) > 2.2) furniture(p, "bollard", x, KERB, front - 0.4);
+      break;
+    }
     case "a1": {
       // Paved to the pavement, as in town; bins and a wall out back.
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
@@ -895,6 +935,8 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
   const r = rng(s.seed * 13 + 7);
   const info: ModelInfo = { height: 4, emitters: [], beacons: [], night: [], debris: 0x7a7570 };
   const cz = -s.yard;
+  const LW = s.lotW ?? LOT;
+  const LD = s.lotD ?? LOT;
   const half = LOT / 2 - 0.4;
   if (s.style === "water") {
     // An elevated steel tank (civic.py), 22 m to its vent; broken, it leans.
@@ -906,6 +948,15 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
     info.beacons.push(new THREE.Vector3(0, KERB + 22.0, cz));
   } else {
     const park = s.style === "park";
+    if (!park && LW > LOT) {
+      square(p, s, LW, LD, cz, r);
+      info.height = 8;
+      if (s.damage >= 1) info.emitters.push({ pos: new THREE.Vector3(0, 4, cz), kind: "smoke", rate: s.damage >= 2 ? 6 : 2 });
+      p.into(g);
+      g.position.set(s.x, 0, s.z);
+      g.rotation.y = s.rot;
+      return { group: g, info };
+    }
     p.box(park ? lawn() : groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 }), LOT - 0.4, KERB + 0.04, LOT - 0.4, 0, 0, cz);
     if (park) p.box(gravelMat(0xd8ccb0), 2.2, KERB + 0.06, LOT - 0.4, 0, 0, cz);
     const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
@@ -924,6 +975,38 @@ function utility(s: Spec): { group: THREE.Group; info: ModelInfo } {
   g.position.set(s.x, 0, s.z);
   g.rotation.y = s.rot;
   return { group: g, info };
+}
+
+/**
+ * The town square on its landmark site (W x D, centred at cz): stone paving
+ * in a pattern, a fountain in a round basin at the middle, a ring of lime
+ * trees with benches under them, lamps at the corners, a band of lawn
+ * along the back, and bollards along the kerb.
+ */
+function square(p: Parts, s: Spec, W: number, D: number, cz: number, r: () => number) {
+  const stone = groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 });
+  const ashlar = groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 });
+  p.box(stone, W - 0.4, KERB + 0.04, D - 0.4, 0, 0, cz);
+  // A darker cross of setts from the middle to each side.
+  p.box(ashlar, 2.4, KERB + 0.05, D - 0.4, 0, 0, cz);
+  p.box(ashlar, W - 0.4, KERB + 0.05, 2.4, 0, 0, cz);
+  p.add(ashlar, new THREE.CircleGeometry(7.2, 48), 0, KERB + 0.06, cz, -Math.PI / 2);
+  const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + cz * Math.sin(s.rot), s.z + cz * Math.cos(s.rot)] }) : undefined);
+  civic(p, "fountain", 0, KERB, cz, { scale: new THREE.Vector3(1.3, 1.3, 1.3), swap: water });
+  if (s.damage === 0) p.extra(fountainSpray(0, KERB, cz, 1.3));
+  // Lime trees in a ring, a bench between each pair, facing the fountain.
+  const n = 8;
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2 + Math.PI / 8;
+    tree(p, Math.cos(a) * 10.5, cz + Math.sin(a) * 10.5, 0.75 + r() * 0.2, Math.floor(r() * 1e6), KERB, ["linden", "linden", "maple"]);
+    const b = a + Math.PI / n;
+    furniture(p, "bench", Math.cos(b) * 9.6, KERB, cz + Math.sin(b) * 9.6, Math.atan2(-Math.cos(b), -Math.sin(b)) + Math.PI);
+  }
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) furniture(p, "lamp_heritage", sx * (W / 2 - 2), KERB, cz + sz * (D / 2 - 2));
+  // Lawn and a low hedge along the back.
+  p.box(lawn(), W - 4, KERB + 0.07, 2.6, 0, 0, cz - D / 2 + 2.2);
+  hedge(p, W - 4, KERB + 0.7, 0.5, 0, 0, cz - D / 2 + 0.9, s.seed);
+  for (let x = -W / 2 + 1; x < W / 2; x += 2.4) if (Math.abs(x) > 1.6) furniture(p, "bollard", x, KERB, cz + D / 2 - 0.5);
 }
 
 /** A gilded finial for a shiny building: rare, and meant to be noticed. */

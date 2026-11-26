@@ -137,8 +137,9 @@ are blueprints and their prices.
 | E3 | Library | library | `e3_library.py` | in |
 | H1 | Clinic | clinic | `h1_clinic.py` | in |
 | H2 | Hospital | hospital | `h2_hospital.py` | in |
-| L5 | City hall | city hall (lot size until the plan has its half block) | `l5_cityhall.py` | in |
-| L6-L13 | Town square, monument, museum, theatre, cathedral, station, city park, stadium | half or whole block | | |
+| L5 | City hall | city hall, on its half block | `l5_cityhall.py` | in |
+| L6 | Town square | the square, on its half block (`square()` in `models.ts`) | code | in |
+| L7-L13 | Monument, museum, theatre, cathedral, station, city park, stadium | landmark sites ([ROADMAP.md](ROADMAP.md#landmarks)) | | |
 
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
