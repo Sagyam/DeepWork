@@ -52,14 +52,14 @@ const on = (o: Opt) => OPTS.indexOf(o) < level;
 type Block = { bx: number; bz: number; north?: string[]; south?: string[]; park?: "park" | "plaza" | "sports" };
 // "id:floors"; north row faces -z, south row faces +z.
 const BLOCKS: Block[] = [
-  // Along the through road: the newest apartments (A4, A5, A6) and the stone office (O4) facing it;
+  // Along the through road: the newest apartments (A4, A5, A6) and the stone office (O4) facing it, the market hall (S9) and modernist slab (O5) in the block behind;
   // across it the hospital, police station and library, then across the
   // side street the power station and pumping station. The other blocks
   // keep their streets and parks, their lots empty.
   { bx: 0, bz: 0, south: ["a4:6", "a5:6", "a6:7", "o4:8"], north: [] },
   { bx: 1, bz: 0, south: [], north: [] },
   { bx: -1, bz: 0, south: [], north: [] },
-  { bx: 0, bz: -1, south: [], north: [] },
+  { bx: 0, bz: -1, south: ["", "s9", "o5:8", ""], north: [] },
   { bx: -1, bz: -1, south: [], north: [] },
   { bx: 1, bz: -1, park: "park" },
   { bx: 0, bz: 1, south: [], north: ["", "h2:11", "e2", "e3"] },
