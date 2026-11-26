@@ -71,7 +71,6 @@ export const DESIGNS: Record<string, { kind: Kind; style: string }> = {
   l2: { kind: "landmark", style: "supertall" },
   l3: { kind: "landmark", style: "deco" },
   l4: { kind: "landmark", style: "supertall" },
-  l14: { kind: "landmark", style: "supertall" },
 };
 
 /**

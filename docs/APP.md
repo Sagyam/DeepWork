@@ -126,7 +126,6 @@ are blueprints and their prices.
 | L3 | Gothic skyscraper | tower deco | `l3_gothic.py` | in |
 | L2 | Glass supertall | tower supertall | `l2_supertall.py` | in |
 | L4 | Twisting tower | tower supertall | `l4_twist.py` | in |
-| L14 | TV tower | tower supertall | `l14_tv.py` | in |
 | P1 | Substation | Hamlet / Town power | `p1_substation.py` | in |
 | P2 | Power station | City power | `p2_power.py` | in |
 | W2 | Pumping station | City water | `w2_pumping.py` | in |

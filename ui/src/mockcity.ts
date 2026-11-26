@@ -101,7 +101,6 @@ const BLUEPRINTS: Omit<BlueprintInfo, "owned" | "unlocked" | "built">[] = [
   { id: "l3", name: "Gothic skyscraper", kind: "tower", districts: ["downtown"], level: 2, price: 2800 },
   { id: "l2", name: "Glass supertall", kind: "tower", districts: ["downtown"], level: 3, price: 4000 },
   { id: "l4", name: "Twisting tower", kind: "tower", districts: ["downtown"], level: 3, price: 4500 },
-  { id: "l14", name: "TV tower", kind: "tower", districts: ["downtown"], level: 3, price: 3500 },
 ];
 
 const SURNAMES = ["Hart", "Fletcher", "Moreau", "Okafor", "Lindqvist", "Brennan", "Castillo", "Novak", "Whitlock", "Sato", "Abernathy", "Rossi"];
@@ -150,7 +149,6 @@ const PILES: Record<string, string[]> = {
   l3: ["The Cathedral Building", "Ashford Tower", "Mercantile Trust", "The Guildhall Tower"],
   l2: ["Horizon Tower", "The Spire", "Apex Tower", "Vantage Tower"],
   l4: ["Helix Tower", "The Turn", "Spiral House", "Twist Tower"],
-  l14: ["City Beacon", "The Observatory", "Signal Tower", "The Lookout"],
 };
 
 const fits = (b: { kind: string; districts: string[] }, n: Need) => b.kind === n.kind && b.districts.includes(n.district);

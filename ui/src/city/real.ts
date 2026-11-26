@@ -177,9 +177,6 @@ const L4_FL = 3.8;
 const L4_CROWN = 12.2;
 /** Each L4 storey turns six degrees beyond the one below. */
 const L4_TWIST = Math.PI / 30;
-const L14_G = 6.0;
-const L14_FL = 4.0;
-const L14_CROWN = 20.0;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -1026,27 +1023,6 @@ export const DEFS: Record<string, RealDef> = {
     height: (floors) => L4_G + (floors - 1) * L4_FL + L4_CROWN,
     debris: 0x5a6a70,
     walls: [12.8, 12.8, 0, 0],
-  },
-  l14: {
-    id: "l14",
-    kind: "landmark",
-    style: "supertall",
-    // The podium and observation drum; the antenna decks stay inside them.
-    w: 15,
-    d: 15,
-    front: 0.8,
-    floors: (plan) => Math.max(9, plan),
-    stack(floors, roof) {
-      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
-      for (let f = 1; f <= floors - 2; f++) out.push({ piece: "shaft", y: L14_G + (f - 1) * L14_FL });
-      if (floors > 1) out.push({ piece: "deck", y: L14_G + (floors - 2) * L14_FL });
-      if (roof) out.push({ piece: "crown", y: L14_G + (floors - 1) * L14_FL });
-      return out;
-    },
-    top: (floors) => L14_G + (floors - 1) * L14_FL,
-    height: (floors) => L14_G + (floors - 1) * L14_FL + L14_CROWN,
-    debris: 0xb8b4aa,
-    walls: [8, 8, 0, 0],
   },
 };
 

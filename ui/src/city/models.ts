@@ -591,8 +591,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
     }
     case "o2":
     case "l2":
-    case "l4":
-    case "l14": {
+    case "l4": {
       // A plaza paved to the pavement round the drum: bollards before the
       // canopy, a tree in a planter and a bench at each front corner where
       // the round tower leaves room; the bins at a back corner.
@@ -937,7 +936,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "l14", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,
