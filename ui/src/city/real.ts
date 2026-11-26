@@ -2225,7 +2225,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     // O5's skin: glass mosaic on the end walls, porcelain-enamel spandrels, the lobby's mural and floor.
-    case "mosaic": m = w(pbr("mosaic", [1, 1], { roughness: 0.3, normal: 0.7, color: pick(MOSAICS, paint.wall) }), 1.2); break;
+    case "mosaic": m = w(pbr("mosaic", [1, 1], { roughness: 0.3, normal: 0.7, color: pick(MOSAICS, paint.wall) }), 0.4); break;
     case "o5panel": m = w(plain(pick(PANELS50, paint.accent), 0.3, 0.1), 0.8); break;
     case "mural": m = w(new THREE.MeshStandardMaterial({ map: tex("mural_col"), roughness: 0.4 }), 0.6); break;
     case "terrazzo": m = w(pbr("terrazzo", [1.5, 1.5], { roughness: 0.3 }), 0.8); break;
