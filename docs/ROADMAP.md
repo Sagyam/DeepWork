@@ -86,8 +86,6 @@ From the audit, after the security fixes.
 
 ## Packaging
 
-- [ ] Publish a model pack with O4, O5 and S9 before the next app release: the
-      current pack lacks it, and a missing model stops the city.
 - [ ] Signed packages and repositories (AUR, COPR / OBS, an apt repo); the
       user is creating the accounts.
 

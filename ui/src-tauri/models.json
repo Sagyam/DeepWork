@@ -1,6 +1,6 @@
 {
- "id": "39218fff38c933a7",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-39218fff38c933a7/",
+ "id": "ec50914e7b7b9a94",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-ec50914e7b7b9a94/",
  "files": [
   {
    "path": "a1.glb",
@@ -177,6 +177,18 @@
    "asset": "o3.glb"
   },
   {
+   "path": "o4.glb",
+   "size": 524874,
+   "sha256": "5d3f1ba0e9a055cb9751c95f053678854e9ef7b8c3bbca06f91e81a4e4307b93",
+   "asset": "o4.glb"
+  },
+  {
+   "path": "o5.glb",
+   "size": 67329,
+   "sha256": "2d9a3d348160a3fc3421761954bda52271c258ed16b4aab2974e1f4c1a92d224",
+   "asset": "o5.glb"
+  },
+  {
    "path": "p1.glb",
    "size": 320104,
    "sha256": "a1ee10300998917493876d9f778683ae2c0260d006ca5c8fe43295b9524797fd",
@@ -231,6 +243,12 @@
    "asset": "s8.glb"
   },
   {
+   "path": "s9.glb",
+   "size": 237109,
+   "sha256": "9e1a139ed610dfb3501b9e3e20a8e721fa825469936db5e14d6b4784a800ccea",
+   "asset": "s9.glb"
+  },
+  {
    "path": "street.glb",
    "size": 58531,
    "sha256": "75382f5cec2a62f42d646b28e1ffc6cd2a274f8d869072ad002304b5e18f5cb5",
@@ -250,8 +268,8 @@
   },
   {
    "path": "bc7.json",
-   "size": 2078,
-   "sha256": "3bdb6724a8fea310ea98388e3d1a3a3a5d851f2e37d4c68577c58f707ef66b6d",
+   "size": 2187,
+   "sha256": "8c914157be3dd903832fa86be7884a7f98d39b66b845a1fdc9107a7385715740",
    "asset": "bc7.json"
   },
   {
@@ -429,6 +447,18 @@
    "asset": "o3_ao.bc7"
   },
   {
+   "path": "o4_ao.bc7",
+   "size": 3102638,
+   "sha256": "8bea9443a25078c777d9bb9d34263809d0ddf42d43c6e1e6c71922389926ee69",
+   "asset": "o4_ao.bc7"
+  },
+  {
+   "path": "o5_ao.bc7",
+   "size": 2877159,
+   "sha256": "be6e147446d28a563864c0421b43643b82422cd4e8274c3a1fc378eb8e30b951",
+   "asset": "o5_ao.bc7"
+  },
+  {
    "path": "p1_ao.bc7",
    "size": 3816104,
    "sha256": "7f0656d91db7e6d848d2c830a7221f58d16e88baeb1c705fc20762b864ff90f1",
@@ -481,6 +511,12 @@
    "size": 2681684,
    "sha256": "6cb6cfa4a1ba5aeeed842cb3129c718c12e0ee889232444ccc583c289a9968ef",
    "asset": "s8_ao.bc7"
+  },
+  {
+   "path": "s9_ao.bc7",
+   "size": 2934001,
+   "sha256": "8b7e2074a797e992fde02425cdbbc2e08bb917addcf520eb6f3c6e7325a4899e",
+   "asset": "s9_ao.bc7"
   },
   {
    "path": "street_ao.bc7",
@@ -565,6 +601,12 @@
    "size": 2060,
    "sha256": "c64744c4f87f643362b5450c6d468f82faf7db3e356d76dabdae4028e3c4e644",
    "asset": "tex.blades_nrm.bc7"
+  },
+  {
+   "path": "tex/blind_col.bc7",
+   "size": 849,
+   "sha256": "6d14b7a3f1a7542c946e4eaf163c0484d43aba471d35aaa4b49fdd8605b17d8a",
+   "asset": "tex.blind_col.bc7"
   },
   {
    "path": "tex/bloom_col.bc7",
@@ -837,6 +879,24 @@
    "asset": "tex.modbrick_rgh.bc7"
   },
   {
+   "path": "tex/mosaic_col.bc7",
+   "size": 429780,
+   "sha256": "e217cdb1e6fd6188ad4d2e899e1df4ffaa3eedb8046c308df28f2fa14f9eab3e",
+   "asset": "tex.mosaic_col.bc7"
+  },
+  {
+   "path": "tex/mosaic_nrm.bc7",
+   "size": 35548,
+   "sha256": "b417cf905503600aff89dc44aa20abce64473d9eb1ed8fc2a1fa9a179f8048ea",
+   "asset": "tex.mosaic_nrm.bc7"
+  },
+  {
+   "path": "tex/mural_col.bc7",
+   "size": 781653,
+   "sha256": "d53621b7fd5d655acfb6636ff58c1dd87d1d735365ba711c76ae2a0cc8088b4f",
+   "asset": "tex.mural_col.bc7"
+  },
+  {
    "path": "tex/needles_col.bc7",
    "size": 167227,
    "sha256": "02db9d9a8ae6726427da7a96130f06bfaa01190195bc12c9d1dc358049eb1d48",
@@ -1045,6 +1105,12 @@
    "size": 1034581,
    "sha256": "8090417fc0341491ac06c5fdca2fa285478bf1aa18bd7fbdda81e046dfcea6d4",
    "asset": "tex.stone_nrm.bc7"
+  },
+  {
+   "path": "tex/terrazzo_col.bc7",
+   "size": 536579,
+   "sha256": "1ce007612eac72196a85294ce25c786b69fc73bab0c09a12f4ab5be71825fbc7",
+   "asset": "tex.terrazzo_col.bc7"
   },
   {
    "path": "tex/wood_col.bc7",
