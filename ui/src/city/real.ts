@@ -2170,7 +2170,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", "mosaic", "o5panel", "brick2", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", "mosaic", "o5panel", "brick2", "barnboard", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2274,6 +2274,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       if (damage < 2) m.userData.night = 0.3;
       break;
     }
+    // C8's boards behind their battens, in the battens' stain.
+    case "barnboard": m = w(pbr("boards", [1.4, 1.4], { roughness: 0.86, color: pick(BARNS, paint.wall) }), 0.6); break;
     case "cladding": m = w(pbr("battens", [1.3, 1.3], { roughness: 0.8, color: id === "c8" ? pick(BARNS, paint.wall) : pick(TIMBER, paint.accent) }), 0.4); break;
     case "alu": m = w(plain(id === "a3" ? pick(MULLIONS, paint.roof) : id === "o5" ? 0xc2c6c8 : frame, 0.4, 0.5)); break;
     case "shake": m = w(pbr("shake", [1.5, 1.5], { roughness: 0.92, color: pick(SHAKES, paint.roof) }), 0.9); break;
