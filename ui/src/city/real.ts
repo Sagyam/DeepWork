@@ -78,6 +78,8 @@ const A1_FL = 3.1;
 const A2_G = 5.6;
 const A2_FL = 3.3;
 const A2_TF = 3.1;
+const A7_G = 4.5;
+const A7_FL = 3.2;
 const C1_PLATE = 6.1;
 const C2_PLATE = 4.0;
 const C3_G = 3.3;
@@ -228,6 +230,28 @@ export const DEFS: Record<string, RealDef> = {
     // The front stack on the first party wall.
     smoke: (floors) => new THREE.Vector3(-2.6, A2_G + (floors - 2) * A2_FL + A2_TF + 3.5, 1.08),
     debris: 0x6e4a3a,
+  },
+  a7: {
+    id: "a7",
+    kind: "apartment",
+    style: "townhouse",
+    // Three canal houses wall to wall, the stoops in front.
+    w: 15.0,
+    d: 12.5,
+    front: 0.6,
+    floors: (plan) => Math.min(4, Math.max(3, plan)),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: "floor", y: A7_G + (f - 1) * A7_FL });
+      if (roof) out.push({ piece: "roof", y: A7_G + (floors - 1) * A7_FL });
+      return out;
+    },
+    top: (floors) => A7_G + (floors - 1) * A7_FL,
+    // The neck gable's pediment.
+    height: (floors) => A7_G + (floors - 1) * A7_FL + 6.1,
+    // The front stack on the first party wall.
+    smoke: (floors) => new THREE.Vector3(-2.5, A7_G + (floors - 1) * A7_FL + 5.3, 0.55),
+    debris: 0x6a3a2e,
   },
   a3: {
     id: "a3",
@@ -1744,6 +1768,8 @@ const SLATES = [0xd8dce4, 0xd4c8d4, 0xc8d4c8, 0x9c9ea4, 0xeceae6];
 /** Ridge rolls: red clay, blue-black, buff. */
 const RIDGES = [0x9a4a32, 0x2e3034, 0x9a4a32, 0xb08a60];
 /** Brownstone: chocolate, pinkish, dark, warm, umber. */
+/** A7's darker bricks over the shared texture: brown, plum, oxblood, umber. */
+const DUTCH_BRICKS = [0xc09a90, 0xb09098, 0xd0a090, 0xa08c86];
 const BROWNSTONES = [0xffffff, 0xf4dcd0, 0xd4c8c0, 0xf0dcc4, 0xc0b4ac];
 /** A2's cornices: brown, black, brownstone, dark green, cream. */
 const ROW_CORNICES = [0x3a2c24, 0x1e2022, 0x6a5040, 0x26342a, 0xd8ccb4];
@@ -2122,7 +2148,7 @@ export function groundMat(name: string, tile: number, opts: Std & { normal?: num
  */
 export function realMat(id: string, role: string, paint: Paint, damage: number, variant = ""): THREE.Material {
   const pick = (list: number[], i: number) => list[((i % list.length) + list.length) % list.length];
-  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", "mosaic", "o5panel", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
+  const tinted = ["brick", "bluebrick", "rubbed", "steelframe", "doors", "corrugated", "works", "siding", "shutter", "shopframe", "door", "shingle", "sign", "cornice", "ghost", "render", "cladding", "alu", "shake", "boards", "timber", "chair", "enamel", "neon", "neon2", "dinername", "carpaint", "slate", "ridge", "rustic", "cafename", "parasol", "officeglass", "spandrel", "mullion", "blades", "towername", "cladstone", "boardform", "floodstone", "deco", "bronze", "deconame", "stationname", "stonename", "brownstone", "door2", "door3", "infill", "fieldstone", "stoneslate", "oak", "plaintile", "zincseam", "band", "fin", "modbrick", "mosaic", "o5panel", "brick2", ...LEAVES, "hedge"].includes(role) || (id === "a2" && role === "frame") || (id === "a5" && role === "stone");
   const names = namesFor(id, role);
   const cell = names?.cell(paint.name, paint.signs) ?? -1;
   const key = `${id}:${role}:${damage}:${variant}:${tinted ? `${paint.wall}:${paint.accent}:${paint.roof}:${paint.signs}:${cell}` : ""}`;
@@ -2151,6 +2177,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
   switch (role) {
     case "gutted": m = plain(0x0b0a09, 0.95); break;
     case "brick": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: id === "c1" ? 0xffffff : pick(BRICK_TINTS, paint.wall) }), 1.6); break;
+    // A7's third house: Dutch brick, darker, brown to plum.
+    case "brick2": m = w(pbr("brick", [1.72, 1.8], { rough: true, color: pick(DUTCH_BRICKS, paint.wall + paint.accent) }), 1.6); break;
     // A5's mouldings are cut from the same limestone as its walls.
     case "stone": m = w(pbr("stone", [2, 2], { roughness: 0.82, color: id === "a5" ? new THREE.Color(pick(LIMESTONES, paint.wall)).multiply(new THREE.Color(0xfff6e6)).getHex() : 0xffffff }), 1.6); break;
     // The factory.
@@ -2186,7 +2214,7 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "gutter": m = w(plain(0xe4e2dc, 0.4, 0.3)); break;
     case "frame": m = w(plain(id === "c1" ? 0xf2efe8 : id === "a2" ? pick(SASHES, paint.roof) : 0xe9e4d8, 0.42)); break;
     case "shopframe": m = w(plain(accent, 0.35)); break;
-    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" || id === "a5" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
+    case "door": m = w(plain(id === "c1" ? accent : id === "c3" ? frame : id === "c4" ? pick(BRIGHTS, paint.accent + paint.wall) : id === "c2" || id === "c5" || id === "c6" || id === "c7" || id === "a2" || id === "a5" || id === "a7" ? pick(HERITAGE, paint.accent) : 0x3a2216, 0.38)); break;
     // A2's other two houses.
     case "door2": m = w(plain(pick(HERITAGE, paint.accent + 2), 0.38)); break;
     case "door3": m = w(plain(pick(HERITAGE, paint.accent + 5), 0.38)); break;

@@ -117,6 +117,7 @@ are blueprints and their prices.
 | A4 | Art deco mansions | apartment classic | `a4_deco.py` | in |
 | A5 | Parisian apartments | apartment classic | `a5_paris.py` | in |
 | A6 | Modern apartments | apartment classic | `a6_modern.py` | in |
+| A7 | Canal houses | apartment townhouse | `a7_canal.py` | in |
 | O1 | Curtain-wall tower | office | `o1_tower.py` | in |
 | O2 | Round glass tower | office | `o2_round.py` | in |
 | O3 | Brutalist office | office | `o3_brutalist.py` | in |

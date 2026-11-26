@@ -27,6 +27,13 @@ Gramercy Row
 Bedford Terrace
 Clifton Terrace
 Hamilton Row
+[a7]
+Herengracht Row
+Keizers Court
+Gable Row
+Prinsen Houses
+Lindengracht
+Bloemgracht Row
 [a4]
 Ocean Court
 The Normandie

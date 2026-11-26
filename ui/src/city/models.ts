@@ -214,6 +214,28 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
       break;
     }
+    case "a7": {
+      // Brick paving to the kerb, as along a canal: a row of iron bollards
+      // at the kerb, planters by the stoops, a young linden; behind, three
+      // narrow gardens between board fences.
+      p.box(paving, LOT - 0.4, KERB, front - 4.75, 0, 0, (front + 4.75) / 2);
+      p.box(lawn(), LOT - 0.4, KERB, -6.25 - back, 0, 0, (-6.25 + back) / 2);
+      for (let i = 0; i < 6; i++) furniture(p, "bollard", -6.6 + i * 2.64, KERB, front - 0.35);
+      const doors = [-6.55, 0.76, 2.96]; // the stoops' x (a7_canal.py)
+      const pot = mat(0x6a4a3a, { roughness: 0.85 });
+      for (const x of doors)
+        for (const dx of [-1.0, 1.0])
+          if (r() < 0.7) {
+            p.box(pot, 0.5, 0.45, 0.5, x + dx, KERB, 6.45);
+            shrub(p, x + dx, 6.45, s.seed * 7 + x * 5 + dx, KERB + 0.4, 0.4);
+          }
+      tree(p, -2.5, front - 1.0, 0.5, s.seed + 1, KERB, ["young", "linden", "maple"]);
+      const bin = mat(0x3a3e40, { roughness: 0.55, metalness: 0.3 });
+      for (const x of [-4.3, 5.6]) p.box(bin, 0.55, 0.95, 0.55, x, KERB, 5.6);
+      for (const x of [-2.5, 1.9]) fenceRun(p, "fence_panel", x, -6.25, x, back + 0.1);
+      fenceRun(p, "fence_panel", half, back + 0.1, -half, back + 0.1);
+      break;
+    }
     case "c1": {
       // Lawn, a picket fence along the street, a path to the porch steps,
       // a drive down the side with the car, trees, a hedge at the back.
@@ -936,7 +958,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

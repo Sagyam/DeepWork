@@ -52,13 +52,13 @@ const on = (o: Opt) => OPTS.indexOf(o) < level;
 type Block = { bx: number; bz: number; north?: string[]; south?: string[]; park?: "park" | "plaza" | "sports" };
 // "id:floors"; north row faces -z, south row faces +z.
 const BLOCKS: Block[] = [
-  // Along the through road: the newest apartments (A4, A5, A6) and the stone office (O4) facing it, the market hall (S9) and modernist slab (O5) in the block behind;
+  // Along the through road: the newest apartments (A4, A5, A6) and the stone office (O4) facing it, the canal houses (A7) beside a brownstone row (A2) west of them, the market hall (S9) and modernist slab (O5) in the block behind;
   // across it the hospital, police station and library, then across the
   // side street the power station and pumping station. The other blocks
   // keep their streets and parks, their lots empty.
   { bx: 0, bz: 0, south: ["a4:6", "a5:6", "a6:7", "o4:8"], north: [] },
   { bx: 1, bz: 0, south: [], north: [] },
-  { bx: -1, bz: 0, south: [], north: [] },
+  { bx: -1, bz: 0, south: ["", "a7:4", "a2:4", ""], north: [] },
   { bx: 0, bz: -1, south: ["", "s9", "o5:8", ""], north: [] },
   { bx: -1, bz: -1, south: [], north: [] },
   { bx: 1, bz: -1, park: "park" },
@@ -103,6 +103,7 @@ const VIEWS: Record<string, [number[], number[], number]> = {
   civic: [[PITCH_X - 2, 22, PITCH_Z + 78], [PITCH_X - 2, 5, PITCH_Z + 6], 50],
   new: [[PITCH_X / 2 - 2, 44, ROAD_Z - 72], [PITCH_X / 2 - 8, 12, PITCH_Z - LOT / 2], 50],
   apartments: [[14, 34, ROAD_Z + 26], [-8, 10, 2], 46],
+  canal: [[-PITCH_X + 14, 12, ROAD_Z + 24], [-PITCH_X - 8, 9, 8], 46],
   services: [[PITCH_X / 2 + 4, 22, ROAD_Z - 2], [0, 7, PITCH_Z - 8], 50],
   utilities: [[PITCH_X - 4, 32, ROAD_Z - 16], [PITCH_X - 14, 9, PITCH_Z - 8], 50],
   bridge: [[RX + 40, 6, ROAD_Z + 34], [RX - 10, 3, ROAD_Z], 50],
