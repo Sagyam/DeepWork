@@ -1,6 +1,6 @@
 {
- "id": "2984a7e61342b7c7",
- "url": "https://github.com/Sagyam/DeepWork/releases/download/models-2984a7e61342b7c7/",
+ "id": "b2fb2231dabf60fa",
+ "url": "https://github.com/Sagyam/DeepWork/releases/download/models-b2fb2231dabf60fa/",
  "files": [
   {
    "path": "a1.glb",
@@ -153,6 +153,12 @@
    "asset": "l3.glb"
   },
   {
+   "path": "l4.glb",
+   "size": 114170,
+   "sha256": "9cdfb62cef124a06189a77375c4afd58d9d059939a05709ae416bd561b198586",
+   "asset": "l4.glb"
+  },
+  {
    "path": "l5.glb",
    "size": 409886,
    "sha256": "01c714033249bf5c7071706edb58643b95a821ee99c5e57b6df893b2c90a19ca",
@@ -237,6 +243,12 @@
    "asset": "s6.glb"
   },
   {
+   "path": "s7.glb",
+   "size": 161786,
+   "sha256": "a5d3900cb732150acc85438e78fb8913f382c669ed082161bcf8f6d6f89ea648",
+   "asset": "s7.glb"
+  },
+  {
    "path": "s8.glb",
    "size": 180024,
    "sha256": "6c2b763aa77c1d3910ea93f2ee43ccd14d7198eff18d9eec54bd238f1903ecea",
@@ -268,8 +280,8 @@
   },
   {
    "path": "bc7.json",
-   "size": 2187,
-   "sha256": "8c914157be3dd903832fa86be7884a7f98d39b66b845a1fdc9107a7385715740",
+   "size": 2203,
+   "sha256": "035ef45b4a65a073cad617a7a8301e765cd564ab69cd1481cce8731cdb2b5085",
    "asset": "bc7.json"
   },
   {
@@ -423,6 +435,12 @@
    "asset": "l3_ao.bc7"
   },
   {
+   "path": "l4_ao.bc7",
+   "size": 3608789,
+   "sha256": "d24c12078b892504058064639dc79d0d1e5c751e256c9752b16b9ea5a8cde4f1",
+   "asset": "l4_ao.bc7"
+  },
+  {
    "path": "l5_ao.bc7",
    "size": 3606926,
    "sha256": "467c4a2f451296afad88b2250d3be6e32a98acd5773032c575e4dda40e8ed889",
@@ -505,6 +523,12 @@
    "size": 3435283,
    "sha256": "57455a4355b7e9e7d600f45cefd76625595ce5f675113d7dbde270858da5918e",
    "asset": "s6_ao.bc7"
+  },
+  {
+   "path": "s7_ao.bc7",
+   "size": 2512550,
+   "sha256": "6eec4436dfb9398377f5cc9cc2a5e30d14a5cb34f30e10c30b8b443887e0b6e9",
+   "asset": "s7_ao.bc7"
   },
   {
    "path": "s8_ao.bc7",
