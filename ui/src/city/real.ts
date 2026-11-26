@@ -56,7 +56,7 @@ export interface RealDef {
    * `total` is the finished building's storeys, for models whose stack
    * depends on it (a setback) while it is being built or is damaged.
    */
-  stack(floors: number, roof: boolean, r: () => number, total: number): { piece: string; y: number }[];
+  stack(floors: number, roof: boolean, r: () => number, total: number): { piece: string; y: number; ry?: number }[];
   /** Height of the body (top of the last storey, or the eaves). */
   top(floors: number): number;
   /** Height with the roof. */
@@ -103,6 +103,8 @@ const S9_E = 7.0;
 /** S8's wall head: the roof piece (parapet, fin tower) stands on it. */
 const S8_TOP = 3.8;
 const S4_TOP = 5.3;
+const S7_G = 4.25;
+const S7_FL = 3.15;
 const P1_EAVES = 3.0;
 const F1_G = 5.0;
 const F1_FL = 3.4;
@@ -170,6 +172,14 @@ const L2_G = 7.0;
 const L2_FL = 3.8;
 /** L2's crown above its top storey: the parapet and the lantern to 17.4 m, the spire to 42 m. */
 const L2_CROWN = 17.4;
+const L4_G = 6.0;
+const L4_FL = 3.8;
+const L4_CROWN = 12.2;
+/** Each L4 storey turns six degrees beyond the one below. */
+const L4_TWIST = Math.PI / 30;
+const L14_G = 6.0;
+const L14_FL = 4.0;
+const L14_CROWN = 20.0;
 
 export const DEFS: Record<string, RealDef> = {
   a1: {
@@ -527,6 +537,28 @@ export const DEFS: Record<string, RealDef> = {
     height: () => S9_E + 4.2,
     debris: 0x8a4e3c,
     walls: [13.6, 13.0, 0, 0],
+  },
+  s7: {
+    id: "s7",
+    kind: "shop",
+    style: "classic",
+    // The cornice and finial; the awnings stand into the set-back.
+    w: 11.8,
+    d: 11.6,
+    front: 1.6,
+    floors: (plan) => Math.min(3, Math.max(2, plan)),
+    stack(floors, roof, r) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      if (floors > 0 && r() < 0.85) out.push({ piece: "awning", y: 0 });
+      for (let f = 1; f < floors; f++) out.push({ piece: "floor", y: S7_G + (f - 1) * S7_FL });
+      if (roof) out.push({ piece: "roof", y: S7_G + (floors - 1) * S7_FL });
+      return out;
+    },
+    top: (floors) => S7_G + (floors - 1) * S7_FL,
+    // The chimney's pots; the date panel is lower.
+    height: (floors) => S7_G + (floors - 1) * S7_FL + 2.33,
+    smoke: (floors) => new THREE.Vector3(-5.12, S7_G + (floors - 1) * S7_FL + 2.4, -2.25),
+    debris: 0x8a4e3c,
   },
   s4: {
     id: "s4",
@@ -973,6 +1005,48 @@ export const DEFS: Record<string, RealDef> = {
     top: (floors) => L2_G + (floors - 1) * L2_FL,
     height: (floors) => L2_G + (floors - 1) * L2_FL + L2_CROWN,
     debris: 0x5a6a70,
+  },
+  l4: {
+    id: "l4",
+    kind: "landmark",
+    style: "supertall",
+    // The chamfered square stays inside its footprint as it turns.
+    w: 12.8,
+    d: 12.8,
+    front: 1.4,
+    floors: (plan) => Math.max(16, plan),
+    stack(floors, roof) {
+      const plant = Math.max(4, Math.round(floors * 0.55));
+      const out: { piece: string; y: number; ry?: number }[] = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f < floors; f++) out.push({ piece: f === plant ? "plant" : "floor", y: L4_G + (f - 1) * L4_FL, ry: (f - 1) * L4_TWIST });
+      if (roof) out.push({ piece: "crown", y: L4_G + (floors - 1) * L4_FL, ry: (floors - 1) * L4_TWIST });
+      return out;
+    },
+    top: (floors) => L4_G + (floors - 1) * L4_FL,
+    height: (floors) => L4_G + (floors - 1) * L4_FL + L4_CROWN,
+    debris: 0x5a6a70,
+    walls: [12.8, 12.8, 0, 0],
+  },
+  l14: {
+    id: "l14",
+    kind: "landmark",
+    style: "supertall",
+    // The podium and observation drum; the antenna decks stay inside them.
+    w: 15,
+    d: 15,
+    front: 0.8,
+    floors: (plan) => Math.max(9, plan),
+    stack(floors, roof) {
+      const out = floors > 0 ? [{ piece: "ground", y: 0 }] : [];
+      for (let f = 1; f <= floors - 2; f++) out.push({ piece: "shaft", y: L14_G + (f - 1) * L14_FL });
+      if (floors > 1) out.push({ piece: "deck", y: L14_G + (floors - 2) * L14_FL });
+      if (roof) out.push({ piece: "crown", y: L14_G + (floors - 1) * L14_FL });
+      return out;
+    },
+    top: (floors) => L14_G + (floors - 1) * L14_FL,
+    height: (floors) => L14_G + (floors - 1) * L14_FL + L14_CROWN,
+    debris: 0xb8b4aa,
+    walls: [8, 8, 0, 0],
   },
 };
 
@@ -1475,11 +1549,11 @@ class NameSheet {
   }
 }
 
-/** Shopfront signs of S1, 1024 x 256 a cell: a painted board, the name and a line under it. */
-const shopNames = new NameSheet(2, 8, 1024, 256, SHOPS.map((s) => s[2]), (g, x, y, name) => {
-  const stock = SHOPS.find((s) => s[2] === name.toUpperCase());
+/** Shopfront signs, 1024 x 256 a cell: a painted board, the name and a line under it. */
+function paintShopName(g: CanvasRenderingContext2D, x: number, y: number, name: string, catalogue: [string, string, string, string][]) {
+  const stock = catalogue.find((s) => s[2] === name.toUpperCase());
   const h = nameHash(name.toUpperCase());
-  const [bg, fg] = stock ?? SHOPS[h % SHOPS.length];
+  const [bg, fg] = stock ?? catalogue[h % catalogue.length];
   const sub = stock?.[3] ?? `est. ${1890 + (h >>> 8) % 70}`;
   g.fillStyle = bg;
   g.fillRect(x, y, 1024, 256);
@@ -1492,7 +1566,20 @@ const shopNames = new NameSheet(2, 8, 1024, 256, SHOPS.map((s) => s[2]), (g, x, 
   g.fillText(name.toUpperCase(), x + 512, y + 148, 960);
   g.font = "italic 40px Georgia, serif";
   g.fillText(sub, x + 512, y + 212);
-});
+}
+
+const shopNames = new NameSheet(2, 8, 1024, 256, SHOPS.map((s) => s[2]), (g, x, y, name) => paintShopName(g, x, y, name, SHOPS));
+const CORNER_SHOPS: [string, string, string, string][] = [
+  ["#1d3a2c", "#e3c27a", "MARTIN & SONS", "groceries & provisions"],
+  ["#22303f", "#f0e6cf", "CORNER GROCERY", "fresh · local · daily"],
+  ["#4a1c1c", "#f2dfb4", "MARLOWE'S", "delicatessen"],
+  ["#1f2a24", "#d9e4d0", "GREEN GROCER", "fruit & vegetables"],
+  ["#2b2b2b", "#e8c66a", "DAILY PROVISIONS", "the neighbourhood store"],
+  ["#30264a", "#efe2c8", "PARK DELI", "fine foods & pantry"],
+  ["#14324a", "#f4ecd8", "FRESH MARKET", "open seven days"],
+  ["#5a3a1a", "#f6e6c2", "HILLSIDE GENERAL", "grocery · hardware · post"],
+];
+const cornerNames = new NameSheet(2, 8, 1024, 256, CORNER_SHOPS.map((s) => s[2]), (g, x, y, name) => paintShopName(g, x, y, name, CORNER_SHOPS));
 
 /** Office buildings' names for the fascia, 2048 x 128 a row: spaced brushed-steel capitals on clear. */
 const towerNames = new NameSheet(1, 16, 2048, 128, ["MERIDIAN HOUSE", "ONE HARBOUR PLACE", "CARLTON TOWER", "NORTHBRIDGE CENTRE", "THE EXCHANGE", "ATLAS BUILDING", "200 PARK ROW", "SOVEREIGN HOUSE"], (g, _x, y0, name) => {
@@ -1625,7 +1712,7 @@ const decoNames = new NameSheet(1, 8, 2048, 128, ["THE ORION BUILDING", "HALCYON
 /** Which sheet a material role paints a building's name on, if any. */
 function namesFor(id: string, role: string): NameSheet | null {
   switch (role) {
-    case "sign": return id === "s1" ? shopNames : null;
+    case "sign": return id === "s1" ? shopNames : id === "s7" ? cornerNames : null;
     case "towername": return towerNames;
     case "dinername": return dinerNames;
     case "works": return worksNames;

@@ -158,7 +158,7 @@ function stackReal(p: Parts, s: Spec, def: RealDef, floors: number, roof: boolea
   const paint = paintOf(s);
   // Window ids restart in every piece: offset them per storey and building.
   const base = (s.seed % 8) * 8 * 256;
-  def.stack(floors, roof, r, s.floors).forEach(({ piece, y }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, 0, undefined, base + i * 256));
+  def.stack(floors, roof, r, s.floors).forEach(({ piece, y, ry = 0 }, i) => putReal(p, def, piece, paint, s.damage, info, 0, y + KERB, 0, ry, undefined, base + i * 256));
   const anchors: Record<string, THREE.Vector3> = {};
   if (roof && def.smoke) anchors.smoke = def.smoke(floors).add(new THREE.Vector3(0, KERB, 0));
   return { top: def.top(floors) + KERB, w: s.w, d: s.d, anchors };
@@ -590,7 +590,9 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       break;
     }
     case "o2":
-    case "l2": {
+    case "l2":
+    case "l4":
+    case "l14": {
       // A plaza paved to the pavement round the drum: bollards before the
       // canopy, a tree in a planter and a bench at each front corner where
       // the round tower leaves room; the bins at a back corner.
@@ -705,6 +707,7 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let i = 0; i < 2; i++) p.box(bin, 0.7, 1.1, 0.7, 3.4 + i * 0.85, KERB, yardZ - 0.6);
       break;
     }
+    case "s7":
     case "s1": {
       // Paved to the pavement, a sandwich board by the door; behind, a
       // concrete service yard with the bins and the delivery van, walled.
@@ -934,7 +937,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "l14", "f1", "e1", "p1", "l5", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

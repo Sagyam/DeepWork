@@ -108,9 +108,9 @@ are blueprints and their prices.
 | S4 | Brick factory | workshop | `s4_factory.py` | in |
 | S5 | Department store | shop classic | `s5_store.py` | in |
 | S6 | Tower brewery | workshop | `s6_brewery.py` | in |
+| S7 | Corner store | shop classic | `s7_corner.py` | in |
 | S8 | Filling station | shop diner | `s8_station.py` | in |
 | S9 | Market hall | shop classic | `s9_market.py` | in |
-| S7 | Corner store | shop | | |
 | A1 | Pre-war brick block | apartment classic | `a1_apartment.py` | in |
 | A2 | Brownstone row | apartment townhouse | `a2_brownstone.py` | in |
 | A3 | Balcony block | apartment classic | `a3_balcony.py` | in |
@@ -125,7 +125,8 @@ are blueprints and their prices.
 | L1 | Art deco skyscraper | tower deco | `l1_deco.py` | in |
 | L3 | Gothic skyscraper | tower deco | `l3_gothic.py` | in |
 | L2 | Glass supertall | tower supertall | `l2_supertall.py` | in |
-| L4, L14 | Twisting tower, TV tower | tower | | |
+| L4 | Twisting tower | tower supertall | `l4_twist.py` | in |
+| L14 | TV tower | tower supertall | `l14_tv.py` | in |
 | P1 | Substation | Hamlet / Town power | `p1_substation.py` | in |
 | P2 | Power station | City power | `p2_power.py` | in |
 | W2 | Pumping station | City water | `w2_pumping.py` | in |
@@ -149,7 +150,7 @@ camera pulls back (`HOOD_NEAR`, `HOOD_FAR` in `scene.ts`). Unbought plots
 carry a FOR SALE board. Park spots draw the
 decorations bought for them (`SPOTS` in `models.ts`).
 
-Signs that carry a name (S1's fascia; the café, diner and works friezes,
+Signs that carry a name (S1 and S7's fascias; the café, diner and works friezes,
 S6's painted wall, S8's canopy fascia, O4's carved frieze, S9's name panel; the office, L2 and S5 name panels and canopies; L1 and
 L3's gilt names) show the building's own name: `NameSheet` in
 `real.ts` paints each name into a shared sheet the first time a building

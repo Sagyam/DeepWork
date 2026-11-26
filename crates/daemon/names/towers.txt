@@ -27,3 +27,17 @@ Crystal Tower
 One Riverside
 Meridian Heights
 The Needle
+[l4]
+Helix Tower
+The Turn
+Spiral House
+Twist Tower
+Corkscrew House
+The Rotunda
+[l14]
+City Beacon
+The Observatory
+Signal Tower
+The Lookout
+Broadcast House
+Skyline Tower
