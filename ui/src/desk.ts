@@ -68,20 +68,19 @@ function needRow(w: World, n: NeedInfo, active: SiteInfo | undefined): string {
     </div>`;
 }
 
-/** The desk card: the site board during a session, the residents' needs between sessions. */
+/** The desk panel: the site board during a session, the residents' needs between sessions. */
 export function deskHtml(w: World, session: SessionInfo | null): string {
   if (!w.needs) return "";
   const active = w.sites?.find((s) => s.active);
   if (session) {
     const c = w.construction;
-    if (!c) return `<p class="eyebrow">Under construction</p><div class="small muted">No site chosen: this session banks crew hours for the next one.</div>`;
+    if (!c) return `<div class="small muted">No site chosen: this session banks crew hours for the next one.</div>`;
     const site: SiteInfo = active ?? { index: c.index, lot: c.lot ?? "", need: "", name: c.name ?? "", kind: c.kind ?? "", design: c.design ?? null, done_secs: 0, build_secs: c.remaining_secs ?? 0, active: true, seed: c.seed };
     const extra = session.state === "active" ? session.elapsed_secs : 0;
     const note = session.state === "surrendering" ? `<div class="small loss">Surrendering: this session's work will be lost.</div>` : `<div class="small muted">Lands when the session completes.</div>`;
-    return `<p class="eyebrow">Under construction</p>${siteBoard(site, extra, "")}${note}`;
+    return `${siteBoard(site, extra, "")}${note}`;
   }
   const parts: string[] = [];
-  parts.push(`<div class="desk-head"><p class="eyebrow">The residents ask</p><span class="coins" title="Coins to spend on blueprints">${w.coins ?? 0} coins</span></div>`);
   const open = w.needs.filter((n) => n.lots_done < n.lots);
   if (!active && open.length) {
     parts.push(`<div class="what-next"><strong>What next?</strong> Pick a need; the plan picks the lot.${w.idle_secs ? ` ${hm(w.idle_secs)} of crew hours are waiting.` : ""}</div>`);
@@ -95,7 +94,7 @@ export function deskHtml(w: World, session: SessionInfo | null): string {
   if (w.auto) parts.push(`<div class="small muted">Until you choose, the plan builds itself in order.</div>`);
   parts.push(goalsHtml(w, active));
   const next = w.next_needs?.length ? `<div class="small muted">Then the ${TIERS[Math.min(3, w.tier + 1)]}: ${w.next_needs.slice(0, 4).map(escapeHtml).join(", ")}${w.next_needs.length > 4 ? ", …" : ""}</div>` : "";
-  parts.push(`<div class="desk-foot">${next}<span class="row"><button data-action="town">Town</button><button data-action="shop">Blueprints</button></span></div>`);
+  if (next) parts.push(`<div class="desk-foot">${next}</div>`);
   return parts.join("");
 }
 
@@ -215,7 +214,8 @@ function tile(w: World, b: BlueprintInfo, closed: boolean, pic?: BlueprintPic): 
   return `<div class="bp${b.unlocked ? "" : " locked"}${b.owned ? " owned" : ""}">
       ${(() => {
         const url = pic?.(b.id);
-        return url ? `<img class="bp-pic" src="${url}" alt="" width="120" height="90">` : silhouette(b.kind);
+        const lock = b.unlocked ? "" : `<span class="bp-lock">${LOCK}${TIERS[Math.min(3, b.level)]}</span>`;
+        return url ? `<div class="bp-figure"><img class="bp-pic" src="${url}" alt="" width="120" height="90">${lock}</div>` : silhouette(b.kind);
       })()}
       <div class="bp-text">
         <strong>${b.unlocked ? escapeHtml(b.name) : escapeHtml(b.name)}</strong>
@@ -225,7 +225,9 @@ function tile(w: World, b: BlueprintInfo, closed: boolean, pic?: BlueprintPic): 
     </div>`;
 }
 
-/** The shop: this level's blueprints for sale, later ones as locked silhouettes. */
+const LOCK = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`;
+
+/** The shop: this level's blueprints for sale, later ones locked, with the level that opens them. */
 export function shopHtml(w: World, inSession: boolean, pic?: BlueprintPic): string {
   const list = w.blueprints ?? [];
   const closed = inSession ? `<p class="small muted">The shop opens when the session ends.</p>` : "";

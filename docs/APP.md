@@ -20,11 +20,12 @@ this are in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 | Where | What |
 |---|---|
-| HUD | City card (level, progress, condition), the start card (timer / stopwatch, ring dial, profile, stake, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
-| Mayor's desk (`desk.ts`) | Needs, buy plot, design pick, coins, paused sites, "What next?", today's goals, the two sets nearest done, items |
+| HUD | City card (level, progress, condition), the menu under it, the start card (timer / stopwatch, ring dial with 5-minute ticks and a drag handle, profile, stake, Start), the session card (timer, site progress, throttle stage, surrender with the phrase typed by hand) |
+| Menu | Desk, Blueprints, Town hall, then Progress, Letters, sound, Settings. The desk button carries a dot while a need waits to be picked |
+| Mayor's desk (`desk.ts`) | A panel from the menu: needs, buy plot, design pick, coins, paused sites, "What next?", today's goals, the two sets nearest done, items |
 | Town hall | Street upgrades and renames, park decorations, every set begun |
 | Letters (envelope) | The residents' letters, newest first, with a link to the building. An unread dot; what was read is kept in localStorage, and a first run starts with nothing unread |
-| Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels as silhouettes |
+| Shop | Blueprints for sale with pictures (`city/thumbs.ts`); later levels' in colour with a lock and the level that opens them |
 | Deed card | A building's memory, rename, paid repair or a repair kit; hover shows a tag. Picking tests lot rectangles, not meshes |
 | Settings sheet (cog) | Every `config.toml` key: session, site lists per profile, routines and skips, inverted mode, DNS, appearance, backup. Save sends the whole config; loosening shows the 24 h notice. About shows the build: CalVer, commit, commit and build times (`__BUILD__` from the Vite config) |
 | Progress sheet (chart) | Stats (`stats.ts`, pure, tested) and the session log |
