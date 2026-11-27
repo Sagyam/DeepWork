@@ -28,6 +28,7 @@ pub enum Kind {
     CityHall,
     Tower,
     Monument,
+    BusStation,
 }
 
 impl Kind {
@@ -51,6 +52,7 @@ impl Kind {
             Kind::CityHall => "city_hall",
             Kind::Tower => "tower",
             Kind::Monument => "monument",
+            Kind::BusStation => "bus_station",
         }
     }
 
@@ -64,7 +66,7 @@ impl Kind {
             Kind::Square => 180,
             Kind::Apartment | Kind::Park | Kind::Monument => 240,
             Kind::School | Kind::Clinic | Kind::FireStation => 300,
-            Kind::Police | Kind::Library => 360,
+            Kind::Police | Kind::Library | Kind::BusStation => 360,
             Kind::Office => 480,
             Kind::Hospital | Kind::CityHall => 720,
             Kind::Tower => 1500,
@@ -98,7 +100,7 @@ impl Kind {
             | Kind::FireStation
             | Kind::Police
             | Kind::Library => 2,
-            Kind::Office | Kind::Hospital | Kind::CityHall => 3,
+            Kind::Office | Kind::Hospital | Kind::CityHall | Kind::BusStation => 3,
             Kind::Tower => 4,
         }
     }
@@ -466,6 +468,14 @@ pub const NEEDS: &[Need] = &[
         Monument,
         Village,
     ),
+    landmark(
+        "town-bus-station",
+        1,
+        "A bus station",
+        "The bus to the county town stops at a pole by the road, in the rain.",
+        BusStation,
+        Village,
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -705,6 +715,7 @@ fn default_name(need: &Need, n: u32, ordinal: usize) -> String {
         Hospital => "General hospital".into(),
         CityHall => "City hall".into(),
         Monument => "Founders' Column".into(),
+        BusStation => "Union Bus Station".into(),
     }
 }
 
@@ -836,12 +847,13 @@ mod tests {
             ("metro-flats", 6),
             ("metro-shops", 4),
             ("town-monument", 1),
+            ("town-bus-station", 1),
         ];
         let now: Vec<(&str, u32)> = NEEDS.iter().map(|n| (n.id, n.lots)).collect();
         assert_eq!(&now[..shipped.len()], shipped);
         assert_eq!(lots()[0].id, "hamlet-homes-1");
         assert_eq!(lots()[4].id, "hamlet-shops-1");
-        assert_eq!(lots().len(), 72);
+        assert_eq!(lots().len(), 73);
     }
 
     #[test]

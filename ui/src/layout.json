@@ -1283,6 +1283,18 @@
       "owned": false,
       "price": 60,
       "for_sale": false
+    },
+    {
+      "id": "town-bus-station-1",
+      "block": 19,
+      "slot": 6,
+      "cols": 2,
+      "rows": 2,
+      "street": 2,
+      "address": "5 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
     }
   ],
   "neighbourhoods": [

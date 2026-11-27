@@ -255,6 +255,48 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) > 3) furniture(p, "bollard", x, KERB, front - 0.4);
       break;
     }
+    case "l14": {
+      // At the front of its half block: paved round the terminal; behind it
+      // the bus lanes in tarmac round the platform island, entered from the
+      // side street, a crossing from the doors, bays and two buses at them;
+      // lawn and trees behind a hedge along the back.
+      const Z = (y: number) => cz - y; // the site's y in l14_bus.py, before its SHIFT
+      const stone = groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
+      const white = mat(0xe8e4d8, { roughness: 0.7 });
+      const yellow = mat(0xe0b83c, { roughness: 0.7 });
+      p.box(stone, LW - 0.4, KERB, LD - 0.4, 0, 0, cz);
+      const [y0, y1] = [-0.4, 12.4];
+      p.box(asphalt, LW - 0.4, KERB + 0.01, y1 - y0, 0, 0, Z((y0 + y1) / 2));
+      const line = (m: THREE.Material, xa: number, xb: number, ya: number, yb: number) => p.box(m, xb - xa, KERB + 0.016, yb - ya, (xa + xb) / 2, 0, Z((ya + yb) / 2));
+      // A bay box at each bus stop, the crossing between the first two.
+      for (const [xa, xb, ya, yb] of [[-13.6, -1.8, 0.0, 3.0], [1.8, 13.6, 0.0, 3.0], [-12.8, -0.6, 7.0, 10.0], [0.6, 12.8, 7.0, 10.0]]) {
+        const out = ya < 3 ? ya : yb;
+        line(yellow, xa, xb, out - 0.06, out + 0.06);
+        line(yellow, xa - 0.06, xa + 0.06, ya, yb);
+        line(yellow, xb - 0.06, xb + 0.06, ya, yb);
+      }
+      for (let y = -0.1; y < 2.9; y += 1) line(white, -1.6, 1.6, y - 0.25, y + 0.25);
+      // Lane lines at the side street, bollards along the monument's side.
+      line(white, 15.2, 15.35, y0 + 0.4, y1 - 0.4);
+      for (let y = y0 + 0.6; y < y1; y += 2.2) furniture(p, "bollard", -LW / 2 + 0.5, KERB, Z(y));
+      // The buses: one pulled in at bay A, nose west; one at bay D, nose east, to leave.
+      parked(p, -7.7, Z(1.6), -Math.PI / 2, s.seed + 3, KERB, { name: "bus", paint: 6 });
+      parked(p, 6.7, Z(8.4), Math.PI / 2, s.seed + 4, KERB, { name: "bus", paint: 5 });
+      // The back: lawn, a hedge along the lanes, trees.
+      const lb = LD / 2 - 0.2; // the lot's back edge, as a site y
+      p.box(lawn(), LW - 0.4, KERB + 0.06, lb - y1, 0, 0, Z((y1 + lb) / 2));
+      hedge(p, LW - 1.2, KERB + 1.1, 0.6, 0, 0, Z(y1 + 0.4), s.seed + 5);
+      for (let x = -12; x <= 12; x += 6) tree(p, x + (r() - 0.5), Z((y1 + lb) / 2 + 0.6), 0.7 + r() * 0.15, s.seed * 5 + x, KERB, ["linden", "maple", "linden"]);
+      // The front: planters with trees either side of the doors, lamps, bollards along the kerb.
+      for (const sx of [-1, 1]) {
+        planter(p, sx * 7.4, Z(-14.4), s.seed + sx);
+        furniture(p, "lamp_heritage", sx * 5.8, KERB, Z(-15.3));
+        furniture(p, "bench", sx * 10.4, KERB, Z(-12.9), Math.PI);
+      }
+      for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) > 5.5) furniture(p, "bollard", x, KERB, front - 0.4);
+      break;
+    }
     case "a1": {
       // Paved to the pavement, as in town; bins and a wall out back.
       p.box(paving, LOT - 0.4, KERB, LOT - 0.4, 0, 0, cz);
@@ -1091,7 +1133,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "l14", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

@@ -29,12 +29,12 @@ interface Need { id: string; level: number; title: string; words: string; kind: 
 const MIN = 60;
 const BUILD: Record<string, number> = {
   water: 30, power: 30, cottage: 60, shop: 90, workshop: 120, square: 180, apartment: 240, park: 240,
-  school: 300, clinic: 300, fire_station: 300, police: 360, library: 360, office: 480, hospital: 720, city_hall: 720, tower: 1500, monument: 240,
+  school: 300, clinic: 300, fire_station: 300, police: 360, library: 360, office: 480, hospital: 720, city_hall: 720, tower: 1500, monument: 240, bus_station: 360,
 };
 const DESIGNED = new Set(["cottage", "shop", "workshop", "apartment", "office", "tower"]);
 const GRADE: Record<string, number> = {
   water: 0, power: 0, cottage: 0, shop: 1, workshop: 1, square: 1, park: 1, apartment: 2, school: 2, clinic: 2,
-  fire_station: 2, police: 2, library: 2, office: 3, hospital: 3, city_hall: 3, tower: 4, monument: 1,
+  fire_station: 2, police: 2, library: 2, office: 3, hospital: 3, city_hall: 3, tower: 4, monument: 1, bus_station: 3,
 };
 
 const NEEDS: Need[] = [
@@ -70,6 +70,7 @@ const NEEDS: Need[] = [
   { id: "metro-shops", level: 3, title: "Late shops", words: "A city this size should never sleep.", kind: "shop", district: "downtown", lots: 4 },
   // Landmarks, unlocked by level (`landmark()` in plan.rs).
   { id: "town-monument", level: 1, title: "A monument", words: "Drivers come in off the highway without knowing they've arrived.", kind: "monument", district: "village", lots: 1, unlock: true },
+  { id: "town-bus-station", level: 1, title: "A bus station", words: "The bus to the county town stops at a pole by the road, in the rain.", kind: "bus_station", district: "village", lots: 1, unlock: true },
 ];
 
 const BLUEPRINTS: Omit<BlueprintInfo, "owned" | "unlocked" | "built">[] = [
