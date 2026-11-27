@@ -62,7 +62,7 @@ function needRow(w: World, n: NeedInfo, active: SiteInfo | undefined): string {
     act = `<span class="small muted">Needs a blueprint${cheapest ? ` · from ${cheapest.price} coins` : ""}</span><button class="link" data-action="shop">Shop</button>`;
   }
   return `<div class="need${building ? " building" : ""}">
-      <div class="need-head"><strong>${escapeHtml(n.title)}</strong><span class="small muted">${count}${hm(n.build_secs)}${n.lots > 1 ? " each" : ""}</span></div>
+      <div class="need-head"><strong>${escapeHtml(n.title)}</strong><span class="small muted">${n.unlock ? `<span class="tag" title="A landmark: build it whenever you like; the town grows without it">Landmark</span> ` : ""}${count}${hm(n.build_secs)}${n.lots > 1 ? " each" : ""}</span></div>
       <div class="words">“${escapeHtml(n.words)}”</div>
       <div class="need-act">${act}</div>
     </div>`;

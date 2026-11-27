@@ -27,6 +27,7 @@ pub enum Kind {
     Hospital,
     CityHall,
     Tower,
+    Monument,
 }
 
 impl Kind {
@@ -49,6 +50,7 @@ impl Kind {
             Kind::Hospital => "hospital",
             Kind::CityHall => "city_hall",
             Kind::Tower => "tower",
+            Kind::Monument => "monument",
         }
     }
 
@@ -60,7 +62,7 @@ impl Kind {
             Kind::Shop => 90,
             Kind::Workshop => 120,
             Kind::Square => 180,
-            Kind::Apartment | Kind::Park => 240,
+            Kind::Apartment | Kind::Park | Kind::Monument => 240,
             Kind::School | Kind::Clinic | Kind::FireStation => 300,
             Kind::Police | Kind::Library => 360,
             Kind::Office => 480,
@@ -89,7 +91,7 @@ impl Kind {
     pub fn grade(self) -> u32 {
         match self {
             Kind::Water | Kind::Power | Kind::Cottage => 0,
-            Kind::Shop | Kind::Workshop | Kind::Square | Kind::Park => 1,
+            Kind::Shop | Kind::Workshop | Kind::Square | Kind::Park | Kind::Monument => 1,
             Kind::Apartment
             | Kind::School
             | Kind::Clinic
@@ -134,6 +136,9 @@ pub struct Need {
     pub kind: Kind,
     pub district: District,
     pub lots: u32,
+    /// A landmark the level unlocks: open from its level on, for the mayor to
+    /// pick, and never holding back graduation (`docs/GAME.md`).
+    pub unlock: bool,
 }
 
 const fn need(
@@ -153,6 +158,22 @@ const fn need(
         kind,
         district,
         lots,
+        unlock: false,
+    }
+}
+
+/// A landmark of one lot, standing on its site (`layout::SITES`).
+const fn landmark(
+    id: &'static str,
+    level: u32,
+    title: &'static str,
+    words: &'static str,
+    kind: Kind,
+    district: District,
+) -> Need {
+    Need {
+        unlock: true,
+        ..need(id, level, title, words, kind, district, 1)
     }
 }
 
@@ -160,6 +181,7 @@ use District::*;
 use Kind::*;
 
 /// Append-only. Within a level, this is also the default build order.
+/// Landmarks (`unlock`) are appended like the rest, whatever their level.
 pub const NEEDS: &[Need] = &[
     // Hamlet: 10 h.
     need(
@@ -435,6 +457,15 @@ pub const NEEDS: &[Need] = &[
         Downtown,
         4,
     ),
+    // Landmarks, unlocked by level.
+    landmark(
+        "town-monument",
+        1,
+        "A monument",
+        "Drivers come in off the highway without knowing they've arrived.",
+        Monument,
+        Village,
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -673,6 +704,7 @@ fn default_name(need: &Need, n: u32, ordinal: usize) -> String {
         Park => "Memorial park".into(),
         Hospital => "General hospital".into(),
         CityHall => "City hall".into(),
+        Monument => "Founders' Column".into(),
     }
 }
 
@@ -720,7 +752,7 @@ pub fn need_lots(need: usize) -> impl Iterator<Item = &'static Lot> {
 pub fn level_secs(level: u32) -> u64 {
     NEEDS
         .iter()
-        .filter(|n| n.level == level)
+        .filter(|n| n.level == level && !n.unlock)
         .map(|n| n.kind.build_secs() * u64::from(n.lots))
         .sum()
 }
@@ -764,7 +796,8 @@ mod tests {
 
     #[test]
     fn levels_are_in_order() {
-        assert!(NEEDS.windows(2).all(|w| w[0].level <= w[1].level));
+        let needs: Vec<&Need> = NEEDS.iter().filter(|n| !n.unlock).collect();
+        assert!(needs.windows(2).all(|w| w[0].level <= w[1].level));
     }
 
     /// The shipped plan. Appending is fine; anything else reshuffles every
@@ -802,12 +835,13 @@ mod tests {
             ("metro-offices", 6),
             ("metro-flats", 6),
             ("metro-shops", 4),
+            ("town-monument", 1),
         ];
         let now: Vec<(&str, u32)> = NEEDS.iter().map(|n| (n.id, n.lots)).collect();
         assert_eq!(&now[..shipped.len()], shipped);
         assert_eq!(lots()[0].id, "hamlet-homes-1");
         assert_eq!(lots()[4].id, "hamlet-shops-1");
-        assert_eq!(lots().len(), 71);
+        assert_eq!(lots().len(), 72);
     }
 
     #[test]

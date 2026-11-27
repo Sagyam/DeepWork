@@ -26,7 +26,6 @@ Sites from the agreed final layout, in `layout.rs` once each is built.
 
 | Landmark | Site | Unlocks |
 |---|---|---|
-| L7 Monument | half, the west gateway on Main Street | Town |
 | Bus station | half, beside the monument | Town |
 | L12 City park | the City Park block, keeping its spots | City |
 | L8 Museum | whole, north of the Canal Quarter | City |
@@ -37,9 +36,8 @@ Sites from the agreed final layout, in `layout.rs` once each is built.
 | L13 Stadium | 2 x 2 blocks south of Highgate, by the river | Metropolis |
 | Airport | off the plan, across the river by the highway | Metropolis |
 
-- **Unlocks, not needs**: a landmark opens at its level and stays open,
-  and doesn't hold back graduation. A new need in a level a ledger has
-  passed would undo its graduation on the next fold.
+- Each is an unlock (`landmark()` in `plan.rs`, rules in
+  [GAME.md](GAME.md#the-ground)), on a site in `SITES`, with a model.
 - **Double and 2 x 2 sites** need new rows of blocks and streets that end
   at the site (the renderer draws a road round every block today).
 - Worth weighing later: a marina on the river, a courthouse by city hall,
