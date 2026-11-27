@@ -71,9 +71,17 @@ blocks group into named neighbourhoods (`NEIGHBOURHOODS`).
 
 - **Landmark sites** (`SITES`): a landmark stands on several slots of a
   block, both rows deep: a half block (2 x 2) or a whole one. City hall and
-  the town square share the Civic Centre block north of Church Hill. A
+  the town square share the Civic Centre block north of Church Hill; the
+  monument greets the highway at Westgate, the west end of Main Street. A
   landmark still takes its turn in its district's slots, so moving one to
   a site moves no other lot.
+
+- **Landmarks unlock, they aren't needs** (`landmark()` in `plan.rs`): one
+  opens at its level, stays open in every level after, and never holds back
+  graduation (as a need, one added to a level a ledger has passed would undo
+  its graduation). The plan never builds one itself; the mayor picks it. It counts
+  toward its neighbourhood's set, not its street's, so a landmark added
+  later never takes a finished street back.
 
 - **Land**: the first plot is free; every other one is bought, by hand
   (`BuyLand`). A site only starts on bought land; until then focus waits

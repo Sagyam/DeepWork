@@ -119,6 +119,10 @@ const E1_FL = 3.9;
 const H1_H = 3.6;
 const L5_G = 1.4 + 4.8;
 const L5_FL = 4.4;
+// The monument's piece bases (l7_monument.py): the shaft's foot, its middle, the capital.
+const L7_SHAFT = 6.1;
+const L7_MID = 15.05;
+const L7_CAP = 24.0;
 const E2_G = 4.4;
 const E2_FL = 3.7;
 const E3_TOP = 1.3 + 6.0;
@@ -748,6 +752,29 @@ export const DEFS: Record<string, RealDef> = {
     walls: [14.4, 10, 0, -1.675],
     // On its half block, a forecourt in front and a garden behind.
     siteFront: 9.5,
+  },
+  l7: {
+    id: "l7",
+    kind: "landmark",
+    style: "monument",
+    // The bottom step; the column stands in the middle of it.
+    w: 8.8,
+    d: 8.8,
+    front: 4,
+    floors: () => 3,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "base", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "lower", y: L7_SHAFT }] : []),
+      ...(floors > 2 ? [{ piece: "upper", y: L7_MID }] : []),
+      ...(roof ? [{ piece: "top", y: L7_CAP }] : []),
+    ],
+    top: (floors) => [0, L7_SHAFT, L7_MID, L7_CAP][floors] ?? L7_CAP,
+    // The tip of the flame.
+    height: () => L7_CAP + 7.5,
+    debris: 0xd8d0c0,
+    walls: [4.4, 4.4, 0, 0],
+    // In the middle of its half block, a plaza all round.
+    siteFront: 11.6,
   },
   e2: {
     id: "e2",
@@ -2548,6 +2575,13 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     case "clock":
       m = plain(0xf2efe6, 0.35, 0, { emissive: 0xfff0c8, emissiveIntensity: 0 });
       if (damage < 2) m.userData.night = 1.2;
+      break;
+    // The monument (l7_monument.py): statuary bronze gone brown-green, and
+    // the gilt urn and flame, floodlit at night.
+    case "statuary": m = w(plain(0x6a5e44, 0.55, 0.7), 1.2); break;
+    case "gilt":
+      m = plain(0xf0c060, 0.34, 1, { emissive: 0xffc870, emissiveIntensity: 0 });
+      if (damage < 2) m.userData.night = 0.5;
       break;
     // The police station (e2_police.py): the blue lamp, lit at night; the flag.
     case "bluelamp":

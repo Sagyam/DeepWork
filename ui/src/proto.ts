@@ -298,6 +298,8 @@ export interface NeedInfo {
   fits_locked: string[];
   /** The next lot's land, when not bought yet: what it costs. */
   land_price?: number | null;
+  /** A landmark the level unlocks: it doesn't count toward graduation. */
+  unlock?: boolean;
 }
 
 export interface BlueprintInfo {

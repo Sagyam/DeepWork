@@ -24,17 +24,17 @@ const GOALS = [
 ];
 const ITEMS: Record<string, string> = { repair_kit: "Repair kit", hired_help: "Hired help", master_crew: "Master crew" };
 
-interface Need { id: string; level: number; title: string; words: string; kind: string; district: string; lots: number }
+interface Need { id: string; level: number; title: string; words: string; kind: string; district: string; lots: number; unlock?: boolean }
 
 const MIN = 60;
 const BUILD: Record<string, number> = {
   water: 30, power: 30, cottage: 60, shop: 90, workshop: 120, square: 180, apartment: 240, park: 240,
-  school: 300, clinic: 300, fire_station: 300, police: 360, library: 360, office: 480, hospital: 720, city_hall: 720, tower: 1500,
+  school: 300, clinic: 300, fire_station: 300, police: 360, library: 360, office: 480, hospital: 720, city_hall: 720, tower: 1500, monument: 240,
 };
 const DESIGNED = new Set(["cottage", "shop", "workshop", "apartment", "office", "tower"]);
 const GRADE: Record<string, number> = {
   water: 0, power: 0, cottage: 0, shop: 1, workshop: 1, square: 1, park: 1, apartment: 2, school: 2, clinic: 2,
-  fire_station: 2, police: 2, library: 2, office: 3, hospital: 3, city_hall: 3, tower: 4,
+  fire_station: 2, police: 2, library: 2, office: 3, hospital: 3, city_hall: 3, tower: 4, monument: 1,
 };
 
 const NEEDS: Need[] = [
@@ -68,6 +68,8 @@ const NEEDS: Need[] = [
   { id: "metro-offices", level: 3, title: "More offices", words: "Start-ups share desks in the library.", kind: "office", district: "downtown", lots: 6 },
   { id: "metro-flats", level: 3, title: "More apartments", words: "People commute in from three towns away.", kind: "apartment", district: "downtown", lots: 6 },
   { id: "metro-shops", level: 3, title: "Late shops", words: "A city this size should never sleep.", kind: "shop", district: "downtown", lots: 4 },
+  // Landmarks, unlocked by level (`landmark()` in plan.rs).
+  { id: "town-monument", level: 1, title: "A monument", words: "Drivers come in off the highway without knowing they've arrived.", kind: "monument", district: "village", lots: 1, unlock: true },
 ];
 
 const BLUEPRINTS: Omit<BlueprintInfo, "owned" | "unlocked" | "built">[] = [
@@ -230,7 +232,8 @@ export class MockCity {
   }
 
   private open(ni: number) {
-    return NEEDS[ni].level === this.level && this.nextLot(ni) !== null;
+    const n = NEEDS[ni];
+    return (n.unlock ? n.level <= this.level : n.level === this.level) && this.nextLot(ni) !== null;
   }
 
   private owns(i: number): boolean {
@@ -240,7 +243,7 @@ export class MockCity {
 
   private autoPick(): number | null {
     for (const [ni, n] of NEEDS.entries()) {
-      if (!this.open(ni) || !this.owns(this.nextLot(ni)!)) continue;
+      if (n.unlock || !this.open(ni) || !this.owns(this.nextLot(ni)!)) continue;
       let design: string | null = null;
       if (DESIGNED.has(n.kind)) {
         const own = BLUEPRINTS.find((b) => fits(b, n) && this.owned.has(b.id));
@@ -296,7 +299,7 @@ export class MockCity {
     if (!["cottage", "apartment", "shop", "workshop", "office", "tower"].includes(kind)) {
       this.letter(ts, "opened", `${this.nameOf(i, design)} opened this week. It feels like the town is looking after us.`, null, i);
     }
-    while (this.level < 4 && NEEDS.every((n, ni) => n.level !== this.level || this.nextLot(ni) === null)) {
+    while (this.level < 4 && NEEDS.every((n, ni) => n.unlock || n.level !== this.level || this.nextLot(ni) === null)) {
       this.level++;
       this.history.push({ ts, kind: "graduated", cause: "completed", session_id: sessionId, plots: [], ruined: [] });
     }
@@ -424,9 +427,9 @@ export class MockCity {
 
   /** Collection sets, as the daemon's `Set`: streets, then neighbourhoods, with lots. */
   private sets(): SetInfo[] {
-    const of = (test: (l: Layout["lots"][number]) => boolean) => LAYOUT.lots.flatMap((l, i) => (test(l) ? [i] : []));
+    const of = (test: (l: Layout["lots"][number], i: number) => boolean) => LAYOUT.lots.flatMap((l, i) => (test(l, i) ? [i] : []));
     const all = [
-      ...LAYOUT.streets.map((s, si) => ({ id: `street:${s.id}`, kind: "street" as const, name: this.streetNames.get(si) ?? s.name, lots: of((l) => l.street === si) })),
+      ...LAYOUT.streets.map((s, si) => ({ id: `street:${s.id}`, kind: "street" as const, name: this.streetNames.get(si) ?? s.name, lots: of((l, i) => l.street === si && !NEEDS[LOTS[i].need].unlock) })),
       ...(LAYOUT.neighbourhoods ?? []).map((h) => ({ id: `hood:${h.id}`, kind: "neighbourhood" as const, name: h.name, lots: of((l) => h.blocks.includes(l.block)) })),
     ];
     return all
@@ -553,7 +556,7 @@ export class MockCity {
     let design = site !== null ? this.sites.get(site)!.design : null;
     let done = site !== null ? this.sites.get(site)!.done : 0;
     if (site === null && !this.manual) {
-      const ni = NEEDS.findIndex((_, ni) => this.open(ni) && this.land.has(this.nextLot(ni)!));
+      const ni = NEEDS.findIndex((n, ni) => !n.unlock && this.open(ni) && this.land.has(this.nextLot(ni)!));
       if (ni >= 0) {
         site = this.nextLot(ni);
         design = DESIGNED.has(NEEDS[ni].kind) ? (BLUEPRINTS.find((b) => fits(b, NEEDS[ni]) && this.owned.has(b.id))?.id ?? null) : null;
@@ -572,7 +575,7 @@ export class MockCity {
 
   world(now: number, construction: Construction | null): World {
     const level = Math.min(this.level, 4);
-    const levelSecs = (l: number) => NEEDS.filter((n) => n.level === l).reduce((a, n) => a + BUILD[n.kind] * MIN * n.lots, 0);
+    const levelSecs = (l: number) => NEEDS.filter((n) => n.level === l && !n.unlock).reduce((a, n) => a + BUILD[n.kind] * MIN * n.lots, 0);
     let floor = 0;
     for (let l = 0; l < level; l++) floor += levelSecs(l);
     const plots: Plot[] = [...this.built.entries()].sort((a, b) => a[0] - b[0]).map(([i, b]) => {
@@ -588,7 +591,7 @@ export class MockCity {
       index: i, lot: LOTS[i].id, need: NEEDS[LOTS[i].need].id, name: this.nameOf(i, s.design), kind: NEEDS[LOTS[i].need].kind,
       design: s.design, done_secs: s.done, build_secs: buildSecs(i), active: this.active === i, seed: i * 7919 + 13,
     })).sort((a, b) => Number(b.active) - Number(a.active));
-    const needs: NeedInfo[] = NEEDS.map((n, ni) => ({ n, ni })).filter(({ n }) => n.level === level).map(({ n, ni }) => {
+    const needs: NeedInfo[] = NEEDS.map((n, ni) => ({ n, ni })).filter(({ n, ni }) => n.level === level || (n.unlock && this.open(ni))).map(({ n, ni }) => {
       const next = this.nextLot(ni);
       return {
         id: n.id, title: n.title, words: n.words, kind: n.kind, district: n.district, build_secs: BUILD[n.kind] * MIN,
@@ -597,6 +600,7 @@ export class MockCity {
         fits: BLUEPRINTS.filter((b) => fits(b, n) && this.owned.has(b.id)).map((b) => b.id),
         fits_locked: BLUEPRINTS.filter((b) => fits(b, n) && !this.owned.has(b.id)).map((b) => b.id),
         land_price: next !== null && !this.land.has(next) ? this.landPrice(next) : null,
+        unlock: !!n.unlock,
       };
     });
     return {
@@ -612,7 +616,7 @@ export class MockCity {
       coins: this.coins(),
       coins_earned: this.earned,
       needs,
-      next_needs: NEEDS.filter((n) => n.level === level + 1).map((n) => n.title),
+      next_needs: NEEDS.filter((n) => n.level === level + 1 && !n.unlock).map((n) => n.title),
       blueprints: BLUEPRINTS.map((b) => ({ ...b, owned: this.owned.has(b.id), unlocked: b.level <= level, built: plots.filter((p) => p.design === b.id).length })),
       sites,
       idle_secs: this.idle,
