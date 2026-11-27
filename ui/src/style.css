@@ -116,6 +116,7 @@ code { font-family: var(--font-mono); }
 #menu button { position: relative; }
 #menu .dot { position: absolute; top: 5px; right: 5px; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); box-shadow: 0 0 0 2px var(--card); }
 #menu .dot[hidden] { display: none; }
+#menu .menu-sep { width: 1px; margin: 6px 3px; background: var(--border); }
 .letters { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .letter { padding: 12px 14px; border-radius: 10px; background: var(--background); border: 1px solid var(--border); }
 .letter.fresh { border-color: color-mix(in oklab, var(--brand) 55%, var(--border)); background: var(--brand-soft); }
@@ -237,7 +238,13 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 .clockdial.dim { cursor: default; }
 .clockdial .track { fill: none; stroke: color-mix(in srgb, var(--brand) 22%, transparent); stroke-width: 10; }
 .clockdial .fill { fill: none; stroke: var(--brand); stroke-width: 10; stroke-linecap: round; }
-.clockdial .readout { fill: var(--foreground); text-anchor: middle; dominant-baseline: central; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
+.clockdial .tick { stroke: color-mix(in srgb, var(--muted-foreground) 45%, transparent); stroke-width: 1; stroke-linecap: round; }
+.clockdial .tick.major { stroke: var(--muted-foreground); stroke-width: 1.6; }
+.clockdial .mark { fill: var(--muted-foreground); font: 500 9.5px/1 var(--font-display); text-anchor: middle; }
+.clockdial .knob { fill: var(--card); stroke: var(--brand); stroke-width: 3; filter: drop-shadow(0 1px 2px rgb(0 0 0 / 0.25)); cursor: grab; }
+.clockdial .knob-core { fill: var(--brand); pointer-events: none; }
+.clockdial:active .knob { cursor: grabbing; }
+.clockdial .readout { fill: var(--foreground); text-anchor: middle; font-family: var(--font-display); font-variant-numeric: tabular-nums; }
 .clockdial .readout .num { font-size: 40px; font-weight: 500; }
 .clockdial .readout .num.min { fill: var(--brand); }
 .clockdial .readout .unit { font-size: 14px; fill: var(--muted-foreground); }
@@ -385,7 +392,6 @@ dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; ma
 }
 
 /* The mayor's desk (desk.ts): residents' needs, sites, the shop, deeds. */
-#desk { max-height: calc(100vh - 240px); overflow-y: auto; width: 340px; }
 #desk .eyebrow { margin: 0; }
 .desk-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .coins { font: 600 13px/1 var(--font-display); color: var(--brand); }
@@ -448,13 +454,15 @@ dialog.panel > .error { margin: 0 20px 14px; }
 .bp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
 .bp { display: flex; gap: 10px; padding: 10px; border-radius: 10px; background: var(--background); border: 1px solid var(--border); }
 .bp .sil { flex: none; fill: color-mix(in oklab, var(--brand) 25%, transparent); stroke: var(--brand); stroke-width: 1.2; }
-.bp.locked { opacity: 0.6; }
+.bp.locked { background: color-mix(in oklab, var(--muted) 45%, var(--background)); }
 .bp.locked .sil { fill: var(--muted); stroke: var(--muted-foreground); }
 .bp:has(.bp-pic) { flex-direction: column; }
 .bp .bp-pic { flex: none; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: contain; border-radius: 6px; background: color-mix(in oklab, var(--brand) 6%, transparent); }
-/* A locked design shows as its true silhouette: the model's outline in shadow. */
-.bp.locked .bp-pic { filter: brightness(0); opacity: 0.28; }
-.dark .bp.locked .bp-pic { filter: brightness(0) invert(1); opacity: 0.22; }
+.bp-figure { position: relative; }
+.bp-figure .bp-pic { display: block; }
+/* A locked design shows in full, a little quieter, with the level that opens it. */
+.bp.locked .bp-pic { filter: saturate(0.8); opacity: 0.9; }
+.bp-lock { position: absolute; top: 6px; left: 6px; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; font: 600 11px/1.4 var(--font-display); color: var(--muted-foreground); background: color-mix(in oklab, var(--card) 88%, transparent); border: 1px solid var(--border); }
 .bp.locked strong { color: var(--muted-foreground); }
 .bp-text { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .bp-state { margin-top: 6px; }

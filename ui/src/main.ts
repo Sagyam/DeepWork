@@ -150,7 +150,7 @@ function liveIdle(st: Status): string {
     parts.push(`<div class="muted">No session running.</div>`);
   }
   if (world?.needs && !world.auto && !world.sites?.some((s) => s.active) && world.needs.some((n) => n.lots_done < n.lots)) {
-    parts.push(`<div class="small muted">Nothing is under construction: pick a need on the desk first, or this session banks crew hours.</div>`);
+    parts.push(`<div class="small muted">Nothing is under construction: <button class="link" data-action="desk">pick a need</button> first, or this session banks crew hours.</div>`);
   }
   const next = st.upcoming.find((u) => !u.skipped);
   if (next) {
@@ -194,6 +194,12 @@ function dialReadout(mins: number): string {
   return `${num(h)}${unit("h ")}${num(String(m).padStart(2, "0"), " min")}${unit("m")}`;
 }
 
+/** The readout sits on its alphabetic baseline, this far below the centre:
+ * half the digits' height (0.7 em of Space Grotesk at 40 px), so the digits
+ * themselves are centred. `dominant-baseline: central` centres the font's em
+ * box instead, and WebKit and Chromium place that differently. */
+const READOUT_DY = 14;
+
 /** The timer dial as inline SVG: a pale ring that fills in deeper as it is
  * dragged round. Stopwatch mode keeps the same box, so nothing shifts. */
 function clockDial(): string {
@@ -208,13 +214,35 @@ function clockDial(): string {
         stroke-dasharray="${filled.toFixed(2)} ${len.toFixed(2)}"/>`
     : "";
   const readout = dim ? `<tspan class="num">0</tspan><tspan class="unit"> min</tspan>` : dialReadout(startMins);
+  // A point at `mins` round the ring, `rr` from the centre.
+  const at = (mins: number, rr: number) => {
+    const a = (mins / MAX_MINS) * 2 * Math.PI;
+    return [c + Math.sin(a) * rr, c - Math.cos(a) * rr].map((v) => v.toFixed(2));
+  };
+  // A tick every 5 minutes inside the ring, longer every half hour; the hours named.
+  let marks = "";
+  for (let m = 0; m < MAX_MINS; m += STEP_MINS) {
+    const major = m % 30 === 0;
+    const [x0, y0] = at(m, major ? 68 : 71.5);
+    const [x1, y1] = at(m, 75.5);
+    marks += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" class="tick${major ? " major" : ""}"/>`;
+  }
+  for (const h of [1, 2, 3]) {
+    const [x, y] = at(h * 60, 59);
+    marks += `<text x="${x}" y="${(Number(y) + 3.3).toFixed(2)}" class="mark">${h}h</text>`;
+  }
+  // The handle at the end of the arc: what to grab and drag.
+  const [kx, ky] = at(startMins, r);
+  const knob = dim ? "" : `<circle cx="${kx}" cy="${ky}" r="8.5" class="knob"/><circle cx="${kx}" cy="${ky}" r="2.6" class="knob-core"/>`;
   return `<svg class="clockdial${dim ? " dim" : ""}" viewBox="0 0 190 190" width="190" height="190" role="slider"
       aria-label="Focus length" aria-valuemin="${MIN_MINS}" aria-valuemax="${MAX_MINS}"
       aria-valuenow="${dim ? 0 : startMins}" aria-valuetext="${dim ? "0 minutes, stopwatch" : hm(startMins * 60)}"
       aria-disabled="${dim}" tabindex="${dim ? -1 : 0}">
       <circle cx="${c}" cy="${c}" r="${r}" class="track"/>
+      ${marks}
       ${fill}
-      <text x="${c}" y="${c}" class="readout">${readout}</text>
+      ${knob}
+      <text x="${c}" y="${c + READOUT_DY}" class="readout">${readout}</text>
     </svg>`;
 }
 
@@ -330,6 +358,8 @@ sessionCard.addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
   if (!btn) return;
   switch (btn.dataset.action) {
+    case "desk":
+      return openDesk();
     case "mode":
       startMode = btn.dataset.mode as StartMode;
       return redrawControls();
@@ -356,14 +386,34 @@ sessionCard.addEventListener("click", (ev) => {
 // The mayor's desk, the shop and the deed.
 
 let deskKey = "";
+const deskDialog = $("#deskpanel") as HTMLDialogElement;
+
+/** The desk's menu button carries a dot while there is a choice to make: the
+ * mayor has taken over from the plan, no site is under way, no session runs,
+ * and a need is still open. */
+function deskDot() {
+  const w = world;
+  const pick = !!w?.needs && !w.auto && !status?.session && !w.sites?.some((s) => s.active) && w.needs.some((n) => n.lots_done < n.lots);
+  $("#desk-toggle .dot").hidden = !pick;
+}
+
 function renderDesk(force = false) {
   if (!world) return;
+  deskDot();
   const s = status?.session ?? null;
+  $("#desk-title").textContent = s ? "Under construction" : "The residents ask";
+  $("#desk-coins").textContent = `You have ${world.coins ?? 0} coins.`;
   // Rebuilt when what it shows changes, so an open blueprint pick survives polls.
   const key = JSON.stringify([world.needs, world.sites, world.coins, world.idle_secs, world.construction?.index, world.goals, world.inventory, s?.state, s ? Math.floor(s.elapsed_secs / 30) : 0]);
   if (!force && key === deskKey) return;
   deskKey = key;
   $("#desk").innerHTML = deskHtml(world, s);
+}
+
+function openDesk() {
+  $("#desk-error").textContent = "";
+  renderDesk(true);
+  if (!deskDialog.open) deskDialog.showModal();
 }
 
 const shopDialog = $("#shop") as HTMLDialogElement;
@@ -479,18 +529,18 @@ $("#desk").addEventListener("click", (ev) => {
     case "choose": {
       const need = btn.dataset.need!;
       const pick = $("#desk").querySelector<HTMLSelectElement>(`select[data-need-design="${CSS.escape(need)}"]`);
-      return decide({ type: "choose", need, blueprint: pick?.value ?? null }, "#action-error");
+      return decide({ type: "choose", need, blueprint: pick?.value ?? null }, "#desk-error");
     }
     case "pause":
-      return decide({ type: "pause" }, "#action-error");
+      return decide({ type: "pause" }, "#desk-error");
     case "shop":
       return openShop();
     case "town":
       return openTown();
     case "buy-land":
-      return decide({ type: "buy_land", lot: btn.dataset.lot! }, "#action-error");
+      return decide({ type: "buy_land", lot: btn.dataset.lot! }, "#desk-error");
     case "use-item":
-      return decide({ type: "use_item", item: btn.dataset.item!, lot: null }, "#action-error");
+      return decide({ type: "use_item", item: btn.dataset.item!, lot: null }, "#desk-error");
   }
 });
 
@@ -511,7 +561,7 @@ townDialog.addEventListener("submit", (ev) => {
   void decide({ type: "rename_street", street: form.dataset.street!, name }, "#town-error", renderTown);
 });
 
-for (const d of [shopDialog, deedDialog, townDialog, lettersDialog]) {
+for (const d of [deskDialog, shopDialog, deedDialog, townDialog, lettersDialog]) {
   d.addEventListener("click", (ev) => {
     if (ev.target === d || (ev.target as HTMLElement).closest("[data-action=close]")) d.close();
   });
@@ -637,11 +687,14 @@ dialog.addEventListener("close", () => {
   }
 });
 
-// Two buttons under the city card: the chart opens Stats and Session logs,
-// the cog opens everything that can be configured.
+// The menu under the city card: the desk, the shop and the town hall, then
+// Stats and Session logs, the letters, sound, and the settings.
 $("#menu").addEventListener("click", (ev) => {
   const btn = (ev.target as HTMLElement).closest("button");
-  if (btn?.dataset.open === "progress") openProgress();
+  if (btn?.dataset.open === "desk") openDesk();
+  else if (btn?.dataset.open === "shop") openShop();
+  else if (btn?.dataset.open === "town") openTown();
+  else if (btn?.dataset.open === "progress") openProgress();
   else if (btn?.dataset.open === "letters") openLetters();
   else if (btn?.dataset.open === "settings") void openSettings("session");
   else if (btn?.dataset.open === "sound") {
