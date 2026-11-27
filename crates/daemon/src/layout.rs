@@ -96,6 +96,7 @@ const SITES: &[(&str, i32, i32, u32, u32)] = &[
     ("city-hall", 1, -2, 4, 2),
     ("town-square", 1, -2, 6, 2),
     ("town-monument", -2, -1, 4, 2),
+    ("town-bus-station", -2, -1, 6, 2),
 ];
 
 /// Blocks kept as open ground: `(x, y, kind, name, level it opens at)`.
@@ -398,6 +399,9 @@ mod tests {
         // The monument greets the road in, on Main Street.
         let monument = site("town-monument").unwrap();
         assert_eq!(STREETS[monument.street].id, "main");
+        // The bus station beside it, on Main Street too.
+        let bus = site("town-bus-station").unwrap();
+        assert_eq!(STREETS[bus.street].id, "main");
     }
 
     #[test]

@@ -26,7 +26,6 @@ Sites from the agreed final layout, in `layout.rs` once each is built.
 
 | Landmark | Site | Unlocks |
 |---|---|---|
-| Bus station | half, beside the monument | Town |
 | L12 City park | the City Park block, keeping its spots | City |
 | L8 Museum | whole, north of the Canal Quarter | City |
 | L9 Theatre | whole, facing Founders' Square | City |

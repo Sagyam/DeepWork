@@ -172,6 +172,8 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
       // The mayor picks the landmarks; the plan never builds them itself.
       city.choose("town-monument", null, t0 - 9000);
       city.complete(240 * 60, t0 - 8000);
+      city.choose("town-bus-station", null, t0 - 7500);
+      city.complete(360 * 60, t0 - 7000);
       scar(0.05);
       break;
     case "ruins":

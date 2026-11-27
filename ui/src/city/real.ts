@@ -123,6 +123,8 @@ const L5_FL = 4.4;
 const L7_SHAFT = 6.1;
 const L7_MID = 15.05;
 const L7_CAP = 24.0;
+/** The bus station's hall parapet (l14_bus.py): the tower piece stands on it. */
+const L14_HALL = 7.6;
 const E2_G = 4.4;
 const E2_FL = 3.7;
 const E3_TOP = 1.3 + 6.0;
@@ -775,6 +777,30 @@ export const DEFS: Record<string, RealDef> = {
     walls: [4.4, 4.4, 0, 0],
     // In the middle of its half block, a plaza all round.
     siteFront: 11.6,
+  },
+  l14: {
+    id: "l14",
+    kind: "landmark",
+    style: "busstation",
+    // The marquee's front to the back of the platform canopy, wing to wing
+    // (l14_bus.py moves itself so this is centred).
+    w: 26,
+    d: 23.8,
+    front: 1.2,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "body", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "shed", y: 0 }] : []),
+      ...(roof ? [{ piece: "tower", y: L14_HALL }] : []),
+    ],
+    top: () => L14_HALL,
+    // The tower's mast.
+    height: () => 18.4,
+    debris: 0xb88c6c,
+    // The hall: the wings are lower than its parapet, where the stumps stand.
+    walls: [12, 9.4, 0, 4.8],
+    // At the front of its half block, the bus lanes and the platform behind.
+    siteFront: 1.2,
   },
   e2: {
     id: "e2",
@@ -1683,6 +1709,23 @@ const stoneNames = new NameSheet(1, 16, 2048, 128, ["THE FIDELITY BUILDING", "CO
 /** Market halls' names, cut the same way in the stone panel over the arch. */
 const marketNames = new NameSheet(1, 16, 2048, 128, ["CORN EXCHANGE", "BUTTER MARKET", "VICTORIA MARKET", "COVERED MARKET", "HIGH STREET MARKET", "MARKET HOUSE", "WOOL EXCHANGE", "THE SHAMBLES"], stoneDraw);
 
+/**
+ * Bus stations' names on the marquee's cream fascia, 2048 x 128 a row for an
+ * 8 x 0.56 m panel: oxblood deco capitals, drawn 1.12 times wide so they
+ * come out in proportion on it.
+ */
+const busNames = new NameSheet(1, 8, 2048, 128, ["UNION BUS STATION", "CENTRAL BUS TERMINAL", "COUNTY COACH STATION", "WESTGATE BUS STATION", "MAIN STREET DEPOT", "INTERCITY TERMINAL", "UNION COACH DEPOT", "TRI-COUNTY BUS STATION"], (g, _x, y0, name) => {
+  const y = y0 + 66;
+  const text = spaced(name.toUpperCase(), 2);
+  const sx = 1.12;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "700 92px Futura, 'Century Gothic', 'Avenir Next', 'DejaVu Sans', sans-serif";
+  g.scale(sx, 1);
+  g.fillStyle = "#8e1c18";
+  g.fillText(text, 1024 / sx, y, 1900 / sx);
+});
+
 /** Filling stations' names for the canopy's fascia, 2048 x 128 a row: white sans capitals with a dark edge, on clear. */
 const stationNames = new NameSheet(1, 8, 2048, 128, ["CROSSROADS SERVICE", "BLUE STAR GASOLINE", "HIGHWAY GARAGE", "PIONEER GAS & OIL", "SUMMIT SERVICE", "MILESTONE GARAGE", "OAK LANE SERVICE", "GOLDEN MILE MOTORS"], (g, _x, y0, name) => {
   const y = y0 + 66;
@@ -1768,6 +1811,7 @@ function namesFor(id: string, role: string): NameSheet | null {
     case "cafename": return cafeNames;
     case "deconame": return decoNames;
     case "stationname": return stationNames;
+    case "busname": return busNames;
     case "stonename": return id === "s9" ? marketNames : stoneNames;
     default: return null;
   }
@@ -2371,6 +2415,13 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     }
     // O5's skin: glass mosaic on the end walls, porcelain-enamel spandrels, the lobby's mural and floor.
+    // The bus station's name on its marquee, lit by the marquee's lamps at night.
+    case "busname": {
+      const t = busNames.texture(cell);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.5, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.5;
+      break;
+    }
     case "mosaic": m = w(pbr("mosaic", [1, 1], { roughness: 0.3, normal: 0.7, color: pick(MOSAICS, paint.wall) }), 0.4); break;
     case "o5panel": m = w(plain(pick(PANELS50, paint.accent), 0.3, 0.1), 0.8); break;
     case "mural": m = w(new THREE.MeshStandardMaterial({ map: tex("mural_col"), roughness: 0.4 }), 0.6); break;
