@@ -169,8 +169,9 @@ fn desk(w: &World) -> String {
                     )
                 }
             };
+            let landmark = if n.unlock { " (landmark)" } else { "" };
             out += &format!(
-                "  {:<14} {} · {}/{} · {} each{design}\n                 \"{}\"\n",
+                "  {:<14} {}{landmark} · {}/{} · {} each{design}\n                 \"{}\"\n",
                 n.id,
                 n.title,
                 n.lots_done,
@@ -345,6 +346,7 @@ mod tests {
                 fits: vec![],
                 fits_locked: vec!["s1".into()],
                 land_price: None,
+                unlock: false,
             }],
             history: vec![WorldEvent {
                 ts: 0,

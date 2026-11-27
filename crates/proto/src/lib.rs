@@ -645,6 +645,9 @@ pub struct NeedInfo {
     /// The next lot's land, when it is not bought yet: what it costs.
     #[serde(default)]
     pub land_price: Option<u64>,
+    /// A landmark the level unlocks: it doesn't count toward graduation.
+    #[serde(default)]
+    pub unlock: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -273,6 +273,16 @@
       "level": 0,
       "open": false,
       "spots": []
+    },
+    {
+      "x": -2,
+      "y": -1,
+      "district": "village",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
     }
   ],
   "streets": [
@@ -1261,6 +1271,18 @@
       "owned": false,
       "price": 500,
       "for_sale": false
+    },
+    {
+      "id": "town-monument-1",
+      "block": 19,
+      "slot": 4,
+      "cols": 2,
+      "rows": 2,
+      "street": 2,
+      "address": "1 Main Street",
+      "owned": false,
+      "price": 60,
+      "for_sale": false
     }
   ],
   "neighbourhoods": [
@@ -1318,6 +1340,13 @@
       "name": "Civic Centre",
       "blocks": [
         18
+      ]
+    },
+    {
+      "id": "westgate",
+      "name": "Westgate",
+      "blocks": [
+        19
       ]
     }
   ]

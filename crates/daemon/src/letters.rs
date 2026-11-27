@@ -175,6 +175,9 @@ pub fn write(about: About, roll: u64) -> String {
             Kind::Square => pick(&[
                 "There's a market in the square on Saturdays now. We meet half our neighbours there before nine.".to_string(),
             ]),
+            Kind::Monument => pick(&[format!(
+                "The column at the end of {street} is finished. Our grandfather made us read every name on the back, and found his own."
+            )]),
             Kind::Park => pick(&[
                 "The new park is the best thing in town. We go every evening, rain or not.".to_string(),
             ]),

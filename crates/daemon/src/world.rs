@@ -278,7 +278,9 @@ impl Set {
             .filter(move |&i| {
                 let p = plan::lots()[i].place;
                 match self {
-                    Set::Street(si) => p.street == si,
+                    // Landmarks count in their neighbourhood only: one
+                    // unlocked later never takes a finished street back.
+                    Set::Street(si) => p.street == si && !need_of(i).unlock,
                     Set::Hood(h) => layout::neighbourhood_of(p.block) == Some(h),
                 }
             })
@@ -968,8 +970,15 @@ impl City {
             .find(|&i| !self.finished(i))
     }
 
+    /// A need of this level not yet met, or a landmark unlocked and not built.
     fn open(&self, ni: usize) -> bool {
-        NEEDS[ni].level == self.level && self.next_lot(ni).is_some()
+        let need = &NEEDS[ni];
+        let level = if need.unlock {
+            need.level <= self.level
+        } else {
+            need.level == self.level
+        };
+        level && self.next_lot(ni).is_some()
     }
 
     fn sites(&self) -> impl Iterator<Item = usize> + '_ {
@@ -1115,7 +1124,9 @@ impl City {
     /// when none is owned and the coins are there.
     fn auto_pick(&mut self) -> Option<usize> {
         for (ni, need) in NEEDS.iter().enumerate() {
-            if !self.open(ni) || !self.next_lot(ni).is_some_and(|l| self.land[l]) {
+            // Landmarks are the mayor's to pick; skipping them also leaves
+            // older ledgers' cities as they were.
+            if need.unlock || !self.open(ni) || !self.next_lot(ni).is_some_and(|l| self.land[l]) {
                 continue;
             }
             let design = if need.kind.designed() {
@@ -1226,7 +1237,7 @@ impl City {
             && NEEDS
                 .iter()
                 .enumerate()
-                .all(|(ni, n)| n.level != self.level || self.next_lot(ni).is_none())
+                .all(|(ni, n)| n.unlock || n.level != self.level || self.next_lot(ni).is_none())
         {
             self.level += 1;
             self.record(
@@ -1638,6 +1649,7 @@ impl City {
             fits: self.owned_fitting(need).map(|b| b.id.to_string()).collect(),
             fits_locked,
             land_price: next.filter(|&i| !self.land[i]).map(|i| self.land_cost(i)),
+            unlock: need.unlock,
         }
     }
 
@@ -1734,12 +1746,12 @@ impl City {
             coins: self.balance(),
             coins_earned: self.coins_earned,
             needs: (0..NEEDS.len())
-                .filter(|&ni| NEEDS[ni].level == level)
+                .filter(|&ni| NEEDS[ni].level == level || (NEEDS[ni].unlock && self.open(ni)))
                 .map(|ni| self.need_info(ni))
                 .collect(),
             next_needs: NEEDS
                 .iter()
-                .filter(|n| n.level == level + 1)
+                .filter(|n| n.level == level + 1 && !n.unlock)
                 .map(|n| n.title.to_string())
                 .collect(),
             blueprints,
@@ -2740,6 +2752,38 @@ mod tests {
             file == json,
             "ui/src/layout.json is stale: run UPDATE_FIXTURES=1 cargo test"
         );
+    }
+
+    #[test]
+    fn a_landmark_opens_at_its_level_and_waits_for_the_mayor() {
+        let monument = || NEEDS.iter().position(|n| n.id == "town-monument").unwrap();
+        // The hamlet doesn't have it yet.
+        let c = City::fold_landed(&daily(2, 180), &TimeZone::UTC);
+        assert_eq!(c.level, 0);
+        assert!(!c.open(monument()));
+        // Auto mode builds the town and graduates past it, never building it.
+        let facts = daily(20, 180);
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
+        assert_eq!(c.level, 2);
+        assert!(c.open(monument()), "still open in the city");
+        assert!(c.next_lot(monument()).is_some_and(|i| !c.lots[i].site));
+        let w = build(
+            &facts,
+            None,
+            Timestamp::from_second(20 * DAY + 10).unwrap(),
+            &TimeZone::UTC,
+        );
+        let need = w.needs.iter().find(|n| n.id == "town-monument").unwrap();
+        assert!(need.unlock && need.lots_done == 0);
+        // The mayor picks it, and focus builds it.
+        let mut facts = facts;
+        facts.push(chose(21 * DAY, "town-monument", None));
+        facts.push(done(21 * DAY + 10, 21, 240));
+        let c = City::fold_landed(&facts, &TimeZone::UTC);
+        assert!(!c.open(monument()), "built");
+        assert_eq!(c.level, 2);
+        // Main Street stays a finished set; Westgate is its own.
+        assert!(c.street_complete(STREETS.iter().position(|s| s.id == "main").unwrap()));
     }
 
     #[test]

@@ -91,6 +91,7 @@ export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string 
   library: { kind: "apartment", style: "library", model: "e3" },
   hospital: { kind: "office", style: "hospital", model: "h2" },
   city_hall: { kind: "landmark", style: "cityhall", model: "l5" },
+  monument: { kind: "landmark", style: "monument", model: "l7" },
 };
 
 /**
@@ -351,6 +352,7 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
   if (style === "police") floors = 2;
   if (style === "library") floors = 1;
   if (style === "cityhall") [w, d, floors] = [10.4, 10.4, 4];
+  if (style === "monument") [w, d, floors] = [8.8, 8.8, 3];
   return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
 }
 

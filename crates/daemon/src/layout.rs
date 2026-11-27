@@ -83,14 +83,20 @@ impl ParkKind {
 const LANDMARK_BLOCKS: &[(i32, i32, District)] = &[
     // North of Church Hill, across Mill Lane: city hall and the town square.
     (1, -2, Civic),
+    // West of Millbrook on Main Street, the way in from the highway: the
+    // monument at the gateway, the bus station beside it.
+    (-2, -1, Village),
 ];
 
 /// Where a landmark stands: `(need, x, y, slot, cols)`. It takes `cols`
 /// slots across both rows from `slot`, and faces the street of `slot`'s
 /// row. Its district's slot list still counts it, so moving a landmark here
 /// moved no other lot.
-const SITES: &[(&str, i32, i32, u32, u32)] =
-    &[("city-hall", 1, -2, 4, 2), ("town-square", 1, -2, 6, 2)];
+const SITES: &[(&str, i32, i32, u32, u32)] = &[
+    ("city-hall", 1, -2, 4, 2),
+    ("town-square", 1, -2, 6, 2),
+    ("town-monument", -2, -1, 4, 2),
+];
 
 /// Blocks kept as open ground: `(x, y, kind, name, level it opens at)`.
 const PARKS: &[(i32, i32, ParkKind, &str, u32)] = &[
@@ -164,6 +170,7 @@ pub const NEIGHBOURHOODS: &[Neighbourhood] = &[
     hood("exchange", "The Exchange", &[(-1, 1), (0, 1), (1, 1)]),
     hood("highgate", "Highgate", &[(0, 2), (1, 2)]),
     hood("civic_centre", "Civic Centre", &[(1, -2)]),
+    hood("westgate", "Westgate", &[(-2, -1)]),
 ];
 
 const fn hood(
@@ -388,6 +395,9 @@ mod tests {
         // City hall faces Mill Lane, toward Church Hill.
         let hall = site("city-hall").unwrap();
         assert_eq!(STREETS[hall.street].id, "mill");
+        // The monument greets the road in, on Main Street.
+        let monument = site("town-monument").unwrap();
+        assert_eq!(STREETS[monument.street].id, "main");
     }
 
     #[test]
