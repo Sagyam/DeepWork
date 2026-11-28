@@ -93,6 +93,7 @@ export const PUBLIC: Record<string, { kind: Kind; style: string; model?: string 
   city_hall: { kind: "landmark", style: "cityhall", model: "l5" },
   monument: { kind: "landmark", style: "monument", model: "l7" },
   bus_station: { kind: "landmark", style: "busstation", model: "l14" },
+  museum: { kind: "landmark", style: "museum", model: "l8" },
 };
 
 /**
@@ -355,6 +356,7 @@ export function shape(grade: number, seed: number, look?: { kind: Kind; style: s
   if (style === "cityhall") [w, d, floors] = [10.4, 10.4, 4];
   if (style === "monument") [w, d, floors] = [8.8, 8.8, 3];
   if (style === "busstation") [w, d, floors] = [26, 23.8, 2];
+  if (style === "museum") [w, d, floors] = [54.3, 24.2, 2];
   return { kind, style, grade: g, w, d, floors, floorH, height: floors * floorH, wall, accent, seed: own };
 }
 

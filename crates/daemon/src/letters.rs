@@ -181,6 +181,9 @@ pub fn write(about: About, roll: u64) -> String {
             Kind::BusStation => pick(&[format!(
                 "We took the first bus out of the new station on {street} to see Grandma. The clock on its tower was right to the minute."
             )]),
+            Kind::Museum => pick(&[format!(
+                "The museum on {street} opened today. Our daughter stood in front of one painting for an hour and asked to come back tomorrow."
+            )]),
             Kind::Park => pick(&[
                 "The new park is the best thing in town. We go every evening, rain or not.".to_string(),
             ]),

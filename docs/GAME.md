@@ -73,7 +73,8 @@ blocks group into named neighbourhoods (`NEIGHBOURHOODS`).
   block, both rows deep: a half block (2 x 2) or a whole one. City hall and
   the town square share the Civic Centre block north of Church Hill; the
   monument and the bus station greet the highway at Westgate, the west end
-  of Main Street. A landmark still takes its turn in its district's slots,
+  of Main Street; the museum fills Museum Mile, across Mill Lane from the
+  Canal Quarter. A landmark still takes its turn in its district's slots,
   so moving one to a site moves no other lot.
 
 - **Landmarks unlock, they aren't needs** (`landmark()` in `plan.rs`): one
