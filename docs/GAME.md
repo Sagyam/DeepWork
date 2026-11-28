@@ -74,7 +74,8 @@ blocks group into named neighbourhoods (`NEIGHBOURHOODS`).
   the town square share the Civic Centre block north of Church Hill; the
   monument and the bus station greet the highway at Westgate, the west end
   of Main Street; the museum fills Museum Mile, across Mill Lane from the
-  Canal Quarter. A landmark still takes its turn in its district's slots,
+  Canal Quarter; the theatre fills Theatreland, its address on Commerce
+  Avenue, its front to Founders' Square. A landmark still takes its turn in its district's slots,
   so moving one to a site moves no other lot.
 
 - **Landmarks unlock, they aren't needs** (`landmark()` in `plan.rs`): one

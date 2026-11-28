@@ -128,6 +128,9 @@ const L14_HALL = 7.6;
 /** The museum's pieces (l8_museum.py): the upper storey's base, the capitals' tops. */
 const L8_G = 7.0;
 const L8_TOP = 12.0;
+/** The theatre's pieces (l9_theatre.py): the loggia's floor, the columns' tops. */
+const L9_G = 6.0;
+const L9_UP = 14.0;
 const E2_G = 4.4;
 const E2_FL = 3.7;
 const E3_TOP = 1.3 + 6.0;
@@ -804,6 +807,31 @@ export const DEFS: Record<string, RealDef> = {
     walls: [53.2, 16.6, 0, -3.47],
     // On its whole block: a forecourt and lawns in front, a hedge behind.
     siteFront: 4.4,
+  },
+  l9: {
+    id: "l9",
+    kind: "landmark",
+    style: "theatre",
+    // Turned a quarter round: its front (the canopy) to the site's +x, which
+    // on its block is west, to Founders' Square; the dock to -x. Sizes are
+    // the site's: canopy to dock along x, the foyer's cornice across z.
+    w: 51.2,
+    d: 27.1,
+    front: 0.6,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0, ry: Math.PI / 2 }] : []),
+      ...(floors > 1 ? [{ piece: "upper", y: L9_G, ry: Math.PI / 2 }] : []),
+      ...(roof ? [{ piece: "roof", y: L9_UP, ry: Math.PI / 2 }] : []),
+    ],
+    top: (floors) => (floors > 1 ? L9_UP : L9_G),
+    // The gilt figure on the fly tower's gable.
+    height: () => 35,
+    debris: 0xd4ccbc,
+    // The foyer, drum and fly tower, the site's way round.
+    walls: [44, 24, 0.2, 0],
+    // In the middle of its block, sides to the two avenues.
+    siteFront: 2.45,
   },
   l14: {
     id: "l14",
@@ -1753,6 +1781,19 @@ const busNames = new NameSheet(1, 8, 2048, 128, ["UNION BUS STATION", "CENTRAL B
   g.fillText(text, 1024 / sx, y, 1900 / sx);
 });
 
+/**
+ * Theatres' names, 2048 x 128 a row for a 16:1 strip: gilt serif capitals,
+ * on the canopy's fascia and the attic's black panel (l9_theatre.py).
+ */
+const theatreNames = new NameSheet(1, 8, 2048, 128, ["GRAND THEATRE", "THEATRE ROYAL", "OPERA HOUSE", "PALACE THEATRE", "THE LYCEUM", "EMPIRE THEATRE", "THE ALHAMBRA", "CIVIC THEATRE"], (g, _x, y0, name) => {
+  const y = y0 + 68;
+  g.textAlign = "center";
+  g.textBaseline = "middle";
+  g.font = "600 88px Didot, 'Bodoni 72', 'Playfair Display', Georgia, 'DejaVu Serif', serif";
+  g.fillStyle = "#e6c066";
+  g.fillText(spaced(name.toUpperCase(), 3), 1024, y, 1880);
+});
+
 /** Filling stations' names for the canopy's fascia, 2048 x 128 a row: white sans capitals with a dark edge, on clear. */
 const stationNames = new NameSheet(1, 8, 2048, 128, ["CROSSROADS SERVICE", "BLUE STAR GASOLINE", "HIGHWAY GARAGE", "PIONEER GAS & OIL", "SUMMIT SERVICE", "MILESTONE GARAGE", "OAK LANE SERVICE", "GOLDEN MILE MOTORS"], (g, _x, y0, name) => {
   const y = y0 + 66;
@@ -1839,6 +1880,7 @@ function namesFor(id: string, role: string): NameSheet | null {
     case "deconame": return decoNames;
     case "stationname": return stationNames;
     case "busname": return busNames;
+    case "theatrename": return theatreNames;
     case "stonename": return id === "s9" ? marketNames : stoneNames;
     default: return null;
   }
@@ -2443,6 +2485,13 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
     }
     // O5's skin: glass mosaic on the end walls, porcelain-enamel spandrels, the lobby's mural and floor.
     // The bus station's name on its marquee, lit by the marquee's lamps at night.
+    // The theatre's name, gilt, lit by the canopy's bulbs and floodlights at night.
+    case "theatrename": {
+      const t = theatreNames.texture(cell);
+      m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.35, metalness: 0.6, emissive: 0xffd890, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+      if (damage < 2) m.userData.night = 0.6;
+      break;
+    }
     case "busname": {
       const t = busNames.texture(cell);
       m = new THREE.MeshStandardMaterial({ map: t, alphaTest: 0.5, roughness: 0.5, emissive: 0xffffff, emissiveMap: t, emissiveIntensity: 0, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });

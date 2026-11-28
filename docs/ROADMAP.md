@@ -27,7 +27,6 @@ Sites from the agreed final layout, in `layout.rs` once each is built.
 | Landmark | Site | Unlocks |
 |---|---|---|
 | L12 City park | the City Park block, keeping its spots | City |
-| L9 Theatre | whole, facing Founders' Square | City |
 | L10 Cathedral | whole, beside the Green | City |
 | L11 Railway station | double, at the head of Station Road; tracks along the north edge | City |
 | University | double, north-west, round a quad | Metropolis |
