@@ -293,6 +293,16 @@
       "level": 0,
       "open": false,
       "spots": []
+    },
+    {
+      "x": -1,
+      "y": 2,
+      "district": "downtown",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
     }
   ],
   "streets": [
@@ -1317,6 +1327,18 @@
       "owned": false,
       "price": 200,
       "for_sale": false
+    },
+    {
+      "id": "city-theatre-1",
+      "block": 21,
+      "slot": 0,
+      "cols": 4,
+      "rows": 2,
+      "street": 4,
+      "address": "10 Commerce Avenue",
+      "owned": false,
+      "price": 500,
+      "for_sale": false
     }
   ],
   "neighbourhoods": [
@@ -1388,6 +1410,13 @@
       "name": "Museum Mile",
       "blocks": [
         20
+      ]
+    },
+    {
+      "id": "theatreland",
+      "name": "Theatreland",
+      "blocks": [
+        21
       ]
     }
   ]

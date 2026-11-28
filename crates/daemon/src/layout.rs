@@ -88,6 +88,9 @@ const LANDMARK_BLOCKS: &[(i32, i32, District)] = &[
     (-2, -1, Village),
     // East of the Civic Centre, across Foundry Lane: the museum, the whole block.
     (2, -2, Civic),
+    // East of Founders' Square, across Baker Street: the theatre, the whole
+    // block. It stands side on to Commerce Avenue, its front to the square.
+    (-1, 2, Downtown),
 ];
 
 /// Where a landmark stands: `(need, x, y, slot, cols)`. It takes `cols`
@@ -100,6 +103,7 @@ const SITES: &[(&str, i32, i32, u32, u32)] = &[
     ("town-monument", -2, -1, 4, 2),
     ("town-bus-station", -2, -1, 6, 2),
     ("city-museum", 2, -2, 4, 4),
+    ("city-theatre", -1, 2, 0, 4),
 ];
 
 /// Blocks kept as open ground: `(x, y, kind, name, level it opens at)`.
@@ -176,6 +180,7 @@ pub const NEIGHBOURHOODS: &[Neighbourhood] = &[
     hood("civic_centre", "Civic Centre", &[(1, -2)]),
     hood("westgate", "Westgate", &[(-2, -1)]),
     hood("museum_mile", "Museum Mile", &[(2, -2)]),
+    hood("theatreland", "Theatreland", &[(-1, 2)]),
 ];
 
 const fn hood(
@@ -409,6 +414,17 @@ mod tests {
         // The museum faces Mill Lane, across it the Canal Quarter.
         let museum = site("city-museum").unwrap();
         assert_eq!(STREETS[museum.street].id, "mill");
+        // The theatre's address is on Commerce Avenue; it faces Founders' Square.
+        let theatre = site("city-theatre").unwrap();
+        assert_eq!(STREETS[theatre.street].id, "commerce");
+        let square = blocks()
+            .iter()
+            .find(|b| b.ground == Ground::Park(ParkKind::Plaza, "Founders' Square"))
+            .unwrap();
+        assert_eq!(
+            (blocks()[theatre.block].x - 1, blocks()[theatre.block].y),
+            (square.x, square.y)
+        );
     }
 
     #[test]

@@ -291,6 +291,39 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) < 11 && Math.abs(x) > 3.5) furniture(p, "bollard", x, KERB, front - 0.4);
       break;
     }
+    case "l9": {
+      // Turned to face +x (DEFS.l9): a paved plaza before the canopy with
+      // lamps, poster columns and bollards at the kerb; a service yard of
+      // tarmac behind the dock with a scenery truck; pavement down the sides.
+      const stone = groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 });
+      const ashlar = groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 });
+      const asphalt = groundMat("asphalt", 6, { roughness: 0.93, color: 0xb4b4b4 });
+      p.box(stone, LW - 0.4, KERB, LD - 0.4, 0, 0, cz);
+      const ex = LW / 2 - 0.2; // the lot's ends, along x
+      const fx = s.w / 2; // the canopy's front
+      const dx = -s.w / 2; // the dock's back
+      if (ex - fx > 2) {
+        p.box(ashlar, ex - fx + 3.4, KERB + 0.01, s.d - 1, (ex + fx - 3.4) / 2, 0, cz);
+        const green = mat(0x2f4a3c, { roughness: 0.6, metalness: 0.2 });
+        const cream = mat(0xe8dcc0, { roughness: 0.8 });
+        for (const sz of [-1, 1]) {
+          for (const x of [fx + 1.6, ex - 1.2]) furniture(p, "lamp_heritage", x, KERB, cz + sz * 9.4);
+          // A poster column: green iron, a cream drum of bills, a domed cap.
+          const [px, pz] = [(fx + ex) / 2, cz + sz * 11.6];
+          p.add(green, new THREE.CylinderGeometry(0.62, 0.66, 0.5, 16), px, KERB + 0.25, pz);
+          p.add(cream, new THREE.CylinderGeometry(0.56, 0.56, 2.2, 16), px, KERB + 1.6, pz);
+          p.add(green, new THREE.CylinderGeometry(0.66, 0.62, 0.2, 16), px, KERB + 2.8, pz);
+          p.add(green, new THREE.SphereGeometry(0.6, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), px, KERB + 2.9, pz);
+          planter(p, fx + 1.4, cz + sz * 12.6, s.seed + sz);
+        }
+        for (let z = -LD / 2 + 1; z < LD / 2 - 0.5; z += 2.4) if (Math.abs(z - cz) > 4) furniture(p, "bollard", ex - 0.3, KERB, z);
+      }
+      if (dx - -ex > 3) {
+        p.box(asphalt, dx + ex, KERB + 0.01, s.d - 1, (dx - ex) / 2, 0, cz);
+        parked(p, (dx - ex) / 2, cz + 4.5, 0, s.seed + 5, KERB, { name: "truck" });
+      }
+      break;
+    }
     case "l14": {
       // At the front of its half block: paved round the terminal; behind it
       // the bus lanes in tarmac round the platform island, entered from the
@@ -1169,7 +1202,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "l8", "l14", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "l8", "l9", "l14", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

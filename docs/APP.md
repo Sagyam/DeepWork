@@ -143,7 +143,8 @@ are blueprints and their prices.
 | L7 | Founders' column | the monument, on its half block in a plaza (`realYard()` in `models.ts`) | `l7_monument.py` | in |
 | L14 | Bus station | the bus station, on its half block: lanes, bays and buses round the platform behind (`realYard()`) | `l14_bus.py` | in |
 | L8 | Museum of art | the museum, on its whole block: a forecourt, a lawn and fountain before each wing (`realYard()`) | `l8_museum.py` | in |
-| L9-L13 | Theatre, cathedral, station, city park, stadium | landmark sites ([ROADMAP.md](ROADMAP.md#landmarks)) | | |
+| L9 | Grand theatre | the theatre, on its whole block, turned side on to face Founders' Square (`ry` in `DEFS.l9`): a plaza before it, a service yard behind | `l9_theatre.py` | in |
+| L10-L13 | Cathedral, station, city park, stadium | landmark sites ([ROADMAP.md](ROADMAP.md#landmarks)) | | |
 
 Props, each one glb of named pieces: `cars` (`vehicles.py`), `trees`,
 `street`, `bridge`, `civic` (water tower, crane, scaffold, rubble, park
