@@ -86,6 +86,8 @@ const LANDMARK_BLOCKS: &[(i32, i32, District)] = &[
     // West of Millbrook on Main Street, the way in from the highway: the
     // monument at the gateway, the bus station beside it.
     (-2, -1, Village),
+    // East of the Civic Centre, across Foundry Lane: the museum, the whole block.
+    (2, -2, Civic),
 ];
 
 /// Where a landmark stands: `(need, x, y, slot, cols)`. It takes `cols`
@@ -97,6 +99,7 @@ const SITES: &[(&str, i32, i32, u32, u32)] = &[
     ("town-square", 1, -2, 6, 2),
     ("town-monument", -2, -1, 4, 2),
     ("town-bus-station", -2, -1, 6, 2),
+    ("city-museum", 2, -2, 4, 4),
 ];
 
 /// Blocks kept as open ground: `(x, y, kind, name, level it opens at)`.
@@ -172,6 +175,7 @@ pub const NEIGHBOURHOODS: &[Neighbourhood] = &[
     hood("highgate", "Highgate", &[(0, 2), (1, 2)]),
     hood("civic_centre", "Civic Centre", &[(1, -2)]),
     hood("westgate", "Westgate", &[(-2, -1)]),
+    hood("museum_mile", "Museum Mile", &[(2, -2)]),
 ];
 
 const fn hood(
@@ -402,6 +406,9 @@ mod tests {
         // The bus station beside it, on Main Street too.
         let bus = site("town-bus-station").unwrap();
         assert_eq!(STREETS[bus.street].id, "main");
+        // The museum faces Mill Lane, across it the Canal Quarter.
+        let museum = site("city-museum").unwrap();
+        assert_eq!(STREETS[museum.street].id, "mill");
     }
 
     #[test]

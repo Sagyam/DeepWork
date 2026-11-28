@@ -29,6 +29,7 @@ pub enum Kind {
     Tower,
     Monument,
     BusStation,
+    Museum,
 }
 
 impl Kind {
@@ -53,6 +54,7 @@ impl Kind {
             Kind::Tower => "tower",
             Kind::Monument => "monument",
             Kind::BusStation => "bus_station",
+            Kind::Museum => "museum",
         }
     }
 
@@ -69,6 +71,7 @@ impl Kind {
             Kind::Police | Kind::Library | Kind::BusStation => 360,
             Kind::Office => 480,
             Kind::Hospital | Kind::CityHall => 720,
+            Kind::Museum => 960,
             Kind::Tower => 1500,
         };
         minutes * 60
@@ -100,7 +103,7 @@ impl Kind {
             | Kind::FireStation
             | Kind::Police
             | Kind::Library => 2,
-            Kind::Office | Kind::Hospital | Kind::CityHall | Kind::BusStation => 3,
+            Kind::Office | Kind::Hospital | Kind::CityHall | Kind::BusStation | Kind::Museum => 3,
             Kind::Tower => 4,
         }
     }
@@ -476,6 +479,14 @@ pub const NEEDS: &[Need] = &[
         BusStation,
         Village,
     ),
+    landmark(
+        "city-museum",
+        2,
+        "A museum",
+        "The town's paintings are stacked in the library basement, facing the wall.",
+        Museum,
+        Civic,
+    ),
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -716,6 +727,7 @@ fn default_name(need: &Need, n: u32, ordinal: usize) -> String {
         CityHall => "City hall".into(),
         Monument => "Founders' Column".into(),
         BusStation => "Union Bus Station".into(),
+        Museum => "City Museum of Art".into(),
     }
 }
 
@@ -848,12 +860,13 @@ mod tests {
             ("metro-shops", 4),
             ("town-monument", 1),
             ("town-bus-station", 1),
+            ("city-museum", 1),
         ];
         let now: Vec<(&str, u32)> = NEEDS.iter().map(|n| (n.id, n.lots)).collect();
         assert_eq!(&now[..shipped.len()], shipped);
         assert_eq!(lots()[0].id, "hamlet-homes-1");
         assert_eq!(lots()[4].id, "hamlet-shops-1");
-        assert_eq!(lots().len(), 73);
+        assert_eq!(lots().len(), 74);
     }
 
     #[test]

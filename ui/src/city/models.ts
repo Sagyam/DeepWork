@@ -255,6 +255,42 @@ function realYard(p: Parts, rp: Parts, s: Spec, def: RealDef, r: () => number) {
       for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) > 3) furniture(p, "bollard", x, KERB, front - 0.4);
       break;
     }
+    case "l8": {
+      // On its whole block: stone paving to the kerbs; before each wing a
+      // lawn round a fountain inside a low hedge, trees at its outer end;
+      // lamps and bollards at the forecourt, limes down the sides, a hedge
+      // along the back.
+      const stone = groundMat("pave", 3.6, { roughness: 0.88, color: 0xe6e0d4 });
+      const ashlar = groundMat("ashlar", 2.4, { roughness: 0.85, color: 0xd4c8b4 });
+      p.box(stone, LW - 0.4, KERB, LD - 0.4, 0, 0, cz);
+      const wf = 4.9; // the wings' podium front, building z
+      const steps = s.d / 2; // the bottom step
+      const [lz0, lz1] = [wf + 0.9, front - 1.4];
+      const [lx0, lx1] = [12.4, half - 0.8];
+      const [c, sn] = [Math.cos(s.rot), Math.sin(s.rot)];
+      // On a lot smaller than its block (the model viewer), only the paving.
+      for (const sx of LW > 2 * LOT ? [-1, 1] : []) {
+        const x = (sx * (lx0 + lx1)) / 2;
+        const z = (lz0 + lz1) / 2;
+        p.box(lawn(), lx1 - lx0, KERB + 0.06, lz1 - lz0, x, 0, z);
+        hedge(p, lx1 - lx0, KERB + 0.7, 0.5, x, 0, lz1 - 0.25, s.seed + sx);
+        hedge(p, 0.5, KERB + 0.7, lz1 - lz0 - 0.5, sx * (lx0 + 0.25), 0, z - 0.25, s.seed + sx * 3);
+        p.add(ashlar, new THREE.CircleGeometry(4.2, 40), x, KERB + 0.07, z, -Math.PI / 2);
+        const water = (role: string) => (role === "water" ? waterMat({ amp: 0.5, scale: 2.5, ring: [s.x + x * c + z * sn, s.z - x * sn + z * c] }) : undefined);
+        civic(p, "fountain", x, KERB + 0.07, z, { scale: new THREE.Vector3(0.9, 0.9, 0.9), swap: water });
+        if (s.damage === 0) p.extra(fountainSpray(x, KERB + 0.07, z, 0.9));
+        for (const k of [-1, 1]) furniture(p, "bench", x + k * 3.4, KERB + 0.07, z + 2.6, Math.PI + k * 0.6);
+        for (const dz of [-2.6, 2.6]) tree(p, sx * (lx1 - 1.6), z + dz, 0.8 + r() * 0.15, s.seed * 7 + sx * 11 + dz, KERB, ["linden", "oak", "linden"]);
+        // The forecourt's lamps, either side of the steps.
+        for (const z_ of [steps + 1.2, front - 1.2]) furniture(p, "lamp_heritage", sx * 11.6, KERB, z_);
+        // Limes down the side, beside the pavilion.
+        for (let z_ = back + 3; z_ < wf - 1; z_ += 6.4) tree(p, sx * (half - 1.4), z_, 0.75 + r() * 0.1, s.seed * 5 + sx * 13 + z_, KERB, ["linden", "maple", "linden"]);
+      }
+      // The back: a hedge along the lot's edge.
+      hedge(p, LW - 2, KERB + 1.1, 0.6, 0, 0, back + 0.7, s.seed + 9);
+      for (let x = -half + 0.8; x < half; x += 2.4) if (Math.abs(x) < 11 && Math.abs(x) > 3.5) furniture(p, "bollard", x, KERB, front - 0.4);
+      break;
+    }
     case "l14": {
       // At the front of its half block: paved round the terminal; behind it
       // the bus lanes in tarmac round the platform island, entered from the
@@ -1133,7 +1169,7 @@ export function building(s: Spec): { group: THREE.Group; info: ModelInfo } {
 }
 
 /** Models whose walls are brick or stone: their ruins keep ragged stumps of wall. */
-const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "l14", "e2", "e3", "p2", "w2"]);
+const MASONRY = new Set(["a1", "a2", "a5", "a6", "a7", "s1", "s2", "s4", "s5", "s6", "s7", "s9", "o4", "c2", "c5", "c7", "l1", "l3", "f1", "e1", "p1", "l5", "l7", "l8", "l14", "e2", "e3", "p2", "w2"]);
 
 /**
  * A ruin (damage 3) of a realistic building: the burnt shell left standing,

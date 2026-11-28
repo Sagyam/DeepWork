@@ -283,6 +283,16 @@
       "level": 0,
       "open": false,
       "spots": []
+    },
+    {
+      "x": 2,
+      "y": -2,
+      "district": "civic",
+      "park": null,
+      "name": null,
+      "level": 0,
+      "open": false,
+      "spots": []
     }
   ],
   "streets": [
@@ -1295,6 +1305,18 @@
       "owned": false,
       "price": 60,
       "for_sale": false
+    },
+    {
+      "id": "city-museum-1",
+      "block": 20,
+      "slot": 4,
+      "cols": 4,
+      "rows": 2,
+      "street": 1,
+      "address": "33 Mill Lane",
+      "owned": false,
+      "price": 200,
+      "for_sale": false
     }
   ],
   "neighbourhoods": [
@@ -1359,6 +1381,13 @@
       "name": "Westgate",
       "blocks": [
         19
+      ]
+    },
+    {
+      "id": "museum_mile",
+      "name": "Museum Mile",
+      "blocks": [
+        20
       ]
     }
   ]

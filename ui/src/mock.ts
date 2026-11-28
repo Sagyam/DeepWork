@@ -174,6 +174,8 @@ function build(): { city: MockCity; status: Status; past: Finished[]; pending: P
       city.complete(240 * 60, t0 - 8000);
       city.choose("town-bus-station", null, t0 - 7500);
       city.complete(360 * 60, t0 - 7000);
+      city.choose("city-museum", null, t0 - 6500);
+      city.complete(960 * 60, t0 - 6000);
       scar(0.05);
       break;
     case "ruins":

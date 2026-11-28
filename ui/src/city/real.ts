@@ -125,6 +125,9 @@ const L7_MID = 15.05;
 const L7_CAP = 24.0;
 /** The bus station's hall parapet (l14_bus.py): the tower piece stands on it. */
 const L14_HALL = 7.6;
+/** The museum's pieces (l8_museum.py): the upper storey's base, the capitals' tops. */
+const L8_G = 7.0;
+const L8_TOP = 12.0;
 const E2_G = 4.4;
 const E2_FL = 3.7;
 const E3_TOP = 1.3 + 6.0;
@@ -777,6 +780,30 @@ export const DEFS: Record<string, RealDef> = {
     walls: [4.4, 4.4, 0, 0],
     // In the middle of its half block, a plaza all round.
     siteFront: 11.6,
+  },
+  l8: {
+    id: "l8",
+    kind: "landmark",
+    style: "museum",
+    // The bottom step to the back cornice, pavilion to pavilion
+    // (l8_museum.py moves itself so this is centred).
+    w: 54.3,
+    d: 24.2,
+    front: 0.6,
+    floors: () => 2,
+    stack: (floors, roof) => [
+      ...(floors > 0 ? [{ piece: "ground", y: 0 }] : []),
+      ...(floors > 1 ? [{ piece: "upper", y: L8_G }] : []),
+      ...(roof ? [{ piece: "roof", y: L8_TOP }] : []),
+    ],
+    top: (floors) => (floors > 1 ? L8_TOP : L8_G),
+    // The ridge of the court's glass roof.
+    height: () => 20.3,
+    debris: 0xd8d0c0,
+    // The galleries, pavilion to pavilion; the portico and steps stand before them.
+    walls: [53.2, 16.6, 0, -3.47],
+    // On its whole block: a forecourt and lawns in front, a hedge behind.
+    siteFront: 4.4,
   },
   l14: {
     id: "l14",
@@ -2659,6 +2686,8 @@ export function realMat(id: string, role: string, paint: Paint, damage: number, 
       break;
     // The library's banners (e3_library.py): deep red cloth.
     case "banner": m = w(plain(0x8a1f26, 0.9), 0.4); break;
+    // The museum's second banner colour (l8_museum.py): deep blue cloth.
+    case "banner2": m = w(plain(0x1f3566, 0.9), 0.4); break;
     // The clinic (h1_clinic.py): sea-green spandrels, frosted glass, the green cross lit at night.
     case "clinicpanel": m = w(plain(0x5f9c94, 0.5), 0.6); break;
     case "frosted": m = w(plain(0xdfe6e8, 0.3, 0.05), 0.2); break;
